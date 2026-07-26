@@ -1,0 +1,15 @@
+{
+  "appId": "com.packforge.expedition",
+  "appName": "배낭공방",
+  "webDir": "www",
+  "backgroundColor": "#0b0f0d",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#0b0f0d",
+    "allowMixedContent": false,
+    "webContentsDebuggingEnabled": false,
+    "zoomEnabled": false
+  }
+}

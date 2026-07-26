@@ -1,0 +1,14 @@
+node_modules/
+www/
+.android-sdk/
+.jdk/
+.gradle-home/
+.downloads/
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+*.zip
+dist/
+.pnpm-store/
+.agents/
