@@ -156,10 +156,31 @@ test("v2 저장은 직업·영지·설계도 기본값을 안전하게 보강한
   delete legacy.meta.materials;
   delete legacy.meta.blueprints;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.version, 3);
+  assert.equal(migrated.version, 4);
   assert.equal(migrated.meta.classId, "knight");
   assert.equal(migrated.meta.estate.workers.steward, 1);
   assert.equal(migrated.meta.blueprints.includes("frontierMantle"), true);
+  assert.equal(migrated.meta.selectedAreaId, "estate");
+});
+
+test("내 영지·사막·설산은 같은 탐험 규약으로 서로 다른 지도를 만든다", () => {
+  const estate = new GameEngine(new MemoryStorage());
+  estate.startExpedition("estate", 101);
+  assert.equal(estate.state.expedition.areaId, "estate");
+  assert.equal(estate.state.expedition.beaconGoal, 0);
+  assert.equal(estate.state.expedition.floor.enemies.length, 0);
+  assert.equal(estate.getEnvironmentStatus().pressure, null);
+  const nodeEntry = Object.entries(estate.state.expedition.floor.features).find(([, feature]) => feature.type === "estateNode" && feature.materialId === "wood");
+  const beforeWood = estate.state.meta.materials.wood;
+  const [x, y] = nodeEntry[0].split(",").map(Number);
+  estate.resolveFeature(x, y);
+  assert.equal(estate.state.meta.materials.wood, beforeWood + 1);
+
+  const snow = new GameEngine(new MemoryStorage());
+  snow.startExpedition("snowfield", 202);
+  assert.equal(snow.state.expedition.areaId, "snowfield");
+  assert.equal(snow.getEnvironmentStatus().pressure.id, "cold");
+  assert.equal(snow.state.expedition.floor.enemies.some((enemy) => enemy.defId === "frostColossus"), true);
 });
 
 test("적은 인접 첫 턴에 예고하고 다음 턴에 공격한다", () => {
@@ -217,12 +238,12 @@ test("플레이어가 먼저 공격해도 추격 중인 적은 즉시 반격하�
   assert.equal(floor.enemies[0].intent, "strike");
 });
 
-test("세 측량탑과 감시자 처치 보상은 공방에 영구 반영된다", () => {
+test("사막 측량 거점과 보스 처치 보상은 공방에 영구 반영된다", () => {
   const storage = new MemoryStorage();
   const engine = new GameEngine(storage);
-  engine.startExpedition(777);
+  engine.startExpedition("desert", 777);
   const floor = engine.state.expedition.floor;
-  floor.enemies = floor.enemies.filter((enemy) => enemy.defId === "warden");
+  floor.enemies = floor.enemies.filter((enemy) => enemy.id === "enemy-boss");
   for (const beacon of floor.beacons) engine.resolveFeature(beacon.x, beacon.y);
   assert.equal(engine.state.expedition.beaconsActivated, 3);
 
@@ -242,8 +263,9 @@ test("세 측량탑과 감시자 처치 보상은 공방에 영구 반영된다"
   assert.equal(engine.state.meta.bestBeacons, 3);
   assert.equal(engine.state.meta.victories, 1);
   assert.equal(engine.state.meta.essence, 1);
-  assert.equal(engine.state.meta.materials.watcherEye, 1);
-  assert.equal(engine.state.meta.blueprints.includes("wardenLens"), true);
+  assert.equal(engine.state.meta.materials.sunShard, 1);
+  assert.equal(engine.state.meta.blueprints.includes("mechanicRig"), true);
+  assert.equal(engine.state.meta.areaRecords.desert.victories, 1);
   assert.equal(engine.state.inventory.some((item) => item.defId === "scavengerCharm"), true);
 
   const restored = new GameEngine(storage);

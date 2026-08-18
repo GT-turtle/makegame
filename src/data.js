@@ -368,6 +368,40 @@ export const RESEARCH_DEFS = [
 ];
 
 export const ENEMY_DEFS = {
+  sandstalker: {
+    id: "sandstalker",
+    name: "유리모래 잠복수",
+    glyph: "≈",
+    hp: 6,
+    damage: 2,
+    scrap: 1
+  },
+  frostwolf: {
+    id: "frostwolf",
+    name: "설원 송곳니",
+    glyph: "Λ",
+    hp: 6,
+    damage: 2,
+    scrap: 1
+  },
+  duneTyrant: {
+    id: "duneTyrant",
+    name: "사구 폭군",
+    glyph: "D",
+    hp: 20,
+    damage: 4,
+    scrap: 7,
+    boss: true
+  },
+  frostColossus: {
+    id: "frostColossus",
+    name: "빙맥 거상",
+    glyph: "F",
+    hp: 24,
+    damage: 4,
+    scrap: 8,
+    boss: true
+  },
   gnawer: {
     id: "gnawer",
     name: "동굴 포식자",
@@ -401,6 +435,76 @@ export const ENEMY_DEFS = {
     damage: 4,
     scrap: 8,
     boss: true
+  }
+};
+
+export const AREA_DEFS = {
+  estate: {
+    id: "estate",
+    name: "내 영지",
+    subtitle: "공방과 생산 거점이 자라는 안전한 개척지",
+    description: "벌목장과 채석장을 순찰하며 영지 생산 기반을 확인한다.",
+    glyph: "⌂",
+    accent: "#89a978",
+    kind: "estate",
+    difficulty: "안전",
+    pressure: null,
+    enemyPool: [],
+    enemyCount: 0,
+    bossDefId: null,
+    beaconGoal: 0,
+    cacheCount: 0,
+    hazardCount: 0,
+    campCount: 1,
+    rareMaterial: "wood",
+    blueprintSource: "starter",
+    objective: "생산 거점을 순찰하고 필요한 준비를 마쳐라"
+  },
+  desert: {
+    id: "desert",
+    name: "유리모래 사막",
+    subtitle: "태양에 녹은 모래와 황동 잔해가 끝없이 이어지는 땅",
+    description: "작열을 견디며 세 측량탑을 연결하고 사구 폭군을 쓰러뜨린다.",
+    glyph: "☀",
+    accent: "#c28b4d",
+    kind: "adventure",
+    difficulty: "위험 1",
+    pressure: { id: "heat", name: "작열", glyph: "☀", rate: 2, threshold: 10 },
+    enemyPool: ["sandstalker", "sandstalker", "gnawer", "raider"],
+    enemyCount: 12,
+    bossDefId: "duneTyrant",
+    beaconGoal: 3,
+    cacheCount: 8,
+    hazardCount: 10,
+    campCount: 3,
+    rareMaterial: "sunShard",
+    blueprintSource: "fringe",
+    bossMaterial: "sunShard",
+    bossBlueprint: "mechanicRig",
+    objective: "측량탑을 연결해 사구 폭군의 모래 장막을 해제하라"
+  },
+  snowfield: {
+    id: "snowfield",
+    name: "백설령 설산",
+    subtitle: "얼어붙은 철로와 고대 광맥이 눈보라 속에 잠든 산맥",
+    description: "혹한을 낮추며 봉화를 복구하고 빙맥 거상의 심장에 접근한다.",
+    glyph: "❄",
+    accent: "#78a9c2",
+    kind: "adventure",
+    difficulty: "위험 2",
+    pressure: { id: "cold", name: "혹한", glyph: "❄", rate: 3, threshold: 10 },
+    enemyPool: ["frostwolf", "frostwolf", "raider", "gnawer"],
+    enemyCount: 13,
+    bossDefId: "frostColossus",
+    beaconGoal: 3,
+    cacheCount: 8,
+    hazardCount: 12,
+    campCount: 2,
+    rareMaterial: "blackSteel",
+    blueprintSource: "rail",
+    bossMaterial: "blackSteel",
+    bossBlueprint: "knightAegis",
+    objective: "세 봉화를 밝혀 빙맥 거상의 결빙 장막을 녹여라"
   }
 };
 

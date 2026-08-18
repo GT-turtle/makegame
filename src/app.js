@@ -1,5 +1,5 @@
-import { AFFIX_DEFS, BAG_COLS, BEACON_GOAL, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, REGION_INFO, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
-import { findPath, itemCells, keyOf, masteryLevel, regionIdAt } from "./core.js";
+import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
+import { findPath, itemCells, keyOf, masteryLevel } from "./core.js";
 import { GameEngine } from "./game.js";
 
 const app = document.querySelector("#app");
@@ -40,12 +40,12 @@ function showToast(message) {
   }, 1800);
 }
 
-function currentRegion(state) {
-  return REGION_INFO[regionIdAt(state.player.x, state.player.y)];
+function currentArea(state) {
+  return AREA_DEFS[state.expedition?.areaId || state.meta.selectedAreaId] || AREA_DEFS.estate;
 }
 
 function topbar(state) {
-  const location = state.expedition && !view.hubOpen ? currentRegion(state).name : "원정 공방";
+  const location = state.expedition && !view.hubOpen ? currentArea(state).name : "개척 영지";
   return `
     <header class="topbar">
       <div class="brand">
@@ -67,7 +67,9 @@ function hubScreen(state) {
   const activeCount = state.inventory.filter((item) => item.x >= 0).length;
   const linkedItems = state.inventory.filter((item) => item.x >= 0 && engine.getLinkedUids(item.uid).length > 0).length;
   const ongoing = state.expedition;
-  const beaconRecord = `${state.meta.bestBeacons || 0}/${BEACON_GOAL}`;
+  const selectedArea = AREA_DEFS[ongoing?.areaId || state.meta.selectedAreaId] || AREA_DEFS.estate;
+  const selectedRecord = state.meta.areaRecords[selectedArea.id];
+  const beaconRecord = selectedArea.beaconGoal ? `${selectedRecord.bestSurvey}/${selectedArea.beaconGoal}` : "안전";
   const classDef = CLASS_DEFS[state.meta.classId];
   const traitDef = TRAIT_DEFS[state.meta.traitId];
   const mastery = masteryLevel(state.meta.skillMastery[classDef.skill.id] || 0);
@@ -75,11 +77,11 @@ function hubScreen(state) {
   return `
     <main class="screen hub-screen">
       <section class="hero">
-        <p class="eyebrow">영지 개척 액션 RPG · 수직 시제품 0.3.0</p>
-        <h1>영지는 스스로 자라고,<br>당신은 미지로 향한다.</h1>
-        <p>기사·야만인·메카닉·무인 중 하나를 단련하고, 광활한 폐역에서 희귀 재료와 설계도를 가져와 영지의 장비로 완성한다.</p>
+        <p class="eyebrow">지역 선택형 개척 RPG · 구조 시제품 0.4.0</p>
+        <h1>한 세계를 준비하고,<br>각 지역을 정복한다.</h1>
+        <p>월드맵에서 내 영지·사막·설산을 선택한다. 각 지역은 독립된 턴제 지도, 환경 압력, 적, 희귀 재료와 목표를 가진다.</p>
         <div class="hero-actions">
-          <button class="primary" data-action="${ongoing ? "resume-expedition" : "start-expedition"}">${ongoing ? "원정 이어가기" : (state.meta.expeditions ? "새 원정 시작" : "첫 원정 시작")}</button>
+          <button class="primary" data-action="${ongoing ? "resume-expedition" : "start-expedition"}">${ongoing ? `${selectedArea.name} 이어가기` : `${selectedArea.glyph} ${selectedArea.name} 들어가기`}</button>
           ${ongoing ? '<button class="ghost" data-action="request-retreat">원정 종료·정산</button>' : ""}
         </div>
       </section>
@@ -90,6 +92,14 @@ function hubScreen(state) {
         <article class="summary-stat"><span>작동 아이템</span><b>${activeCount}</b></article>
         <article class="summary-stat"><span>연결 아이템</span><b>${linkedItems}</b></article>
       </div>
+
+      <div class="section-heading">
+        <h2>개척 지도</h2>
+        <span>지역마다 별도의 턴제 맵과 규칙</span>
+      </div>
+      <section class="area-grid" aria-label="탐험 지역 선택">
+        ${Object.values(AREA_DEFS).map((area) => areaCard(state, area, selectedArea.id, ongoing)).join("")}
+      </section>
 
       <div class="section-heading">
         <h2>개척자</h2>
@@ -111,7 +121,7 @@ function hubScreen(state) {
       </div>
       <article class="card bag-summary-card">
         <div>
-          <h3>${ongoing ? `진행 중 · 측량 ${ongoing.beaconsActivated}/${BEACON_GOAL}` : "원정 전 배치"}</h3>
+          <h3>${ongoing ? `진행 중 · ${selectedArea.name}${ongoing.beaconGoal ? ` · 측량 ${ongoing.beaconsActivated}/${ongoing.beaconGoal}` : ""}` : `${selectedArea.name} 출발 전 배치`}</h3>
           <p>${ongoing ? `미보관 고철 ${ongoing.runScrap}. 가방을 바꾸면 원정 시간 한 턴이 흐른다.` : "공방에서는 시간이 흐르지 않는다. 장비를 자유롭게 옮기고 조합을 확인할 수 있다."}</p>
         </div>
         <button class="secondary" data-action="open-bag">가방 열기</button>
@@ -148,6 +158,23 @@ function hubScreen(state) {
         ${RESEARCH_DEFS.map((research) => researchCard(state, research)).join("")}
       </section>
     </main>
+  `;
+}
+
+function areaCard(state, area, selectedAreaId, ongoing) {
+  const record = state.meta.areaRecords[area.id];
+  const selected = area.id === selectedAreaId;
+  const pressure = area.pressure ? `${area.pressure.glyph} ${area.pressure.name} +${area.pressure.rate}/턴` : "환경 압력 없음";
+  return `
+    <button class="area-card ${selected ? "selected" : ""} area-${area.id}" style="--area-accent:${area.accent}" data-action="select-area" data-area-id="${area.id}" ${ongoing ? "disabled" : ""}>
+      <span class="area-glyph">${area.glyph}</span>
+      <span class="area-card-copy">
+        <small>${escapeHtml(area.difficulty)} · 방문 ${record.visits} · 승리 ${record.victories}</small>
+        <strong>${escapeHtml(area.name)}</strong>
+        <i>${escapeHtml(area.subtitle)}</i>
+        <em>${pressure}</em>
+      </span>
+    </button>
   `;
 }
 
@@ -209,7 +236,7 @@ function researchCard(state, research) {
 function expeditionScreen(state) {
   const { expedition, player } = state;
   const floor = expedition.floor;
-  const info = currentRegion(state);
+  const info = currentArea(state);
   const classDef = CLASS_DEFS[state.meta.classId];
   const skill = classDef.skill;
   const mastery = masteryLevel(state.meta.skillMastery[skill.id] || 0);
@@ -217,17 +244,18 @@ function expeditionScreen(state) {
   const canUseSkill = player.classResource >= skill.cost && cooldown === 0;
   const environment = engine.getEnvironmentStatus();
   const hpPercent = Math.max(0, Math.round((player.hp / player.maxHp) * 100));
-  const pressurePercent = Math.min(100, Math.round((environment.value / environment.pressure.threshold) * 100));
+  const pressurePercent = environment.pressure ? Math.min(100, Math.round((environment.value / environment.pressure.threshold) * 100)) : 0;
   const cargoCount = Object.values(expedition.cargo.materials).reduce((sum, amount) => sum + amount, 0);
-  const boss = floor.enemies.find((enemy) => enemy.defId === "warden");
-  const objectiveTitle = expedition.beaconsActivated < BEACON_GOAL
-    ? `측량탑 ${expedition.beaconsActivated}/${BEACON_GOAL}`
-    : (boss ? "감시자에게 접근" : "원정 완료");
-  const objectiveText = expedition.beaconsActivated < BEACON_GOAL
-    ? "금빛 신호탑을 찾아 장막을 끊어라"
-    : "동쪽 보랏빛 분지의 심장을 파괴하라";
+  const boss = floor.enemies.find((enemy) => ENEMY_DEFS[enemy.defId].boss);
+  const objectiveTitle = info.kind === "estate"
+    ? "영지 순찰"
+    : expedition.beaconsActivated < expedition.beaconGoal
+      ? `측량 거점 ${expedition.beaconsActivated}/${expedition.beaconGoal}`
+      : (boss ? `${ENEMY_DEFS[boss.defId].name}에게 접근` : "지역 정복 완료");
+  const objectiveText = info.kind === "estate" ? info.objective
+    : expedition.beaconsActivated < expedition.beaconGoal ? info.objective : "지도 동쪽의 보스 거점으로 향하라";
   return `
-    <main class="screen expedition-screen">
+    <main class="screen expedition-screen area-${info.id}" style="--area-accent:${info.accent}">
       <section class="expedition-status">
         <div class="bar-wrap health-wrap">
           <div class="bar-label"><span>체력</span><b>${player.hp} / ${player.maxHp}</b></div>
@@ -244,23 +272,30 @@ function expeditionScreen(state) {
 
       <section class="dungeon-frame" style="--depth-accent:${info.accent}">
         <div class="depth-title">
-          <div><span>연속 필드 · ${player.x}, ${player.y}</span><strong>${escapeHtml(info.name)}</strong></div>
+          <div><span>지역 지도 · ${player.x}, ${player.y}</span><strong>${info.glyph} ${escapeHtml(info.name)}</strong></div>
           <small>${escapeHtml(info.subtitle)}</small>
         </div>
         <p class="map-hint">밝혀진 길을 누르면 이동 · 새 적 발견 시 한 턴 경계 후 자동 재개</p>
-        <div class="dungeon-grid" role="grid" aria-label="${escapeHtml(info.name)} 주변 지도">
+        <div class="dungeon-grid area-${info.id}" role="grid" aria-label="${escapeHtml(info.name)} 주변 지도">
           ${renderDungeon(state)}
         </div>
       </section>
 
-      <section class="pressure-card" style="--pressure-color:${info.accent}">
-        <div class="pressure-copy">
-          <span>${environment.pressure.glyph} ${escapeHtml(environment.pressure.name)}</span>
-          <b>${environment.value}/${environment.pressure.threshold}</b>
-        </div>
-        <div class="pressure-bar"><i style="width:${pressurePercent}%"></i></div>
-        <small>지역 발생 ${environment.rate} · 직업/특성/장비 대응 ${environment.mitigation} · 실제 +${environment.gain}/턴</small>
-      </section>
+      ${environment.pressure ? `
+        <section class="pressure-card" style="--pressure-color:${info.accent}">
+          <div class="pressure-copy">
+            <span>${environment.pressure.glyph} ${escapeHtml(environment.pressure.name)}</span>
+            <b>${environment.value}/${environment.pressure.threshold}</b>
+          </div>
+          <div class="pressure-bar"><i style="width:${pressurePercent}%"></i></div>
+          <small>지역 발생 ${environment.rate} · 직업/특성/장비 대응 ${environment.mitigation} · 실제 +${environment.gain}/턴</small>
+        </section>
+      ` : `
+        <section class="pressure-card safe-area" style="--pressure-color:${info.accent}">
+          <div class="pressure-copy"><span>⌂ 영지 안전권</span><b>안전</b></div>
+          <small>환경 압력과 적이 없다. 생산 거점을 순찰하거나 영지 관리로 돌아갈 수 있다.</small>
+        </section>
+      `}
 
       <div class="objective">
         <span><b>${objectiveTitle}</b><br>${objectiveText}</span>
@@ -317,8 +352,7 @@ function renderDungeon(state) {
       const known = seen.has(key);
       const visible = known && engine.isTileVisible(x, y);
       const tappable = known && tile === "floor";
-      const region = regionIdAt(x, y);
-      const classes = ["tile", tile, `region-${region}`, known ? "seen" : "unseen", visible ? "visible" : "", tappable ? "tappable" : "", autoPath.has(key) ? "travel-path" : "", autoTarget === key ? "travel-target" : ""].filter(Boolean).join(" ");
+      const classes = ["tile", tile, `area-${state.expedition.areaId}`, known ? "seen" : "unseen", visible ? "visible" : "", tappable ? "tappable" : "", autoPath.has(key) ? "travel-path" : "", autoTarget === key ? "travel-target" : ""].filter(Boolean).join(" ");
       cells.push(`
         <button class="${classes}" data-action="tile" data-x="${x}" data-y="${y}" role="gridcell" aria-label="${tileLabel(state, x, y, known, visible)}">
           ${known ? renderFeature(state, x, y, visible) : ""}
@@ -338,10 +372,12 @@ function tileLabel(state, x, y, known, visible) {
   const feature = state.expedition.floor.features[keyOf(x, y)];
   if (feature?.type === "cache" && !feature.opened) return "보급함";
   if (feature?.type === "camp") return "야영지";
-  if (feature?.type === "hazard") return "부식성 포자";
+  if (feature?.type === "hazard") return `${currentArea(state).pressure?.name || "환경"} 위험 지형`;
   if (feature?.type === "beacon") return feature.activated ? "재가동된 측량탑" : "꺼진 측량탑";
-  if (feature?.type === "core") return state.expedition.beaconsActivated >= BEACON_GOAL ? "노출된 감시자의 심장" : "장막에 싸인 감시자의 심장";
-  return state.expedition.floor.tiles[y][x] === "wall" ? "지형 장애물" : `${REGION_INFO[regionIdAt(x, y)].name} 길`;
+  if (feature?.type === "core") return state.expedition.beaconsActivated >= state.expedition.beaconGoal ? "노출된 보스 거점" : "장막에 싸인 보스 거점";
+  if (feature?.type === "estateNode") return `${feature.name}${feature.collected ? " 순찰 완료" : ""}`;
+  if (feature?.type === "estateHall") return feature.name;
+  return state.expedition.floor.tiles[y][x] === "wall" ? "지형 장애물" : `${currentArea(state).name} 길`;
 }
 
 function renderEntity(state, x, y) {
@@ -368,7 +404,9 @@ function renderFeature(state, x, y, visible) {
   if (feature.type === "hazard" && visible) return '<span class="feature hazard" aria-hidden="true">⁙</span>';
   if (feature.type === "camp") return `<span class="feature camp" aria-hidden="true">${feature.used ? "·" : "⌂"}</span>`;
   if (feature.type === "beacon") return `<span class="feature beacon ${feature.activated ? "active" : ""}" aria-hidden="true">⌖</span>`;
-  if (feature.type === "core") return `<span class="feature core ${state.expedition.beaconsActivated >= BEACON_GOAL ? "open" : ""}" aria-hidden="true">◈</span>`;
+  if (feature.type === "core") return `<span class="feature core ${state.expedition.beaconsActivated >= state.expedition.beaconGoal ? "open" : ""}" aria-hidden="true">◈</span>`;
+  if (feature.type === "estateNode") return `<span class="feature estate-node ${feature.collected ? "active" : ""}" aria-hidden="true">${feature.glyph}</span>`;
+  if (feature.type === "estateHall") return '<span class="feature estate-hall" aria-hidden="true">♜</span>';
   return "";
 }
 
@@ -541,12 +579,13 @@ function phaseModal(state) {
   if (!phase || phase === "active") return "";
   if (phase === "victory") {
     const cargo = cargoSummary(state.expedition);
+    const area = AREA_DEFS[state.expedition.areaId];
     return `
       <div class="modal-wrap"><section class="modal victory-modal">
-        <p class="eyebrow">광역 원정 완수</p>
-        <h2>폐역의 심장 확보</h2>
-        <p>세 지역의 신호가 연결되고 감시자가 멈췄다. 가져온 재료는 대장간 제작에, 설계도는 새로운 장비 조합에 쓰인다.</p>
-        <div class="reward-line">측량탑 <b>${state.expedition.beaconsActivated}/${BEACON_GOAL}</b> · 고철 <b>${state.expedition.runScrap}</b> · 광맥의 핵 <b>1</b></div>
+        <p class="eyebrow">${escapeHtml(area.name)} 정복</p>
+        <h2>${area.glyph} 지역 목표 완수</h2>
+        <p>지역의 장막과 보스를 돌파했다. 가져온 재료는 대장간 제작에, 설계도는 새로운 장비 조합에 쓰인다.</p>
+        <div class="reward-line">측량 <b>${state.expedition.beaconsActivated}/${state.expedition.beaconGoal}</b> · 고철 <b>${state.expedition.runScrap}</b> · 지역 핵 <b>1</b></div>
         <div class="cargo-line">원정 짐 · ${cargo || "없음"}</div>
         <div class="modal-actions single"><button class="primary" data-action="return-victory">공방으로 돌아가기</button></div>
       </section></div>
@@ -608,14 +647,16 @@ function worldMapOverlay(state) {
         : enemy ? "!"
           : feature?.type === "beacon" ? (feature.activated ? "✦" : "⌖")
             : feature?.type === "core" ? "◈"
+              : feature?.type === "estateNode" ? feature.glyph
+                : feature?.type === "estateHall" ? "♜"
               : feature?.type === "camp" ? "▲"
                 : feature?.type === "cache" && !feature.opened ? "▪"
                   : "";
       const markerClass = playerHere ? "map-player"
         : enemy ? "map-enemy"
-          : feature ? `map-${feature.type}${feature.activated ? " active" : ""}`
+          : feature ? `map-${feature.type}${feature.activated || feature.collected ? " active" : ""}`
             : "";
-      const classes = ["world-map-cell", known ? tile : "unknown", known ? `region-${regionIdAt(x, y)}` : "", markerClass].filter(Boolean).join(" ");
+      const classes = ["world-map-cell", known ? tile : "unknown", known ? `area-${state.expedition.areaId}` : "", markerClass].filter(Boolean).join(" ");
       const canTravel = known && tile === "floor" && !playerHere;
       cells.push(`<button class="${classes}" data-action="map-tile" data-x="${x}" data-y="${y}" role="gridcell" aria-label="${tileLabel(state, x, y, known, visible)}" ${canTravel ? "" : "disabled"}>${marker}</button>`);
     }
@@ -625,7 +666,7 @@ function worldMapOverlay(state) {
     <div class="overlay map-overlay" role="dialog" aria-modal="true" aria-label="원정 지도">
       <section class="map-sheet">
         <header class="sheet-header">
-          <div><p class="eyebrow">개척도 ${explored}% · 측량 ${state.expedition.beaconsActivated}/${BEACON_GOAL}</p><h2>폐역 전도</h2></div>
+          <div><p class="eyebrow">개척도 ${explored}%${state.expedition.beaconGoal ? ` · 측량 ${state.expedition.beaconsActivated}/${state.expedition.beaconGoal}` : ""}</p><h2>${currentArea(state).glyph} ${escapeHtml(currentArea(state).name)} 전도</h2></div>
           <button class="primary" data-action="close-map">뒤로</button>
         </header>
         <p class="map-help">밝혀진 칸을 누르면 지도를 닫고 그곳까지 연속 이동한다.</p>
@@ -879,6 +920,7 @@ app.addEventListener("click", (event) => {
   if (!button) return;
   const action = button.dataset.action;
   if (action !== "tile") clearAutoMove(false);
+  if (action === "select-area") engine.selectArea(button.dataset.areaId);
   if (action === "start-expedition") {
     view.hubOpen = false;
     engine.startExpedition();

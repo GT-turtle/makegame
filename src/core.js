@@ -1,8 +1,8 @@
 import {
+  AREA_DEFS,
   BAG_COLS,
   AFFIX_DEFS,
   BASE_BAG_ROWS,
-  BEACON_GOAL,
   CLASS_DEFS,
   ENEMY_DEFS,
   ITEM_DEFS,
@@ -12,7 +12,7 @@ import {
   WORLD_SIZE
 } from "./data.js";
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 export function mulberry32(seed) {
   let value = seed >>> 0;
@@ -203,6 +203,12 @@ export function createInitialState() {
       bestBeacons: 0,
       bagRows: BASE_BAG_ROWS,
       research: [],
+      selectedAreaId: "estate",
+      areaRecords: {
+        estate: { visits: 0, victories: 0, bestSurvey: 0 },
+        desert: { visits: 0, victories: 0, bestSurvey: 0 },
+        snowfield: { visits: 0, victories: 0, bestSurvey: 0 }
+      },
       classId: "knight",
       traitId: "duneBorn",
       skillMastery: {},
@@ -364,73 +370,89 @@ function buildTiles(random) {
   throw new Error("Unable to generate connected expedition world");
 }
 
-export function createWorld(seed) {
+export function createWorld(seed, areaId = "desert") {
+  const area = AREA_DEFS[areaId] || AREA_DEFS.desert;
   const random = mulberry32(seed + 9973);
   const tiles = buildTiles(random);
   const start = { ...WORLD_LANDMARKS.start };
   const core = { ...WORLD_LANDMARKS.core };
-  const beacons = WORLD_LANDMARKS.beacons.map((point) => ({ ...point }));
-  const occupied = new Set([keyOf(start.x, start.y), keyOf(core.x, core.y), ...beacons.map((point) => keyOf(point.x, point.y))]);
+  const beacons = WORLD_LANDMARKS.beacons.slice(0, area.beaconGoal).map((point) => ({ ...point }));
+  const occupied = new Set([keyOf(start.x, start.y), ...beacons.map((point) => keyOf(point.x, point.y))]);
+  if (area.bossDefId) occupied.add(keyOf(core.x, core.y));
   const enemies = [];
-  for (const region of Object.values(REGION_INFO)) {
-    for (let index = 0; index < region.enemyCount; index += 1) {
-      const position = chooseOpenCell(random, tiles, occupied, 6, start, region.id);
+  for (let index = 0; index < area.enemyCount; index += 1) {
+    const position = chooseOpenCell(random, tiles, occupied, 6, start);
+    if (!position) continue;
+    occupied.add(keyOf(position.x, position.y));
+    const defId = area.enemyPool[Math.floor(random() * area.enemyPool.length)];
+    const definition = ENEMY_DEFS[defId];
+    enemies.push({
+      id: `enemy-${area.id}-${index}`,
+      defId,
+      x: position.x,
+      y: position.y,
+      hp: definition.hp,
+      maxHp: definition.hp,
+      intent: "pursue",
+      poison: 0,
+      burn: 0,
+      active: false
+    });
+  }
+  if (area.bossDefId) {
+    const boss = ENEMY_DEFS[area.bossDefId];
+    enemies.push({
+      id: "enemy-boss",
+      defId: area.bossDefId,
+      x: core.x,
+      y: core.y,
+      hp: boss.hp,
+      maxHp: boss.hp,
+      intent: "pursue",
+      poison: 0,
+      burn: 0,
+      active: false
+    });
+  }
+  const features = {};
+  if (area.kind === "estate") {
+    const estateNodes = [
+      { point: WORLD_LANDMARKS.beacons[0], name: "서부 벌목장", glyph: "♣", materialId: "wood" },
+      { point: WORLD_LANDMARKS.beacons[1], name: "남부 채석장", glyph: "♦", materialId: "ore" },
+      { point: WORLD_LANDMARKS.beacons[2], name: "북부 감시탑", glyph: "⌖", materialId: null }
+    ];
+    for (const node of estateNodes) {
+      occupied.add(keyOf(node.point.x, node.point.y));
+      features[keyOf(node.point.x, node.point.y)] = { type: "estateNode", name: node.name, glyph: node.glyph, materialId: node.materialId, collected: false };
+    }
+    features[keyOf(core.x, core.y)] = { type: "estateHall", name: "개척 영주관" };
+  } else {
+    beacons.forEach((point, index) => {
+      features[keyOf(point.x, point.y)] = { type: "beacon", id: `beacon-${index + 1}`, activated: false };
+    });
+    features[keyOf(core.x, core.y)] = { type: "core" };
+    for (let index = 0; index < area.cacheCount; index += 1) {
+      const position = chooseOpenCell(random, tiles, occupied, 4, start);
       if (!position) continue;
       occupied.add(keyOf(position.x, position.y));
-      const defId = region.enemyPool[Math.floor(random() * region.enemyPool.length)];
-      const definition = ENEMY_DEFS[defId];
-      enemies.push({
-        id: `enemy-${region.id}-${index}`,
-        defId,
-        x: position.x,
-        y: position.y,
-        hp: definition.hp,
-        maxHp: definition.hp,
-        intent: "pursue",
-        poison: 0,
-        burn: 0,
-        active: false
-      });
+      features[keyOf(position.x, position.y)] = { type: "cache", opened: false };
     }
-  }
-  const warden = ENEMY_DEFS.warden;
-  enemies.push({
-    id: "enemy-boss",
-    defId: "warden",
-    x: core.x,
-    y: core.y,
-    hp: warden.hp,
-    maxHp: warden.hp,
-    intent: "pursue",
-    poison: 0,
-    burn: 0,
-    active: false
-  });
-  const features = {};
-  beacons.forEach((point, index) => {
-    features[keyOf(point.x, point.y)] = { type: "beacon", id: `beacon-${index + 1}`, activated: false };
-  });
-  features[keyOf(core.x, core.y)] = { type: "core" };
-  for (let index = 0; index < 8; index += 1) {
-    const position = chooseOpenCell(random, tiles, occupied, 4, start);
-    if (!position) continue;
-    occupied.add(keyOf(position.x, position.y));
-    features[keyOf(position.x, position.y)] = { type: "cache", opened: false };
-  }
-  for (let index = 0; index < 12; index += 1) {
-    const position = chooseOpenCell(random, tiles, occupied, 2, start);
-    if (!position) continue;
-    occupied.add(keyOf(position.x, position.y));
-    features[keyOf(position.x, position.y)] = { type: "hazard" };
-  }
-  for (let index = 0; index < 3; index += 1) {
-    const position = chooseOpenCell(random, tiles, occupied, 8, start);
-    if (!position) continue;
-    occupied.add(keyOf(position.x, position.y));
-    features[keyOf(position.x, position.y)] = { type: "camp", used: false };
+    for (let index = 0; index < area.hazardCount; index += 1) {
+      const position = chooseOpenCell(random, tiles, occupied, 2, start);
+      if (!position) continue;
+      occupied.add(keyOf(position.x, position.y));
+      features[keyOf(position.x, position.y)] = { type: "hazard", pressureId: area.pressure?.id || "toxin" };
+    }
+    for (let index = 0; index < area.campCount; index += 1) {
+      const position = chooseOpenCell(random, tiles, occupied, 8, start);
+      if (!position) continue;
+      occupied.add(keyOf(position.x, position.y));
+      features[keyOf(position.x, position.y)] = { type: "camp", used: false };
+    }
   }
   return {
     seed,
+    areaId: area.id,
     width: WORLD_SIZE,
     height: WORLD_SIZE,
     tiles,
@@ -445,11 +467,12 @@ export function createWorld(seed) {
 }
 
 export function createFloor(seed) {
-  return createWorld(seed);
+  return createWorld(seed, "desert");
 }
 
-export function createExpedition(state, seed = Date.now() % 2147483647) {
-  const floor = createWorld(seed);
+export function createExpedition(state, seed = Date.now() % 2147483647, areaId = state.meta.selectedAreaId) {
+  const area = AREA_DEFS[areaId] || AREA_DEFS.estate;
+  const floor = createWorld(seed, area.id);
   state.player.hp = state.player.maxHp;
   state.player.guard = 0;
   state.player.evasion = 0;
@@ -463,9 +486,10 @@ export function createExpedition(state, seed = Date.now() % 2147483647) {
   }
   state.expedition = {
     seed,
+    areaId: area.id,
     phase: "active",
     beaconsActivated: 0,
-    beaconGoal: BEACON_GOAL,
+    beaconGoal: area.beaconGoal,
     runScrap: 0,
     runEssence: 0,
     pressure: { heat: 0, toxin: 0, cold: 0, corruption: 0 },
@@ -474,6 +498,8 @@ export function createExpedition(state, seed = Date.now() % 2147483647) {
     floor
   };
   state.meta.expeditions += 1;
+  state.meta.selectedAreaId = area.id;
+  state.meta.areaRecords[area.id].visits += 1;
   const classDef = CLASS_DEFS[state.meta.classId] || CLASS_DEFS.knight;
   state.player.classResource = Math.min(2, classDef.resourceMax);
   state.player.skillReadyAt = {};
@@ -753,6 +779,10 @@ export function migrateState(rawState) {
     meta: {
       ...base.meta,
       ...rawMeta,
+      areaRecords: Object.fromEntries(Object.keys(AREA_DEFS).map((areaId) => [
+        areaId,
+        { ...base.meta.areaRecords[areaId], ...(rawMeta.areaRecords?.[areaId] || {}) }
+      ])),
       skillMastery: { ...base.meta.skillMastery, ...(rawMeta.skillMastery || {}) },
       materials: { ...base.meta.materials, ...(rawMeta.materials || {}) },
       estate: {
@@ -774,9 +804,13 @@ export function migrateState(rawState) {
   }
   const convertedBlueprints = (state.meta.research || []).filter((id) => ITEM_DEFS[id]);
   state.meta.blueprints = [...new Set(["frontierMantle", ...(rawMeta.blueprints || []), ...convertedBlueprints])];
+  if (!AREA_DEFS[state.meta.selectedAreaId]) state.meta.selectedAreaId = "estate";
   if (!CLASS_DEFS[state.meta.classId]) state.meta.classId = "knight";
   if (!TRAIT_DEFS[state.meta.traitId]) state.meta.traitId = "duneBorn";
   if (state.expedition) {
+    if (!AREA_DEFS[state.expedition.areaId]) state.expedition.areaId = "desert";
+    state.expedition.floor.areaId = state.expedition.areaId;
+    state.expedition.beaconGoal = AREA_DEFS[state.expedition.areaId].beaconGoal;
     state.expedition.pressure = { heat: 0, toxin: 0, cold: 0, corruption: 0, ...(state.expedition.pressure || {}) };
     state.expedition.cargo = {
       materials: { ...(state.expedition.cargo?.materials || {}) },

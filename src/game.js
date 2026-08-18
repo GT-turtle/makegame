@@ -1,4 +1,4 @@
-import { AFFIX_DEFS, BEACON_GOAL, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, REGION_INFO, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
+import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
 import {
   addMaterial,
   advanceEstate,
@@ -19,7 +19,6 @@ import {
   pathStepToward,
   placeItem,
   removeItem,
-  regionIdAt,
   resolveBagTrigger,
   revealFloor,
   synergyItemUids,
@@ -72,11 +71,24 @@ export class GameEngine {
     this.state.log = this.state.log.slice(0, 12);
   }
 
-  startExpedition(seed) {
-    createExpedition(this.state, seed);
+  startExpedition(areaIdOrSeed = this.state.meta.selectedAreaId, seed) {
+    if (this.state.expedition) return false;
+    const areaId = typeof areaIdOrSeed === "string" ? areaIdOrSeed : this.state.meta.selectedAreaId;
+    const resolvedSeed = typeof areaIdOrSeed === "number" ? areaIdOrSeed : seed;
+    const area = AREA_DEFS[areaId] || AREA_DEFS.estate;
+    createExpedition(this.state, resolvedSeed, area.id);
     revealFloor(this.state);
-    this.addLog("황동 황야에 진입했다. 세 측량탑을 찾아 감시자의 장막을 끊자.", "item");
+    this.addLog(`${area.name}에 진입했다. ${area.objective}`, "item");
     this.emit();
+    return true;
+  }
+
+  selectArea(areaId) {
+    if (this.state.expedition || !AREA_DEFS[areaId]) return false;
+    this.state.meta.selectedAreaId = areaId;
+    this.addLog(`다음 목적지 선택: ${AREA_DEFS[areaId].name}`, "item");
+    this.emit();
+    return true;
   }
 
   classDefinition() {
@@ -123,15 +135,16 @@ export class GameEngine {
     let resolved = false;
     if (classDef.id === "knight") {
       player.guard += 4 + previousLevel;
-      expedition.pressure.corruption = Math.max(0, expedition.pressure.corruption - 3 - previousLevel);
-      this.addLog(`철벽 태세: 방어 ${4 + previousLevel}, 오염 압력 완화.`, "good");
+      const pressureId = AREA_DEFS[expedition.areaId]?.pressure?.id;
+      if (pressureId) expedition.pressure[pressureId] = Math.max(0, expedition.pressure[pressureId] - 3 - previousLevel);
+      this.addLog(`철벽 태세: 방어 ${4 + previousLevel}${pressureId ? ", 지역 압력 완화" : ""}.`, "good");
       resolved = true;
     }
     if (classDef.id === "barbarian") {
       const target = expedition.floor.enemies.find((enemy) => (
         enemy.hp > 0
         && distance(enemy, player) === 1
-        && (enemy.defId !== "warden" || expedition.beaconsActivated >= BEACON_GOAL)
+        && (!ENEMY_DEFS[enemy.defId].boss || expedition.beaconsActivated >= expedition.beaconGoal)
       ));
       if (!target) return false;
       const damage = 5 + previousLevel;
@@ -146,7 +159,7 @@ export class GameEngine {
         .filter((enemy) => (
           enemy.hp > 0
           && isVisible(this.state, enemy.x, enemy.y)
-          && (enemy.defId !== "warden" || expedition.beaconsActivated >= BEACON_GOAL)
+          && (!ENEMY_DEFS[enemy.defId].boss || expedition.beaconsActivated >= expedition.beaconGoal)
         ))
         .sort((a, b) => distance(a, player) - distance(b, player));
       const target = targets[0];
@@ -191,8 +204,8 @@ export class GameEngine {
       return false;
     }
     const enemy = this.enemyAt(target.x, target.y);
-    if (enemy?.defId === "warden" && expedition.beaconsActivated < BEACON_GOAL) {
-      this.addLog(`감시자의 장막이 공격을 튕겨낸다. 측량탑 ${BEACON_GOAL - expedition.beaconsActivated}개가 더 필요하다.`, "bad");
+    if (enemy && ENEMY_DEFS[enemy.defId].boss && expedition.beaconsActivated < expedition.beaconGoal) {
+      this.addLog(`보스의 장막이 공격을 튕겨낸다. 측량 거점 ${expedition.beaconGoal - expedition.beaconsActivated}개가 더 필요하다.`, "bad");
       this.emit();
       return false;
     }
@@ -310,15 +323,14 @@ export class GameEngine {
   getEnvironmentStatus() {
     const expedition = this.state.expedition;
     if (!expedition) return null;
-    const regionId = regionIdAt(this.state.player.x, this.state.player.y);
-    const region = REGION_INFO[regionId];
-    const pressure = region.pressure;
-    const bossAwake = regionId === "basin" && expedition.beaconsActivated >= BEACON_GOAL;
+    const area = AREA_DEFS[expedition.areaId] || AREA_DEFS.desert;
+    const pressure = area.pressure;
+    if (!pressure) return { area, pressure: null, rate: 0, mitigation: 0, gain: 0, value: 0 };
+    const bossAwake = expedition.beaconGoal > 0 && expedition.beaconsActivated >= expedition.beaconGoal;
     const rate = pressure.rate + (bossAwake ? 1 : 0);
     const mitigation = environmentMitigation(this.state, pressure.id);
     return {
-      regionId,
-      region,
+      area,
       pressure,
       rate,
       mitigation,
@@ -329,7 +341,7 @@ export class GameEngine {
 
   applyEnvironment() {
     const status = this.getEnvironmentStatus();
-    if (!status) return;
+    if (!status?.pressure) return;
     const pressureValues = this.state.expedition.pressure;
     for (const pressureId of Object.keys(pressureValues)) {
       if (pressureId !== status.pressure.id && pressureValues[pressureId] > 0) pressureValues[pressureId] -= 1;
@@ -338,7 +350,7 @@ export class GameEngine {
     if (status.gain > 0) {
       pressureValues[status.pressure.id] += status.gain;
       if (previous === 0) {
-        this.addLog(`${status.region.name}: ${status.pressure.name} 압력 +${status.gain}/턴. 대응 ${status.mitigation}.`, "bad");
+        this.addLog(`${status.area.name}: ${status.pressure.name} 압력 +${status.gain}/턴. 대응 ${status.mitigation}.`, "bad");
       }
     } else if (pressureValues[status.pressure.id] > 0) {
       pressureValues[status.pressure.id] -= 1;
@@ -358,7 +370,7 @@ export class GameEngine {
 
     for (const enemy of enemies) {
       if (enemy.hp <= 0 || expedition.phase !== "active") continue;
-      if (enemy.defId === "warden" && expedition.beaconsActivated < BEACON_GOAL) continue;
+      if (ENEMY_DEFS[enemy.defId].boss && expedition.beaconsActivated < expedition.beaconGoal) continue;
       if (!enemy.active && distance(enemy, player) > 7) continue;
       enemy.active = true;
       if (enemy.poison > 0) {
@@ -436,10 +448,24 @@ export class GameEngine {
     const feature = expedition.floor.features[keyOf(x, y)];
     if (!feature) return;
     if (feature.type === "hazard") {
-      const mitigation = environmentMitigation(this.state, "toxin");
+      const pressureId = feature.pressureId || AREA_DEFS[expedition.areaId]?.pressure?.id || "toxin";
+      const mitigation = environmentMitigation(this.state, pressureId);
       const damage = Math.max(0, 2 - Math.floor(mitigation / 2));
       if (damage > 0) this.receiveDamage(damage);
-      this.addLog(damage ? `부식성 포자 피해 ${damage}.` : "환경 장비로 부식성 포자를 막았다.", damage ? "bad" : "good");
+      const pressureName = AREA_DEFS[expedition.areaId]?.pressure?.name || "환경 위험";
+      this.addLog(damage ? `${pressureName} 지형 피해 ${damage}.` : "환경 장비로 위험 지형을 막았다.", damage ? "bad" : "good");
+    }
+    if (feature.type === "estateNode" && !feature.collected) {
+      feature.collected = true;
+      if (feature.materialId) {
+        addMaterial(this.state.meta.materials, feature.materialId, 1);
+        this.addLog(`${feature.name} 순찰 완료: ${MATERIAL_DEFS[feature.materialId].name} +1`, "good");
+      } else {
+        this.addLog(`${feature.name} 순찰 완료. 영지 외곽은 안전하다.`, "good");
+      }
+    }
+    if (feature.type === "estateHall") {
+      this.addLog("개척 영주관에 도착했다. 뒤로 버튼으로 영지 관리 화면을 열 수 있다.", "item");
     }
     if (feature.type === "cache" && !feature.opened) {
       feature.opened = true;
@@ -449,11 +475,11 @@ export class GameEngine {
       const scrap = hasCharmToolLink ? 4 : 3;
       expedition.runScrap += scrap;
       expedition.lootFound += 1;
-      const regionId = regionIdAt(x, y);
-      const regionMaterial = { fringe: "sunShard", mire: "sporeGland", rail: "blackSteel", basin: "blackSteel" }[regionId];
+      const area = AREA_DEFS[expedition.areaId] || AREA_DEFS.desert;
+      const regionMaterial = area.rareMaterial;
       this.addCargoMaterial(regionMaterial, 1);
       const candidates = CRAFT_RECIPES.filter((recipe) => (
-        recipe.classId === this.state.meta.classId || recipe.source === regionId
+        recipe.classId === this.state.meta.classId || recipe.source === area.blueprintSource
       ));
       const blueprint = candidates.find((recipe) => this.addCargoBlueprint(recipe.id));
       const blueprintText = blueprint ? ` · 설계도 [${blueprint.name}]` : "";
@@ -485,13 +511,15 @@ export class GameEngine {
         }
       }
       expedition.floor.seen = [...seen];
-      this.addLog(`측량탑 재가동 ${expedition.beaconsActivated}/${BEACON_GOAL} · 고철 +2${healed ? ` · 체력 +${healed}` : ""}`, "good");
-      if (expedition.beaconsActivated >= BEACON_GOAL) {
-        this.addLog("세 신호가 연결됐다. 감시자의 장막이 사라졌다!", "item");
+      const record = this.state.meta.areaRecords[expedition.areaId];
+      record.bestSurvey = Math.max(record.bestSurvey, expedition.beaconsActivated);
+      this.addLog(`측량 거점 재가동 ${expedition.beaconsActivated}/${expedition.beaconGoal} · 고철 +2${healed ? ` · 체력 +${healed}` : ""}`, "good");
+      if (expedition.beaconsActivated >= expedition.beaconGoal) {
+        this.addLog("모든 신호가 연결됐다. 보스의 장막이 사라졌다!", "item");
       }
     }
-    if (feature.type === "core" && expedition.beaconsActivated < BEACON_GOAL) {
-      this.addLog(`기계 장막이 길을 막는다. 측량탑 ${BEACON_GOAL - expedition.beaconsActivated}개가 더 필요하다.`, "bad");
+    if (feature.type === "core" && expedition.beaconsActivated < expedition.beaconGoal) {
+      this.addLog(`장막이 길을 막는다. 측량 거점 ${expedition.beaconGoal - expedition.beaconsActivated}개가 더 필요하다.`, "bad");
     }
   }
 
@@ -501,13 +529,17 @@ export class GameEngine {
     expedition.phase = "victory";
     expedition.runEssence += 1;
     this.state.meta.victories += 1;
-    this.state.meta.bestBeacons = Math.max(this.state.meta.bestBeacons, BEACON_GOAL);
-    this.addCargoMaterial("watcherEye", 1);
-    this.addCargoBlueprint("wardenLens");
+    const area = AREA_DEFS[expedition.areaId] || AREA_DEFS.desert;
+    const record = this.state.meta.areaRecords[area.id];
+    record.victories += 1;
+    record.bestSurvey = Math.max(record.bestSurvey, expedition.beaconGoal);
+    this.state.meta.bestBeacons = Math.max(this.state.meta.bestBeacons, expedition.beaconGoal);
+    if (area.bossMaterial) this.addCargoMaterial(area.bossMaterial, 1);
+    if (area.bossBlueprint) this.addCargoBlueprint(area.bossBlueprint);
     if (!this.state.inventory.some((item) => item.defId === "scavengerCharm")) {
       this.state.inventory.push(createItem("scavengerCharm", createUid(this.state)));
     }
-    this.addLog("감시자가 멈췄다. 수정안과 룬안 설계도를 원정 짐에 확보했다.", "item");
+    this.addLog(`${ENEMY_DEFS[area.bossDefId].name} 격파. 희귀 재료와 설계도를 원정 짐에 확보했다.`, "item");
   }
 
   enemyAt(x, y) {
