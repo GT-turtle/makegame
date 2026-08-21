@@ -1784,6 +1784,8 @@ button:disabled {
 .kit-skill-choice small { color: var(--muted); font-size: 8px; line-height: 1.45; }
 .kit-skill-choice i { grid-column: 1 / -1; color: color-mix(in srgb, var(--class-color) 70%, white); font-size: 8px; font-style: normal; }
 .kit-skill-choice.selected { border-color: var(--class-color); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--class-color) 50%, transparent); }
+.kit-skill-choice.ultimate:disabled { cursor: default; opacity: 1; filter: none; border-color: #e2894a; box-shadow: inset 0 0 0 1px rgba(226,137,74,.5); }
+.kit-skill-choice.ultimate > span { color: #e2894a; border-color: rgba(226,137,74,.55); }
 
 .trait-choice-grid {
   display: grid;
@@ -3106,7 +3108,7 @@ body.battle-active .battle-orders {
   right: max(18px, env(safe-area-inset-right));
   bottom: max(16px, calc(env(safe-area-inset-bottom) + 10px));
   width: min(39vw, 340px);
-  height: 178px;
+  height: 225px;
   display: block;
   pointer-events: none;
 }
@@ -3134,6 +3136,8 @@ body.battle-active .battle-orders .action-skill { width: 57px; height: 57px; bor
 body.battle-active .battle-orders .action-skill-1 { right: 169px; bottom: 2px; }
 body.battle-active .battle-orders .action-skill-2 { right: 119px; bottom: 72px; }
 body.battle-active .battle-orders .action-skill-3 { right: 48px; bottom: 96px; }
+body.battle-active .battle-orders .action-ultimate { right: 66px; bottom: 162px; width: 68px; height: 68px; border-color: #e2894a; background: radial-gradient(circle at 35% 30%, #4a382a, #1c130d 68%); box-shadow: inset 0 0 0 4px rgba(255,255,255,.035), 0 0 16px rgba(226,137,74,.5), 0 5px 14px rgba(0,0,0,.5); }
+body.battle-active .battle-orders .action-ultimate > span { font-size: 26px; }
 
 body.battle-active .battle-log { display: none; }
 body.battle-active .battle-hero-note {
@@ -3159,13 +3163,14 @@ body.battle-active .battle-hero-note small { overflow: hidden; font-size: 6px; t
 @media (max-height: 420px) and (orientation: landscape) {
   .virtual-joystick { width: 104px; height: 104px; }
   .joystick-knob { width: 48px; height: 48px; }
-  body.battle-active .battle-orders { width: 300px; height: 148px; }
+  body.battle-active .battle-orders { width: 300px; height: 188px; }
   body.battle-active .battle-orders .action-attack { width: 72px; height: 72px; }
   body.battle-active .battle-orders .action-dodge { right: 80px; width: 54px; height: 54px; }
   body.battle-active .battle-orders .action-skill { width: 49px; height: 49px; }
   body.battle-active .battle-orders .action-skill-1 { right: 144px; }
   body.battle-active .battle-orders .action-skill-2 { right: 103px; bottom: 62px; }
   body.battle-active .battle-orders .action-skill-3 { right: 42px; bottom: 79px; }
+  body.battle-active .battle-orders .action-ultimate { right: 58px; bottom: 135px; width: 58px; height: 58px; }
   .third-person-player { bottom: 4%; transform: translateX(-50%) scale(.84); transform-origin: bottom; }
   .battle-radar { width: 78px; height: 78px; }
 }

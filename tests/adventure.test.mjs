@@ -310,11 +310,16 @@ test("보유 유닛은 최대 2명까지 편성하고 보조 특성을 교체할
   assert.equal(engine.state.adventure.unitProgress.snow_guard.secondaryId, "oath");
 });
 
-test("두 전승 직업은 패시브와 변형 스킬 5개를 가지며 전투에는 3개를 장착한다", () => {
-  for (const baseClass of Object.values(PLAYER_BASE_CLASS_DEFS)) assert.ok(baseClass.passive?.id);
+test("직업은 패시브 1개·스킬 4개·궁 1개를 가지며 전승은 패시브 1개를 더하고 스킬 4개와 궁을 바꾼다", () => {
+  for (const baseClass of Object.values(PLAYER_BASE_CLASS_DEFS)) {
+    assert.ok(baseClass.passive?.id);
+    assert.equal(baseClass.skills.length, 4);
+    assert.ok(baseClass.ultimate?.id);
+  }
   for (const kit of Object.values(PLAYER_KIT_DEFS)) {
     assert.ok(PLAYER_BASE_CLASS_DEFS[kit.baseClassId]);
-    assert.equal(kit.skills.length, 5);
+    assert.equal(kit.skills.length, 4);
+    assert.ok(kit.ultimate?.id);
     assert.ok(kit.passive?.id);
     assert.equal(kit.defaultLoadout.length, 3);
   }
@@ -380,25 +385,25 @@ test("기본 직업 패시브는 전승 패시브와 별도로 실제 전투에 
   assert.equal(summon.passiveDamageMultiplier, 1);
 });
 
-test("두 전승의 액티브 10개가 실제 전투 효과로 모두 실행된다", () => {
+test("두 전승의 액티브 10개(스킬 4개+궁 1개 × 2)가 실제 전투 효과로 모두 실행된다", () => {
   const spiritCommander = createDefaultCommander();
   const spiritFront = createAutoBattle("duneRaiders", "spirit-front", "field", STARTING_PARTY, {}, { commander: spiritCommander });
   const spiritPlayer = spiritFront.units.find((unit) => unit.controlled);
   spiritPlayer.x = spiritFront.enemies[0].x - 5;
   spiritPlayer.y = spiritFront.enemies[0].y;
   selectPlayerTarget(spiritFront, spiritFront.enemies[0].id);
-  assert.equal(issuePlayerAction(spiritFront, "skill1"), true);
-  assert.equal(issuePlayerAction(spiritFront, "skill2"), true);
-  assert.equal(issuePlayerAction(spiritFront, "skill3"), true);
+  assert.equal(issuePlayerAction(spiritFront, "skill1"), true); // spiritMending
+  assert.equal(issuePlayerAction(spiritFront, "skill2"), true); // winterAegis
+  assert.equal(issuePlayerAction(spiritFront, "skill3"), true); // sacredWildfire
+  assert.equal(issuePlayerAction(spiritFront, "ultimate"), true); // tempestJudgment
 
-  spiritCommander.skillLoadouts.spiritCrusader = ["thunderLance", "tempestJudgment", "winterAegis"];
+  spiritCommander.skillLoadouts.spiritCrusader = ["thunderLance"];
   const spiritBack = createAutoBattle("duneRaiders", "spirit-back", "field", STARTING_PARTY, {}, { commander: spiritCommander });
   const spiritBackPlayer = spiritBack.units.find((unit) => unit.controlled);
   spiritBackPlayer.x = spiritBack.enemies[0].x - 8;
   spiritBackPlayer.y = spiritBack.enemies[0].y;
   selectPlayerTarget(spiritBack, spiritBack.enemies[0].id);
-  assert.equal(issuePlayerAction(spiritBack, "skill1"), true);
-  assert.equal(issuePlayerAction(spiritBack, "skill2"), true);
+  assert.equal(issuePlayerAction(spiritBack, "skill1"), true); // thunderLance
 
   const heavyCommander = createDefaultCommander();
   heavyCommander.combatKitId = "heavyNecromancer";
@@ -407,24 +412,67 @@ test("두 전승의 액티브 10개가 실제 전투 효과로 모두 실행된�
   heavyPlayer.x = heavyFront.enemies[0].x - 5;
   heavyPlayer.y = heavyFront.enemies[0].y;
   selectPlayerTarget(heavyFront, heavyFront.enemies[0].id);
-  assert.equal(issuePlayerAction(heavyFront, "skill1"), true);
+  assert.equal(issuePlayerAction(heavyFront, "skill1"), true); // armoredDecay
   heavyFront.enemies[0].hp = 0;
-  assert.equal(issuePlayerAction(heavyFront, "skill2"), true);
-  assert.equal(issuePlayerAction(heavyFront, "skill3"), true);
+  assert.equal(issuePlayerAction(heavyFront, "skill2"), true); // armedResurrection
+  assert.equal(issuePlayerAction(heavyFront, "skill3"), true); // boneArmor
 
   heavyCommander.storedBoss = { defId: "testBear", name: "시험 큰곰", species: "bear", glyph: "B", color: "#999", maxHp: 80, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.12 };
-  heavyCommander.skillLoadouts.heavyNecromancer = ["bloodRend", "storedApex", "armedResurrection"];
+  heavyCommander.skillLoadouts.heavyNecromancer = ["bloodRend"];
   const heavyBack = createAutoBattle("duneRaiders", "heavy-back", "field", STARTING_PARTY, {}, { commander: heavyCommander });
   heavyBack.enemies[0].hp = 0;
   const heavyBackPlayer = heavyBack.units.find((unit) => unit.controlled);
   heavyBackPlayer.x = heavyBack.enemies[1].x - 8;
   heavyBackPlayer.y = heavyBack.enemies[1].y;
   selectPlayerTarget(heavyBack, heavyBack.enemies[1].id);
-  assert.equal(issuePlayerAction(heavyBack, "skill1"), true);
-  assert.equal(issuePlayerAction(heavyBack, "skill2"), true);
-  assert.equal(issuePlayerAction(heavyBack, "skill3"), true);
+  assert.equal(issuePlayerAction(heavyBack, "skill1"), true); // bloodRend
+  assert.equal(issuePlayerAction(heavyBack, "ultimate"), true); // storedApex
   assert.equal(heavyBack.units.filter((unit) => unit.summonType === "storedBoss").length, 1);
+  assert.equal(issuePlayerAction(heavyBack, "skill3"), true); // armedResurrection (default-filled)
   assert.equal(heavyBack.consumedCorpseIds.length, 1);
+});
+
+test("두 기본 직업(전승 전)의 액티브 10개도 스킬 4개+궁 1개 구조로 실행된다", () => {
+  const crusaderCommander = createDefaultCommander();
+  crusaderCommander.combatKitId = "crusader";
+  const crusaderFront = createAutoBattle("duneRaiders", "crusader-front", "field", STARTING_PARTY, {}, { commander: crusaderCommander });
+  const crusaderPlayer = crusaderFront.units.find((unit) => unit.controlled);
+  crusaderPlayer.x = crusaderFront.enemies[0].x - 5;
+  crusaderPlayer.y = crusaderFront.enemies[0].y;
+  selectPlayerTarget(crusaderFront, crusaderFront.enemies[0].id);
+  assert.equal(issuePlayerAction(crusaderFront, "skill1"), true); // holyBlessing
+  assert.equal(issuePlayerAction(crusaderFront, "skill2"), true); // holyWard
+  assert.equal(issuePlayerAction(crusaderFront, "skill3"), true); // holyBurst
+  assert.equal(issuePlayerAction(crusaderFront, "ultimate"), true); // holyJudgment
+
+  crusaderCommander.skillLoadouts.crusader = ["holyLance"];
+  const crusaderBack = createAutoBattle("duneRaiders", "crusader-back", "field", STARTING_PARTY, {}, { commander: crusaderCommander });
+  const crusaderBackPlayer = crusaderBack.units.find((unit) => unit.controlled);
+  crusaderBackPlayer.x = crusaderBack.enemies[0].x - 5;
+  crusaderBackPlayer.y = crusaderBack.enemies[0].y;
+  selectPlayerTarget(crusaderBack, crusaderBack.enemies[0].id);
+  assert.equal(issuePlayerAction(crusaderBack, "skill1"), true); // holyLance
+
+  const necromancerCommander = createDefaultCommander();
+  necromancerCommander.combatKitId = "necromancer";
+  const necroFront = createAutoBattle("duneRaiders", "necro-front", "field", STARTING_PARTY, {}, { commander: necromancerCommander });
+  const necroPlayer = necroFront.units.find((unit) => unit.controlled);
+  necroPlayer.x = necroFront.enemies[0].x - 5;
+  necroPlayer.y = necroFront.enemies[0].y;
+  selectPlayerTarget(necroFront, necroFront.enemies[0].id);
+  assert.equal(issuePlayerAction(necroFront, "skill1"), true); // spiritDecay
+  assert.equal(issuePlayerAction(necroFront, "ultimate"), true); // spiritNova
+  necroFront.enemies[0].hp = 0;
+  assert.equal(issuePlayerAction(necroFront, "skill2"), true); // spiritRaise
+  assert.equal(issuePlayerAction(necroFront, "skill3"), true); // spiritWard
+
+  necromancerCommander.skillLoadouts.necromancer = ["spiritDrain"];
+  const necroBack = createAutoBattle("duneRaiders", "necro-back", "field", STARTING_PARTY, {}, { commander: necromancerCommander });
+  const necroBackPlayer = necroBack.units.find((unit) => unit.controlled);
+  necroBackPlayer.x = necroBack.enemies[0].x - 8;
+  necroBackPlayer.y = necroBack.enemies[0].y;
+  selectPlayerTarget(necroBack, necroBack.enemies[0].id);
+  assert.equal(issuePlayerAction(necroBack, "skill1"), true); // spiritDrain
 });
 
 test("친화도·직업 전용 능력치와 출혈·화상·크루세이더 해제가 구분된다", () => {

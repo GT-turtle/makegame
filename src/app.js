@@ -1,7 +1,7 @@
 import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
 import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency } from "./core.js";
 import { GameEngine } from "./game.js";
-import { BASIC_DISCIPLINE_DEFS, PLAYER_KIT_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition } from "./classes.js";
+import { BASIC_DISCIPLINE_DEFS, PLAYER_KIT_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 import {
   DUNGEON_VIEW_SIZE,
   FIELD_VIEW_SIZE,
@@ -1423,6 +1423,8 @@ function battleScreen(state, defenseMode = false) {
     cooldown: playerActionCooldown(battle, action),
     definition: playerSkillDefinition(battleKit.id, battle.playerSkillIds?.[index])
   }));
+  const battleUltimateCd = playerActionCooldown(battle, "ultimate");
+  const battleUltimate = playerUltimateDefinition(battleKit.id);
   const defenseCampaign = defenseMode ? state.estateDefense.campaign : null;
   const defenseGate = defenseCampaign?.phase === "gates" ? ESTATE_GATE_DEFS[defenseCampaign.activeGateId] : null;
   const defenseTitle = defenseCampaign?.phase === "inner" ? "영지 내부전장" : defenseGate ? `${defenseGate.name} 지원전` : state.estateDefense?.pending?.title;
@@ -1456,6 +1458,7 @@ function battleScreen(state, defenseMode = false) {
         <button class="action-attack" data-action="player-battle-action" data-player-action="attack" ${attackCd ? "disabled" : ""}><span>⚔</span><strong>공격</strong><small>${attackCd ? `${attackCd}초` : "자동 조준"}</small></button>
         <button class="action-dodge" data-action="player-battle-action" data-player-action="dodge" ${dodgeCd ? "disabled" : ""}><span>↝</span><strong>회피</strong><small>${dodgeCd ? `${dodgeCd}초` : "피해 감소"}</small></button>
         ${battleSkills.map(({ action, cooldown, definition }, index) => definition ? `<button class="kit-skill-action action-skill action-skill-${index + 1}" data-action="player-battle-action" data-player-action="${action}" ${cooldown ? "disabled" : ""} title="${escapeHtml(definition.description)}"><span>${definition.glyph}</span><strong>${escapeHtml(definition.name)}</strong><small>${cooldown ? `${cooldown}초` : "기술"}</small></button>` : "").join("")}
+        ${battleUltimate ? `<button class="kit-skill-action action-ultimate" data-action="player-battle-action" data-player-action="ultimate" ${battleUltimateCd ? "disabled" : ""} title="${escapeHtml(battleUltimate.description)}"><span>${battleUltimate.glyph}</span><strong>${escapeHtml(battleUltimate.name)}</strong><small>${battleUltimateCd ? `${battleUltimateCd}초` : "궁"}</small></button>` : ""}
       </section>
       <div class="battle-log">${battle.log.map((text) => `<p>${escapeHtml(text)}</p>`).join("")}</div>
       <section class="battle-hero-note active-control"><span class="${portraitClass(0)}"></span><div><strong>${escapeHtml(battleKit.shortName)} · ${Math.ceil(battlePlayer?.hp || 0)}/${battlePlayer?.maxHp || 0}</strong><em class="player-hp-bar"><b style="width:${Math.max(0, (battlePlayer?.hp || 0) / Math.max(1, battlePlayer?.maxHp || 1) * 100)}%"></b></em><small>${battleBasePassive.glyph} ${escapeHtml(battleBasePassive.name)}${basePassiveProgress} · ${battlePassive.glyph} ${escapeHtml(battlePassive.name)}</small></div></section>
@@ -1782,7 +1785,7 @@ function classOverlay(state) {
           <div><p class="eyebrow">주 직업 전체 스킬 변형</p><h2>개척자 전승 설정</h2></div>
           <button class="primary" data-action="close-class">뒤로</button>
         </header>
-        <p class="bag-help">기본 직업의 고유 패시브는 어떤 전승에서도 유지된다. 동료에게 익힌 계통은 전승 패시브 하나를 더하고 주 직업의 스킬 다섯 개를 전부 바꾼다.</p>
+        <p class="bag-help">기본 직업은 고유 패시브 1개, 스킬 4개, 궁 1개를 가진다. 보조 계통을 익히면 전승 패시브 1개가 추가되고 스킬 4개와 궁 1개가 전승 버전으로 바뀐다.</p>
         <div class="class-choice-grid class-art-choice-grid">
           ${Object.values(PLAYER_KIT_DEFS).map((kit) => {
             const selected = kit.id === selectedKit.id;
@@ -1796,7 +1799,7 @@ function classOverlay(state) {
                 <span class="class-choice-copy">
                   <span class="class-choice-title"><span class="class-glyph">${kit.glyph}</span><span><b>플레이 가능</b><strong>${escapeHtml(kit.shortName)}</strong></span></span>
                   <small>${escapeHtml(kit.description)}</small>
-                  <i>${baseClass.glyph} ${baseClass.name} · ${primary.glyph} ${primary.name} + ${inherited.glyph} ${inherited.name}</i>
+                  <i>${baseClass.glyph} ${baseClass.name} · ${primary.glyph} ${primary.name}${inherited ? ` + ${inherited.glyph} ${inherited.name}` : " · 전승 전"}</i>
                   <em class="class-choice-state">${selected ? "현재 선택" : "눌러서 선택"}</em>
                 </span>
               </button>
@@ -1824,7 +1827,7 @@ function classOverlay(state) {
           ${combatStats.criticalChance != null ? `<span><small>치명타 · 직업 전용</small><b>${Math.round(combatStats.criticalChance * 100)}%</b></span>` : ""}
         </div>
         <p class="facility-note">회복은 방어력·신성 친화도, 소환은 지능·자연 친화도에 비례한다. 중병기 망자는 방어력도 추가 반영한다. 상태이상 위력은 지능, 재사용 감소는 장비 효과로만 얻는다.</p>
-        <div class="section-heading"><h2>변형 스킬 5개</h2><span>전투 버튼에는 3개 장착</span></div>
+        <div class="section-heading"><h2>스킬 4개</h2><span>전투 버튼에는 3개 장착</span></div>
         <div class="kit-skill-grid">
           ${selectedKit.skills.map((skill) => {
             const slot = loadout.indexOf(skill.id);
@@ -1833,6 +1836,10 @@ function classOverlay(state) {
           }).join("")}
         </div>
         <p class="facility-note">선택된 기술을 눌러 해제한 뒤 다른 기술을 장착할 수 있다. 출정 시 빈 슬롯은 기본 기술로 자동 보충된다.</p>
+        <div class="section-heading"><h2>궁 1개</h2><span>항상 장착</span></div>
+        <div class="kit-skill-grid">
+          <button class="kit-skill-choice selected ultimate" style="--class-color:${selectedKit.color}" disabled><span>${selectedKit.ultimate.glyph}</span><strong>${escapeHtml(selectedKit.ultimate.name)}</strong><small>${escapeHtml(selectedKit.ultimate.description)}</small><i>항상 장착 · 숙련 ${masteryLevel(state.meta.skillMastery[selectedKit.ultimate.id] || 0)}</i></button>
+        </div>
         <div class="section-heading"><h2>출신 특성</h2><span>직업과 자유롭게 조합</span></div>
         <div class="trait-choice-grid">
           ${Object.values(TRAIT_DEFS).map((trait) => `

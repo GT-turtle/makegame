@@ -24,7 +24,14 @@ export const PLAYER_BASE_CLASS_DEFS = {
       hitsRequired: 5,
       healRatio: 0.08,
       description: "적의 공격에 5회 피격될 때마다 최대 체력의 8%를 회복한다. 어떤 전승을 익혀도 유지된다."
-    }
+    },
+    skills: [
+      { id: "holyBlessing", name: "축복의 손길", glyph: "✚", cooldownMs: 5400, effect: "holyBlessing", description: "가장 다친 아군을 회복하고 해로운 효과 하나를 해제한다." },
+      { id: "holyWard", name: "수호 결계", glyph: "❖", cooldownMs: 7600, effect: "holyWard", description: "아군 전체의 방어를 잠시 높인다." },
+      { id: "holyBurst", name: "신성 폭발", glyph: "☼", cooldownMs: 7000, effect: "holyBurst", description: "주변 적에게 신성 피해를 입힌다." },
+      { id: "holyLance", name: "심판의 창", glyph: "▲", cooldownMs: 4800, effect: "holyLance", description: "단일 적을 꿰뚫는다." }
+    ],
+    ultimate: { id: "holyJudgment", name: "천벌", glyph: "✦", cooldownMs: 12000, effect: "holyJudgment", description: "목표 주변에 강력한 신성 파도를 일으킨다." }
   },
   necromancer: {
     id: "necromancer",
@@ -44,11 +51,50 @@ export const PLAYER_BASE_CLASS_DEFS = {
       summonDamagePerStack: 0.08,
       durationMs: 12000,
       description: "적이 쓰러질 때 영혼을 최대 3개 수확한다. 영혼마다 소환수 공격력이 8% 증가하며 마지막 처치 12초 뒤 사라진다."
-    }
+    },
+    skills: [
+      { id: "spiritDecay", name: "쇠약의 저주", glyph: "☣", cooldownMs: 4600, effect: "spiritDecay", description: "단일 적에게 피해를 입히고 부패를 부여한다." },
+      { id: "spiritRaise", name: "하급 언데드 소환", glyph: "⚰", cooldownMs: 6000, effect: "spiritRaise", description: "이번 전투에서 쓰러진 적 하나를 무기 없는 하급 언데드로 되살린다." },
+      { id: "spiritWard", name: "영혼 보호막", glyph: "◈", cooldownMs: 7000, effect: "spiritWard", description: "아군 전체의 방어를 잠시 높인다." },
+      { id: "spiritDrain", name: "영혼 흡수", glyph: "☾", cooldownMs: 5000, effect: "spiritDrain", description: "단일 적에게 피해를 입히고 그만큼 자신을 회복한다." }
+    ],
+    ultimate: { id: "spiritNova", name: "사령 강령", glyph: "☠", cooldownMs: 13000, effect: "spiritNova", description: "목표 주변에 사령의 파동을 일으키고 자신을 회복한다." }
   }
 };
 
 export const PLAYER_KIT_DEFS = {
+  crusader: {
+    id: "crusader",
+    name: "크루세이더",
+    shortName: "크루세이더",
+    glyph: "♜",
+    color: "#9fb08a",
+    baseClassId: "crusader",
+    primaryId: "holy",
+    inheritedId: null,
+    description: "아직 보조 계통을 배우지 않은 순수 신성 크루세이더.",
+    passive: { id: "none", name: "없음", glyph: "—", description: "전승을 익히면 추가 패시브를 얻는다." },
+    stats: { maxHp: 52, damage: 7, range: 11, speed: 16, attackMs: 700, armor: 0.18, color: "#9fb08a", glyph: "♜" },
+    defaultLoadout: ["holyBlessing", "holyWard", "holyBurst"],
+    skills: PLAYER_BASE_CLASS_DEFS.crusader.skills,
+    ultimate: PLAYER_BASE_CLASS_DEFS.crusader.ultimate
+  },
+  necromancer: {
+    id: "necromancer",
+    name: "네크로맨서",
+    shortName: "네크로맨서",
+    glyph: "☠",
+    color: "#8f8ea3",
+    baseClassId: "necromancer",
+    primaryId: "spirit",
+    inheritedId: null,
+    description: "아직 보조 계통을 배우지 않은 순수 정령술 네크로맨서.",
+    passive: { id: "none", name: "없음", glyph: "—", description: "전승을 익히면 추가 패시브를 얻는다." },
+    stats: { maxHp: 42, damage: 8, range: 12, speed: 15, attackMs: 760, armor: 0.11, color: "#8f8ea3", glyph: "☠" },
+    defaultLoadout: ["spiritDecay", "spiritRaise", "spiritWard"],
+    skills: PLAYER_BASE_CLASS_DEFS.necromancer.skills,
+    ultimate: PLAYER_BASE_CLASS_DEFS.necromancer.ultimate
+  },
   spiritCrusader: {
     id: "spiritCrusader",
     name: "정령을 익힌 크루세이더",
@@ -71,9 +117,9 @@ export const PLAYER_KIT_DEFS = {
       { id: "spiritMending", name: "정령의 치유", glyph: "✚", cooldownMs: 6200, effect: "spiritMending", description: "가장 다친 아군을 크게 회복하고 지속 회복을 부여하며 해로운 효과 하나를 해제한다." },
       { id: "winterAegis", name: "서리 수호진", glyph: "❄", cooldownMs: 8200, effect: "winterAegis", description: "아군 전체의 방어를 높이고 공격한 적에게 빙결 중첩을 되돌린다." },
       { id: "sacredWildfire", name: "성화 폭발", glyph: "♨", cooldownMs: 7600, effect: "sacredWildfire", description: "주변을 폭발시킨 뒤 짧고 강한 화상을 갱신하는 불 장판을 남긴다." },
-      { id: "thunderLance", name: "뇌정의 창", glyph: "ϟ", cooldownMs: 5400, effect: "thunderLance", description: "단일 적을 꿰뚫고 짧게 기절시킨다." },
-      { id: "tempestJudgment", name: "폭풍의 심판", glyph: "✦", cooldownMs: 13800, effect: "tempestJudgment", description: "바람으로 적을 모은 뒤 넓은 약공격과 중심의 강공격을 함께 가한다." }
-    ]
+      { id: "thunderLance", name: "뇌정의 창", glyph: "ϟ", cooldownMs: 5400, effect: "thunderLance", description: "단일 적을 꿰뚫고 짧게 기절시킨다." }
+    ],
+    ultimate: { id: "tempestJudgment", name: "폭풍의 심판", glyph: "✦", cooldownMs: 13800, effect: "tempestJudgment", description: "바람으로 적을 모은 뒤 넓은 약공격과 중심의 강공격을 함께 가한다." }
   },
   heavyNecromancer: {
     id: "heavyNecromancer",
@@ -97,9 +143,9 @@ export const PLAYER_KIT_DEFS = {
       { id: "armoredDecay", name: "갑주 부패", glyph: "☣", cooldownMs: 5200, effect: "armoredDecay", description: "단일 적에게 부패를 부여하고 방어력을 함께 깎는다." },
       { id: "armedResurrection", name: "무장 부활", glyph: "⚔", cooldownMs: 6800, effect: "armedResurrection", description: "이번 전투에서 쓰러진 일반 적을 무장 망자로 되살린다. 최대 3기." },
       { id: "boneArmor", name: "뼈 갑옷", glyph: "▣", cooldownMs: 7600, effect: "boneArmor", description: "생존한 아군 전원에게 회전하는 뼈 방패와 방어력 증가를 부여한다." },
-      { id: "bloodRend", name: "혈맥 절단", glyph: "⌁", cooldownMs: 4600, effect: "bloodRend", description: "단일 적을 공격하고 긴 출혈을 중첩시킨다." },
-      { id: "storedApex", name: "봉인 우두머리", glyph: "☠", cooldownMs: 15000, effect: "storedApex", description: "마지막으로 저장한 우두머리 한 마리를 중갑·중병기로 강화해 소환한다." }
-    ]
+      { id: "bloodRend", name: "혈맥 절단", glyph: "⌁", cooldownMs: 4600, effect: "bloodRend", description: "단일 적을 공격하고 긴 출혈을 중첩시킨다." }
+    ],
+    ultimate: { id: "storedApex", name: "봉인 우두머리", glyph: "☠", cooldownMs: 15000, effect: "storedApex", description: "마지막으로 저장한 우두머리 한 마리를 중갑·중병기로 강화해 소환한다." }
   }
 };
 
@@ -129,6 +175,10 @@ export function playerKitDefinition(kitId) {
 
 export function playerSkillDefinition(kitId, skillId) {
   return playerKitDefinition(kitId).skills.find((skill) => skill.id === skillId) || null;
+}
+
+export function playerUltimateDefinition(kitId) {
+  return playerKitDefinition(kitId).ultimate;
 }
 
 export function normalizedPlayerLoadout(commander = {}, kitId = commander.combatKitId, fillDefaults = true) {

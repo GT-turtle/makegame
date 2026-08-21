@@ -1,4 +1,4 @@
-import { normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition } from "./classes.js";
+import { normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
 export const DUNGEON_SIZE = 15;
@@ -626,7 +626,7 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     playerTargetId: null,
     playerMoveInput: { x: 0, y: 0 },
     playerFacing: 0,
-    playerReadyAt: { attack: 0, dodge: 0, skill1: 0, skill2: 0, skill3: 0 },
+    playerReadyAt: { attack: 0, dodge: 0, skill1: 0, skill2: 0, skill3: 0, ultimate: 0 },
     playerDodgeUntil: 0,
     focusTargetId: enemies.find((enemy) => enemy.boss)?.id || null,
     command: { chargeUntil: 0, guardUntil: 0, focusUntil: 0 },
@@ -1012,7 +1012,7 @@ function summonWeaponName(species) {
   return ({ goblin: "끌리는 중검", orc: "전투 망치", wolf: "철제 이빨", bear: "철제 발톱" })[species] || "중병기";
 }
 
-function applySummonScaling(battle, summon, player, bossSummon = false) {
+function applySummonScaling(battle, summon, player, bossSummon = false, armed = true) {
   const power = Math.max(1, player.summonPower || 1);
   const baseHp = summon.baseMaxHp || summon.maxHp;
   const baseDamage = summon.baseDamage || summon.damage;
@@ -1021,10 +1021,12 @@ function applySummonScaling(battle, summon, player, bossSummon = false) {
   summon.damage = Math.max(4, Math.round(baseDamage * power * (bossSummon ? 1.0 : 0.82)));
   summon.armor = Math.min(0.58, (summon.armor || 0) + (bossSummon ? 0.18 : 0.12));
   summon.attackMs = Math.round(summon.attackMs * (bossSummon ? 1.08 : 1.18));
-  summon.weaponOverlay = summonWeapon(summon.species);
-  if (summon.weaponOverlay === "ironTeeth" || summon.weaponOverlay === "ironClaws") {
-    summon.statusOnHit = { id: "bleed", stacks: bossSummon ? 2 : 1 };
-    summon.statusEvery = bossSummon ? 2 : 3;
+  if (armed) {
+    summon.weaponOverlay = summonWeapon(summon.species);
+    if (summon.weaponOverlay === "ironTeeth" || summon.weaponOverlay === "ironClaws") {
+      summon.statusOnHit = { id: "bleed", stacks: bossSummon ? 2 : 1 };
+      summon.statusEvery = bossSummon ? 2 : 3;
+    }
   }
   const passive = battle.playerBasePassive;
   summon.passiveDamageMultiplier = passive?.effect === "soulHarvest"
@@ -1036,8 +1038,8 @@ function raisedDead(battle) {
   return battle.units.filter((unit) => unit.summonType === "raisedDead" && unit.hp > 0);
 }
 
-function raiseAvailableCorpses(battle, player) {
-  const slots = Math.max(0, 3 - raisedDead(battle).length);
+function raiseAvailableCorpses(battle, player, { limit = 3, armed = true } = {}) {
+  const slots = Math.max(0, Math.min(limit, 3 - raisedDead(battle).length));
   if (!slots) return [];
   const corpses = battle.enemies.filter((enemy) => enemy.hp <= 0 && !enemy.boss && !battle.consumedCorpseIds.includes(enemy.id)).slice(0, slots);
   const summons = [];
@@ -1046,8 +1048,8 @@ function raiseAvailableCorpses(battle, player) {
     battle.enemies.splice(battle.enemies.indexOf(corpse), 1);
     corpse.team = "unit";
     corpse.summonType = "raisedDead";
-    corpse.role = "무장 망자";
-    corpse.name = `무장 ${corpse.name} 망자`;
+    corpse.role = armed ? "무장 망자" : "하급 망자";
+    corpse.name = armed ? `무장 ${corpse.name} 망자` : `하급 ${corpse.name} 망자`;
     corpse.boss = false;
     corpse.statuses = {};
     corpse.positiveEffects = {};
@@ -1055,7 +1057,7 @@ function raiseAvailableCorpses(battle, player) {
     corpse.lastHit = 0;
     corpse.x = Math.max(7, Math.min(93, player.x + 4 + summons.length * 2));
     corpse.y = Math.max(10, Math.min(90, player.y - 5 + summons.length * 5));
-    applySummonScaling(battle, corpse, player, false);
+    applySummonScaling(battle, corpse, player, false, armed);
     battle.units.push(corpse);
     summons.push(corpse);
   }
@@ -1165,6 +1167,54 @@ function resolvePlayerSkill(battle, player, skill) {
     const summon = summonStoredBoss(battle, player);
     if (!summon) return false;
     pushBattleLog(battle, `${skill.name}: ${summon.name} 소환 · 일반 전투 패턴만 사용`);
+  } else if (skill.effect === "holyBlessing") {
+    const ally = living(battle.units).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+    if (!ally) return false;
+    const dispelled = dispelHarmfulStatus(ally);
+    const healed = healCombatant(ally, 10 * player.healingPower);
+    pushBattleLog(battle, `${skill.name}: ${ally.name} ${healed} 회복${dispelled ? ` · ${dispelled.name} 해제` : ""}`);
+  } else if (skill.effect === "holyWard") {
+    for (const unit of living(battle.units)) {
+      unit.defenseUntil = battle.elapsed + 4600;
+      unit.defenseMultiplier = 0.6;
+    }
+    pushBattleLog(battle, `${skill.name}: 아군 ${living(battle.units).length}명 보호`);
+  } else if (skill.effect === "holyBurst") {
+    const result = damageArea(battle, player, player, 20, 0.7);
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격`);
+  } else if (skill.effect === "holyLance") {
+    if (!target || distanceBetween(player, target) > 46) return false;
+    const damage = damageCombatant(player, target, 1.4);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
+  } else if (skill.effect === "holyJudgment") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const result = damageArea(battle, player, target, 26, 1.1);
+    pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 신성 파도`);
+  } else if (skill.effect === "spiritDecay") {
+    if (!target || distanceBetween(player, target) > 46) return false;
+    const damage = damageCombatant(player, target, 0.9);
+    if (target.hp > 0) applyCombatStatus(battle, target, "decay", player);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 부패`);
+  } else if (skill.effect === "spiritRaise") {
+    const summons = raiseAvailableCorpses(battle, player, { limit: 1, armed: false });
+    if (!summons.length) return false;
+    pushBattleLog(battle, `${skill.name}: 하급 언데드 ${summons.length}기 부활`);
+  } else if (skill.effect === "spiritWard") {
+    for (const unit of living(battle.units)) {
+      unit.defenseUntil = battle.elapsed + 5400;
+      unit.defenseMultiplier = 0.62;
+    }
+    pushBattleLog(battle, `${skill.name}: 아군 ${living(battle.units).length}명 보호`);
+  } else if (skill.effect === "spiritDrain") {
+    if (!target || distanceBetween(player, target) > 20) return false;
+    const damage = damageCombatant(player, target, 1.2);
+    player.hp = Math.min(player.maxHp, player.hp + Math.max(1, Math.round(damage * 0.6)));
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 자신 회복`);
+  } else if (skill.effect === "spiritNova") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const result = damageArea(battle, player, target, 24, 1.0);
+    player.hp = Math.min(player.maxHp, player.hp + Math.max(1, Math.round(result.totalDamage * 0.3)));
+    pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 사령 파동 · 자신 회복`);
   } else {
     return false;
   }
@@ -1208,6 +1258,13 @@ export function issuePlayerAction(battle, action) {
     const skill = playerSkillDefinition(battle.playerKitId, skillId);
     if (!skill || !resolvePlayerSkill(battle, player, skill)) return false;
     battle.playerReadyAt[action] = battle.elapsed + skill.cooldownMs * (player.cooldownMultiplier || 1);
+    refreshBaseClassPassive(battle);
+    return true;
+  }
+  if (action === "ultimate") {
+    const ultimate = playerUltimateDefinition(battle.playerKitId);
+    if (!ultimate || !resolvePlayerSkill(battle, player, ultimate)) return false;
+    battle.playerReadyAt.ultimate = battle.elapsed + ultimate.cooldownMs * (player.cooldownMultiplier || 1);
     refreshBaseClassPassive(battle);
     return true;
   }
