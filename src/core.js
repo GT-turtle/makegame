@@ -7,12 +7,17 @@ import {
   ENEMY_DEFS,
   ITEM_DEFS,
   LOOT_TABLE,
+  MATERIAL_DEFS,
   REGION_INFO,
   TRAIT_DEFS,
+  WORKER_PROFICIENCY_TIERS,
   WORLD_SIZE
 } from "./data.js";
+import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState } from "./frontier.js";
+import { createDefenseDeployments } from "./defense.js";
+import { PLAYER_KIT_DEFS, createDefaultCommander, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 17;
 
 export function mulberry32(seed) {
   let value = seed >>> 0;
@@ -213,8 +218,22 @@ export function createInitialState() {
       traitId: "duneBorn",
       skillMastery: {},
       blueprints: ["frontierMantle"],
-      materials: { wood: 4, ore: 4, ingot: 2, sunShard: 0, sporeGland: 0, blackSteel: 0, watcherEye: 0 },
-      estate: { tick: 0, workers: { steward: 1, lumberjack: 0, miner: 0, blacksmith: 1 } },
+      materials: {
+        wood: 4, food: 4,
+        copperOre: 0, ore: 4, aluminumOre: 0, tinOre: 0, titaniumOre: 0, ingot: 2,
+        herb: 2, runeFragment: 0,
+        frostIron: 0, venomSac: 0, mountainIron: 0, manaStone: 0, glassSand: 0,
+        sunShard: 0, sporeGland: 0, blackSteel: 0, watcherEye: 0
+      },
+      estate: {
+        tick: 0,
+        workers: { steward: 1, lumberjack: 0, miner: 0, blacksmith: 1 },
+        workerProgress: {
+          lumberjack: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} },
+          miner: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} },
+          blacksmith: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} }
+        }
+      },
       expeditions: 0,
       victories: 0
     },
@@ -235,6 +254,40 @@ export function createInitialState() {
       createItem("buckler", "item-3", 2, 0, 0),
       createItem("boots", "item-4", 4, 0, 0)
     ],
+    adventure: {
+      selectedRegionId: "central",
+      unlockedRegionIds: ["north", "south", "east", "west", "central"],
+      commander: createDefaultCommander(),
+      roster: ["snow_guard", "venom_tracker", "formation_officer", "oath_knight", "desert_lancer"],
+      party: ["snow_guard", "oath_knight"],
+      unitProgress: {
+        snow_guard: { level: 1, xp: 0, secondaryId: null },
+        venom_tracker: { level: 1, xp: 0, secondaryId: null },
+        formation_officer: { level: 1, xp: 0, secondaryId: null },
+        oath_knight: { level: 1, xp: 0, secondaryId: null },
+        desert_lancer: { level: 1, xp: 0, secondaryId: null }
+      },
+      unlockedTechniques: ["survival", "poison", "forging", "oath", "mobility"],
+      records: {
+        north: { visits: 0, victories: 0 },
+        south: { visits: 0, victories: 0 },
+        east: { visits: 0, victories: 0 },
+        west: { visits: 0, victories: 0 },
+        central: { visits: 0, victories: 0 }
+      },
+      run: null
+    },
+    estateDefense: {
+      threat: 28,
+      fortification: 0,
+      victories: 0,
+      pending: null,
+      battle: null,
+      result: null,
+      deployments: createDefenseDeployments(),
+      campaign: null
+    },
+    frontier: createInitialFrontierState(),
     expedition: null,
     log: [
       { text: "공방의 문이 열렸다. 첫 원정을 준비하자.", tone: "item" }
@@ -540,26 +593,120 @@ export function addMaterial(materials, materialId, amount = 1) {
   materials[materialId] = (materials[materialId] || 0) + amount;
 }
 
+function ensureWorkerProgress(state, workerId) {
+  const estate = state.meta.estate;
+  estate.workerProgress ||= {};
+  estate.workerProgress[workerId] ||= { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} };
+  estate.workerProgress[workerId].materialRemainders ||= {};
+  return estate.workerProgress[workerId];
+}
+
+export function workerProficiencyAt(workHours = 0) {
+  const hours = Math.max(0, Number(workHours) || 0);
+  return [...WORKER_PROFICIENCY_TIERS].reverse().find((tier) => hours >= tier.hours) || WORKER_PROFICIENCY_TIERS[0];
+}
+
+export function workerProficiency(state, workerId) {
+  const progress = ensureWorkerProgress(state, workerId);
+  const tier = workerProficiencyAt(progress.workHours);
+  const level = WORKER_PROFICIENCY_TIERS.indexOf(tier);
+  const nextTier = WORKER_PROFICIENCY_TIERS[level + 1] || WORKER_PROFICIENCY_TIERS[WORKER_PROFICIENCY_TIERS.length - 1];
+  const span = Math.max(1, nextTier.hours - tier.hours);
+  return {
+    ...tier,
+    level,
+    workHours: progress.workHours,
+    nextHours: nextTier.hours,
+    maxed: tier.id === WORKER_PROFICIENCY_TIERS[WORKER_PROFICIENCY_TIERS.length - 1].id,
+    ratio: tier.id === nextTier.id ? 1 : Math.max(0, Math.min(1, (progress.workHours - tier.hours) / span))
+  };
+}
+
+export function recordWorkerWork(state, workerId, hours = 1) {
+  const progress = ensureWorkerProgress(state, workerId);
+  const previous = workerProficiencyAt(progress.workHours);
+  progress.workHours += Math.max(0, Number(hours) || 0);
+  const current = workerProficiencyAt(progress.workHours);
+  return { previous, current, advanced: previous.id !== current.id };
+}
+
+export function adjustedWorkerMaterialCosts(state, workerId, materials, commit = false) {
+  const progress = ensureWorkerProgress(state, workerId);
+  const tier = workerProficiency(state, workerId);
+  const nextRemainders = { ...progress.materialRemainders };
+  const costs = {};
+  for (const [materialId, rawAmount] of Object.entries(materials)) {
+    const amount = Math.max(0, Math.floor(rawAmount));
+    if (!MATERIAL_DEFS[materialId]?.common || tier.materialSaving <= 0 || amount <= 0) {
+      costs[materialId] = amount;
+      continue;
+    }
+    const savingCredit = (nextRemainders[materialId] || 0) + amount * tier.materialSaving;
+    const saved = Math.min(Math.max(0, amount - 1), Math.floor(savingCredit));
+    costs[materialId] = amount - saved;
+    nextRemainders[materialId] = savingCredit - saved;
+  }
+  if (commit) progress.materialRemainders = nextRemainders;
+  return costs;
+}
+
+function workerOutputAmount(state, workerId, baseAmount) {
+  const progress = ensureWorkerProgress(state, workerId);
+  const tier = workerProficiency(state, workerId);
+  const total = baseAmount * (1 + tier.yieldBonus) + progress.yieldRemainder;
+  const amount = Math.floor(total + 1e-9);
+  progress.yieldRemainder = Math.max(0, total - amount);
+  return amount;
+}
+
+function advanceWorkerCycle(state, workerId, interval, activeWorkers) {
+  if (activeWorkers <= 0) return { cycles: 0, advanced: false, current: workerProficiency(state, workerId) };
+  const progress = ensureWorkerProgress(state, workerId);
+  const beforeWork = workerProficiency(state, workerId);
+  progress.cycle += 1 + beforeWork.speedBonus;
+  const work = recordWorkerWork(state, workerId, activeWorkers);
+  const cycles = Math.floor((progress.cycle + 1e-9) / interval);
+  if (cycles > 0) progress.cycle -= cycles * interval;
+  return { cycles, ...work };
+}
+
 export function advanceEstate(state, turns = 1) {
   const estate = state.meta.estate;
   const materials = state.meta.materials;
   const events = [];
   for (let turn = 0; turn < turns; turn += 1) {
     estate.tick += 1;
-    if (estate.workers.lumberjack > 0 && estate.tick % 3 === 0) {
-      addMaterial(materials, "wood", estate.workers.lumberjack);
-      events.push(`벌목꾼: 목재 +${estate.workers.lumberjack}`);
+    const lumberjacks = estate.workers.lumberjack || 0;
+    const lumberWork = advanceWorkerCycle(state, "lumberjack", 3, lumberjacks);
+    if (lumberWork.advanced) events.push(`벌목꾼 직종 숙련: ${lumberWork.current.name}`);
+    if (lumberWork.cycles > 0) {
+      const amount = workerOutputAmount(state, "lumberjack", lumberjacks * lumberWork.cycles);
+      addMaterial(materials, "wood", amount);
+      events.push(`벌목꾼: 목재 +${amount}`);
     }
-    if (estate.workers.miner > 0 && estate.tick % 4 === 0) {
-      addMaterial(materials, "ore", estate.workers.miner);
-      events.push(`광부: 철광석 +${estate.workers.miner}`);
+    const miners = estate.workers.miner || 0;
+    const mineWork = advanceWorkerCycle(state, "miner", 4, miners);
+    if (mineWork.advanced) events.push(`광부 직종 숙련: ${mineWork.current.name}`);
+    if (mineWork.cycles > 0) {
+      const amount = workerOutputAmount(state, "miner", miners * mineWork.cycles);
+      addMaterial(materials, "ore", amount);
+      events.push(`광부: 철광석 +${amount}`);
     }
-    if (estate.workers.blacksmith > 0 && estate.tick % 5 === 0 && materials.ore >= 2 && materials.wood >= 1) {
-      const batches = Math.min(estate.workers.blacksmith, Math.floor(materials.ore / 2), materials.wood);
-      materials.ore -= batches * 2;
-      materials.wood -= batches;
-      addMaterial(materials, "ingot", batches);
-      events.push(`대장장이: 철괴 +${batches}`);
+    const blacksmiths = estate.workers.blacksmith || 0;
+    const activeBlacksmiths = Math.min(blacksmiths, Math.floor(materials.ore / 2), materials.wood);
+    const smithWork = advanceWorkerCycle(state, "blacksmith", 5, activeBlacksmiths);
+    if (smithWork.advanced) events.push(`대장장이 직종 숙련: ${smithWork.current.name}`);
+    for (let cycle = 0; cycle < smithWork.cycles; cycle += 1) {
+      const batches = Math.min(blacksmiths, Math.floor(materials.ore / 2), materials.wood);
+      if (batches <= 0) break;
+      const baseCosts = { ore: batches * 2, wood: batches };
+      const costs = adjustedWorkerMaterialCosts(state, "blacksmith", baseCosts);
+      if (Object.entries(costs).some(([materialId, amount]) => (materials[materialId] || 0) < amount)) break;
+      adjustedWorkerMaterialCosts(state, "blacksmith", baseCosts, true);
+      for (const [materialId, amount] of Object.entries(costs)) materials[materialId] -= amount;
+      const amount = workerOutputAmount(state, "blacksmith", batches);
+      addMaterial(materials, "ingot", amount);
+      events.push(`대장장이: 철괴 +${amount}`);
     }
   }
   return events;
@@ -773,6 +920,8 @@ export function migrateState(rawState) {
   const previousVersion = Number(rawState.version || 1);
   const base = createInitialState();
   const rawMeta = rawState.meta || {};
+  const rawFrontier = rawState.frontier || {};
+  const rawDefense = rawState.estateDefense || {};
   const state = {
     ...base,
     ...rawState,
@@ -788,10 +937,85 @@ export function migrateState(rawState) {
       estate: {
         ...base.meta.estate,
         ...(rawMeta.estate || {}),
-        workers: { ...base.meta.estate.workers, ...(rawMeta.estate?.workers || {}) }
+        workers: { ...base.meta.estate.workers, ...(rawMeta.estate?.workers || {}) },
+        workerProgress: Object.fromEntries(Object.keys(base.meta.estate.workerProgress).map((workerId) => [
+          workerId,
+          {
+            ...base.meta.estate.workerProgress[workerId],
+            ...(rawMeta.estate?.workerProgress?.[workerId] || {}),
+            materialRemainders: {
+              ...base.meta.estate.workerProgress[workerId].materialRemainders,
+              ...(rawMeta.estate?.workerProgress?.[workerId]?.materialRemainders || {})
+            }
+          }
+        ]))
       }
     },
     player: { ...base.player, ...(rawState.player || {}) },
+    adventure: {
+      ...base.adventure,
+      ...(rawState.adventure || {}),
+      unlockedRegionIds: [...new Set(rawState.adventure?.unlockedRegionIds || base.adventure.unlockedRegionIds)],
+      roster: [...new Set(rawState.adventure?.roster || base.adventure.roster)],
+      party: [...new Set(rawState.adventure?.party || base.adventure.party)].slice(0, 2),
+      unitProgress: { ...base.adventure.unitProgress, ...(rawState.adventure?.unitProgress || {}) },
+      commander: {
+        ...base.adventure.commander,
+        ...(rawState.adventure?.commander || {}),
+        skillLoadouts: {
+          ...base.adventure.commander.skillLoadouts,
+          ...(rawState.adventure?.commander?.skillLoadouts || {})
+        }
+      },
+      unlockedTechniques: [...new Set(rawState.adventure?.unlockedTechniques || base.adventure.unlockedTechniques)],
+      records: Object.fromEntries(Object.keys(base.adventure.records).map((regionId) => [
+        regionId,
+        { ...base.adventure.records[regionId], ...(rawState.adventure?.records?.[regionId] || {}) }
+      ])),
+      run: rawState.adventure?.run || null
+    },
+    estateDefense: {
+      ...base.estateDefense,
+      ...rawDefense,
+      deployments: {
+        ...base.estateDefense.deployments,
+        ...(rawDefense.deployments || {}),
+        gates: Object.fromEntries(Object.keys(base.estateDefense.deployments.gates).map((gateId) => [
+          gateId,
+          [...new Set(rawDefense.deployments?.gates?.[gateId] || base.estateDefense.deployments.gates[gateId])]
+        ])),
+        remnants: [...new Set(rawDefense.deployments?.remnants || base.estateDefense.deployments.remnants)]
+      },
+      campaign: rawDefense.campaign || null
+    },
+    frontier: {
+      ...base.frontier,
+      ...rawFrontier,
+      population: { ...base.frontier.population, ...(rawFrontier.population || {}) },
+      livingAreas: Object.fromEntries(Object.keys(base.frontier.livingAreas).map((livingAreaId) => [
+        livingAreaId,
+        { ...base.frontier.livingAreas[livingAreaId], ...(rawFrontier.livingAreas?.[livingAreaId] || {}) }
+      ])),
+      estateSatisfaction: { ...base.frontier.estateSatisfaction, ...(rawFrontier.estateSatisfaction || {}) },
+      zones: Object.fromEntries(Object.keys(base.frontier.zones).map((zoneId) => [
+        zoneId,
+        {
+          ...base.frontier.zones[zoneId],
+          ...(rawFrontier.zones?.[zoneId] || {}),
+          sites: [...(rawFrontier.zones?.[zoneId]?.sites || base.frontier.zones[zoneId].sites)],
+          stolenCargo: { ...base.frontier.zones[zoneId].stolenCargo, ...(rawFrontier.zones?.[zoneId]?.stolenCargo || {}) }
+        }
+      ])),
+      squads: base.frontier.squads.map((squad) => ({
+        ...squad,
+        ...(rawFrontier.squads?.find?.((entry) => entry.id === squad.id) || {})
+      })),
+      factions: Object.fromEntries(Object.keys(base.frontier.factions).map((factionId) => [
+        factionId,
+        { ...base.frontier.factions[factionId], ...(rawFrontier.factions?.[factionId] || {}) }
+      ])),
+      eventLog: [...(rawFrontier.eventLog || base.frontier.eventLog)]
+    },
     inventory: Array.isArray(rawState.inventory) ? rawState.inventory.map((item) => ({ quality: 50, affixes: [], ...item })) : base.inventory,
     log: Array.isArray(rawState.log) ? rawState.log : base.log
   };
@@ -802,6 +1026,190 @@ export function migrateState(rawState) {
     state.player.evasion = 0;
     state.log.unshift({ text: "광역 지도 개편으로 진행 중이던 원정은 공방에서 안전하게 재정비되었다.", tone: "item" });
   }
+  if (previousVersion < 5 && state.expedition) {
+    state.expedition = null;
+    state.player.hp = state.player.maxHp;
+    state.player.guard = 0;
+    state.player.evasion = 0;
+    state.log.unshift({ text: "실시간 부대 원정 개편으로 진행 중이던 구형 원정은 영지에서 안전하게 종료되었다.", tone: "item" });
+  }
+  if (previousVersion < 6) {
+    const legacyRecords = rawState.adventure?.records || {};
+    state.adventure = {
+      ...base.adventure,
+      records: {
+        ...base.adventure.records,
+        north: { ...base.adventure.records.north, ...(legacyRecords.snowfield || {}) },
+        central: { ...base.adventure.records.central, ...(legacyRecords.desert || {}) }
+      }
+    };
+    state.estateDefense = { ...base.estateDefense };
+    state.log.unshift({ text: "다섯 지역과 5인 부대 체계가 열렸다. 진행 중이던 구형 원정은 내 영지에서 안전하게 종료되었다.", tone: "item" });
+  }
+  if (previousVersion < 7) {
+    state.adventure.commander = { ...base.adventure.commander, ...(rawState.adventure?.commander || {}) };
+    state.adventure.run = null;
+    state.estateDefense.battle = null;
+    state.estateDefense.result = null;
+    state.log.unshift({ text: "직접 조작 개척자가 원정대에 합류했다. 진행 중이던 전투는 내 영지에서 안전하게 종료되었다.", tone: "item" });
+  }
+  if (previousVersion < 8) {
+    state.frontier = createInitialFrontierState();
+    state.frontier.squads[0].memberIds = [...state.adventure.party];
+    state.log.unshift({ text: "세부 개척 지도와 원정대·개발·물류 체계가 열렸다.", tone: "item" });
+  }
+  if (previousVersion < 9) {
+    state.estateDefense.battle = null;
+    state.estateDefense.result = null;
+    state.estateDefense.campaign = null;
+    state.estateDefense.deployments = createDefenseDeployments();
+    state.log.unshift({ text: "동·서·남·북 성문과 내부 잔당 소탕을 포함한 다단계 수성전 체계가 열렸다.", tone: "item" });
+  }
+  if (previousVersion < 10) {
+    state.log.unshift({ text: "창고 물품을 장비·광석·특수·기타로 분류하고 지역별 금속 광맥을 등록했다.", tone: "item" });
+  }
+  if (previousVersion < 11) {
+    state.log.unshift({ text: "영지 작업자는 실제 생산 시간에 따라 초심자에서 장인까지 숙련된다.", tone: "item" });
+  }
+  if (previousVersion < 12) {
+    const areaByRegion = Object.values(LIVING_AREA_DEFS).reduce((result, definition) => {
+      result[definition.regionId] = definition;
+      return result;
+    }, {});
+    const workersByLivingArea = {};
+    for (const [zoneId, zone] of Object.entries(state.frontier.zones)) {
+      const livingArea = areaByRegion[FRONTIER_ZONE_DEFS[zoneId]?.regionId];
+      if (!livingArea) continue;
+      for (const site of zone.sites) {
+        if (site.status !== "developed") continue;
+        site.livingAreaId ||= livingArea.id;
+        workersByLivingArea[livingArea.id] = (workersByLivingArea[livingArea.id] || 0) + (site.workers || 0);
+      }
+    }
+    const legacyPopulation = Math.max(rawFrontier.population?.total || 12, Object.values(workersByLivingArea).reduce((sum, value) => sum + value, 0));
+    let remoteResidents = 0;
+    for (const definition of Object.values(LIVING_AREA_DEFS).filter((entry) => entry.kind !== "estate")) {
+      const requiredResidents = workersByLivingArea[definition.id] || 0;
+      if (!requiredResidents) continue;
+      const livingArea = state.frontier.livingAreas[definition.id];
+      livingArea.status = "inhabited";
+      livingArea.residents = requiredResidents;
+      livingArea.safety = Math.max(livingArea.safety, 48);
+      livingArea.foundedAtCycle ??= state.frontier.cycle;
+      livingArea.lastEvent = "기존 작업자의 생활권으로 등록됐다.";
+      remoteResidents += requiredResidents;
+    }
+    state.frontier.livingAreas.home_estate.residents = Math.max(workersByLivingArea.home_estate || 0, legacyPopulation - remoteResidents);
+    state.frontier.population.total = Object.values(state.frontier.livingAreas).reduce((sum, area) => sum + (area.residents || 0), 0);
+    state.log.unshift({ text: "점령지·작업지·생활권이 분리됐다. 주민은 생활권에서 거주하며 작업지로 파견된다.", tone: "item" });
+  }
+  if (previousVersion < 13) {
+    for (const livingArea of Object.values(state.frontier.livingAreas)) {
+      if (livingArea.status === "inhabited") livingArea.discovered = true;
+    }
+    state.log.unshift({ text: "비점령지 불규칙 습격과 부락 진입, 점령지 토벌 기한·방치 불이익이 적용됐다.", tone: "item" });
+  }
+  if (previousVersion < 14) {
+    const preferred = ["snow_guard", "oath_knight"];
+    state.adventure.party = preferred.filter((unitId) => state.adventure.roster.includes(unitId)).slice(0, 2);
+    if (!state.adventure.party.length) state.adventure.party = state.adventure.roster.slice(0, 2);
+    state.adventure.commander = {
+      ...createDefaultCommander(),
+      ...state.adventure.commander,
+      combatKitId: PLAYER_KIT_DEFS[state.adventure.commander?.combatKitId]
+        ? state.adventure.commander.combatKitId
+        : "spiritCrusader",
+      skillLoadouts: {
+        ...createDefaultCommander().skillLoadouts,
+        ...(state.adventure.commander?.skillLoadouts || {})
+      }
+    };
+    state.adventure.run = null;
+    state.estateDefense.battle = null;
+    state.estateDefense.result = null;
+    state.estateDefense.campaign = null;
+    state.log.unshift({ text: "동행 부대가 2명으로 정비되고 정령 크루세이더·중병기 네크로맨서 전승 훈련이 열렸다.", tone: "item" });
+  }
+  if (previousVersion < 15) {
+    const activeBattles = [state.adventure.run?.battle, state.estateDefense.battle].filter(Boolean);
+    for (const battle of activeBattles) {
+      const kit = playerKitDefinition(battle.playerKitId || state.adventure.commander.combatKitId);
+      const baseClass = playerBaseClassDefinition(kit.baseClassId);
+      battle.playerBaseClassId = baseClass.id;
+      battle.playerBasePassive = { ...baseClass.passive };
+      battle.basePassiveState = { hitCount: 0, soulStacks: 0, soulExpiresAt: 0, harvestedEnemyIds: [], ...(battle.basePassiveState || {}) };
+      const player = battle.units?.find((unit) => unit.id === battle.playerId);
+      if (player) {
+        player.baseClassId = baseClass.id;
+        player.basePassiveId = baseClass.passive.id;
+      }
+    }
+    state.log.unshift({ text: "기본 직업 고유 패시브가 전승 패시브와 별도로 활성화됐다.", tone: "item" });
+  }
+  if (previousVersion < 16) {
+    const activeBattles = [state.adventure.run?.battle, state.estateDefense.battle].filter(Boolean);
+    for (const battle of activeBattles) {
+      const kit = playerKitDefinition(battle.playerKitId || state.adventure.commander.combatKitId);
+      const baseClass = playerBaseClassDefinition(kit.baseClassId);
+      battle.playerBaseClassId = baseClass.id;
+      battle.playerBasePassive = { ...baseClass.passive };
+      const previousPassiveState = battle.basePassiveState || {};
+      battle.basePassiveState = {
+        hitCount: 0,
+        soulStacks: 0,
+        soulExpiresAt: 0,
+        harvestedEnemyIds: [],
+        ...previousPassiveState
+      };
+      if (battle.basePassiveState.soulStacks > 0 && !battle.basePassiveState.soulExpiresAt) {
+        battle.basePassiveState.soulExpiresAt = (battle.elapsed || 0) + (baseClass.passive.durationMs || 12000);
+      }
+    }
+    state.log.unshift({ text: "크루세이더 피격 회복과 네크로맨서 영혼 유지시간 규칙이 적용됐다.", tone: "item" });
+  }
+  if (previousVersion < 17) {
+    state.adventure.commander = {
+      ...createDefaultCommander(),
+      ...state.adventure.commander,
+      storedBoss: state.adventure.commander?.storedBoss || null,
+      itemBonuses: { ...(state.adventure.commander?.itemBonuses || {}) },
+      skillLoadouts: {
+        ...createDefaultCommander().skillLoadouts,
+        ...(state.adventure.commander?.skillLoadouts || {})
+      }
+    };
+    for (const kit of Object.values(PLAYER_KIT_DEFS)) {
+      state.adventure.commander.skillLoadouts[kit.id] = normalizedPlayerLoadout(state.adventure.commander, kit.id);
+    }
+    const activeBattles = [state.adventure.run?.battle, state.estateDefense.battle].filter(Boolean);
+    for (const battle of activeBattles) {
+      const kit = playerKitDefinition(battle.playerKitId || state.adventure.commander.combatKitId);
+      battle.playerSkillIds = normalizedPlayerLoadout(state.adventure.commander, kit.id);
+      battle.groundEffects ||= [];
+      battle.consumedCorpseIds ||= [];
+      battle.storedBoss ||= state.adventure.commander.storedBoss ? { ...state.adventure.commander.storedBoss } : null;
+      for (const actor of [...(battle.units || []), ...(battle.enemies || [])]) {
+        actor.baseMaxHp ||= actor.maxHp;
+        actor.baseDamage ||= actor.damage;
+        actor.statuses ||= {};
+        actor.positiveEffects ||= {};
+        actor.regenRemainder ||= 0;
+        actor.attackCount ||= 0;
+        actor.statusEvery ||= 1;
+      }
+      const player = battle.units?.find((unit) => unit.id === battle.playerId);
+      if (player) Object.assign(player, playerCombatStats(state.adventure.commander, kit.id));
+    }
+    state.log.unshift({ text: "신성·자연 친화도와 크루세이더 해제, 6종 상태이상, 지역별 고블린·오크·늑대·곰 변종이 적용됐다.", tone: "item" });
+  }
+  state.adventure.party = state.adventure.party.slice(0, 2);
+  state.adventure.commander.combatKitId = playerKitDefinition(state.adventure.commander.combatKitId).id;
+  state.adventure.commander.skillLoadouts = {
+    ...createDefaultCommander().skillLoadouts,
+    ...(state.adventure.commander.skillLoadouts || {})
+  };
+  state.frontier.squads[0].memberIds = [...state.adventure.party];
+  delete state.adventure.hero;
   const convertedBlueprints = (state.meta.research || []).filter((id) => ITEM_DEFS[id]);
   state.meta.blueprints = [...new Set(["frontierMantle", ...(rawMeta.blueprints || []), ...convertedBlueprints])];
   if (!AREA_DEFS[state.meta.selectedAreaId]) state.meta.selectedAreaId = "estate";
@@ -816,6 +1224,16 @@ export function migrateState(rawState) {
       materials: { ...(state.expedition.cargo?.materials || {}) },
       blueprints: [...(state.expedition.cargo?.blueprints || [])]
     };
+  }
+  if (state.adventure.run) {
+    const run = state.adventure.run;
+    run.pendingSettlement ||= null;
+    run.settlementVisit ||= null;
+    run.dungeonEntered ||= Boolean(run.dungeon);
+    run.fieldSteps ||= 0;
+    run.irregularAmbushes ||= 0;
+    run.ambushInterval ||= [7, 12];
+    run.nextAmbushStep ||= run.fieldSteps + run.ambushInterval[0];
   }
   state.version = SAVE_VERSION;
   return state;

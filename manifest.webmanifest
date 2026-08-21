@@ -1,12 +1,12 @@
 {
-  "name": "배낭공방: 폐역 원정",
+  "name": "배낭공방: 내 영지",
   "short_name": "배낭공방",
-  "description": "가방을 전투 엔진으로 조립해 하나의 광활한 폐역을 개척하는 지속형 원정 RPG",
+  "description": "세부 지역을 점령하고 자원 거점·수송대·문명 관계를 운영하며 전승 기술을 쓰는 개척자와 자동 동료 2명으로 싸우는 영지 개척 RPG",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#0b0f0d",
   "theme_color": "#121714",
-  "orientation": "portrait-primary",
+  "orientation": "landscape",
   "icons": [
     {
       "src": "./icon.svg",

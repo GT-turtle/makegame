@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  SAVE_VERSION,
   advanceEstate,
   adjacentItemUids,
   bagFingerprint,
@@ -19,8 +20,10 @@ import {
   placeItem,
   resolveBagTrigger,
   rotateMask,
-  synergyItemUids
+  synergyItemUids,
+  workerProficiency
 } from "../src/core.js";
+import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -141,11 +144,27 @@ test("영지 일꾼은 원정 턴에 생산하고 대장간은 설계도로 변�
   const beforeWood = engine.state.meta.materials.wood;
   advanceEstate(engine.state, 3);
   assert.equal(engine.state.meta.materials.wood, beforeWood + 1);
+  const beforeSmithHours = engine.state.meta.estate.workerProgress.blacksmith.workHours;
   const crafted = engine.craftRecipe("frontierMantle", () => 0);
   assert.ok(crafted);
   assert.equal(crafted.defId, "frontierMantle");
   assert.equal(crafted.quality, 45);
   assert.equal(crafted.affixes.length, 1);
+  assert.equal(engine.state.meta.estate.workerProgress.blacksmith.workHours, beforeSmithHours + 4);
+});
+
+test("작업자는 실제로 생산한 시간만 쌓아 초심자에서 장인까지 숙련된다", () => {
+  const state = createInitialState();
+  state.meta.estate.workers.lumberjack = 1;
+  state.meta.materials.ore = 0;
+  state.meta.materials.wood = 0;
+  advanceEstate(state, 20);
+  assert.equal(workerProficiency(state, "lumberjack").name, "숙련자");
+  assert.equal(workerProficiency(state, "lumberjack").workHours, 20);
+  assert.equal(workerProficiency(state, "blacksmith").workHours, 0);
+  advanceEstate(state, 130);
+  assert.equal(workerProficiency(state, "lumberjack").name, "장인");
+  assert.ok(state.meta.materials.wood > 50);
 });
 
 test("v2 저장은 직업·영지·설계도 기본값을 안전하게 보강한다", () => {
@@ -156,11 +175,20 @@ test("v2 저장은 직업·영지·설계도 기본값을 안전하게 보강한
   delete legacy.meta.materials;
   delete legacy.meta.blueprints;
   const migrated = migrateState(legacy);
-  assert.equal(migrated.version, 4);
+  assert.equal(migrated.version, SAVE_VERSION);
   assert.equal(migrated.meta.classId, "knight");
   assert.equal(migrated.meta.estate.workers.steward, 1);
   assert.equal(migrated.meta.blueprints.includes("frontierMantle"), true);
   assert.equal(migrated.meta.selectedAreaId, "estate");
+  assert.equal(migrated.meta.materials.copperOre, 0);
+  assert.equal(migrated.meta.materials.runeFragment, 0);
+  assert.equal(migrated.meta.estate.workerProgress.blacksmith.workHours, 0);
+});
+
+test("모든 물품은 장비·광석·특수·기타 중 하나로 분류된다", () => {
+  assert.equal(Object.values(ITEM_DEFS).every((item) => item.category === "equipment"), true);
+  assert.equal(Object.values(MATERIAL_DEFS).every((material) => ["ore", "special", "other"].includes(material.category)), true);
+  assert.deepEqual(["copperOre", "ore", "aluminumOre", "tinOre", "titaniumOre"].map((id) => MATERIAL_DEFS[id].symbol), ["Cu", "Fe", "Al", "Sn", "Ti"]);
 });
 
 test("내 영지·사막·설산은 같은 탐험 규약으로 서로 다른 지도를 만든다", () => {
@@ -284,5 +312,5 @@ test("구형 층제 원정 저장은 영구 성장만 보존하고 안전하게 
   const migrated = new GameEngine(storage);
   assert.equal(migrated.state.expedition, null);
   assert.equal(migrated.state.meta.scrap, 19);
-  assert.match(migrated.state.log[0].text, /광역 지도 개편/);
+  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도/);
 });

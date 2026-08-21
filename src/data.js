@@ -5,6 +5,13 @@ export const BAG_COLS = 5;
 export const BASE_BAG_ROWS = 4;
 export const BEACON_GOAL = 3;
 
+export const ITEM_CATEGORY_DEFS = {
+  equipment: { id: "equipment", name: "장비", glyph: "⚔", description: "가방에 배치해 전투 효과를 발휘하는 완제품" },
+  ore: { id: "ore", name: "광석", glyph: "◆", description: "광산에서 채굴하는 원광과 제련된 금속" },
+  special: { id: "special", name: "특수", glyph: "✦", description: "룬·약재·마석과 희귀 생물 소재" },
+  other: { id: "other", name: "기타", glyph: "▦", description: "건설·보급·생활에 사용하는 일반 물자" }
+};
+
 export const TAG_LABELS = {
   weapon: "무기",
   defense: "방어",
@@ -142,7 +149,7 @@ export const ITEM_DEFS = {
   },
   frontierMantle: {
     id: "frontierMantle",
-    name: "개척자의 겹망토",
+    name: "변경 순찰자의 겹망토",
     glyph: "≋",
     color: "#8f7658",
     mask: [[1, 1]],
@@ -164,7 +171,7 @@ export const ITEM_DEFS = {
   },
   knightAegis: {
     id: "knightAegis",
-    name: "개척 기사 대방패",
+    name: "그레이마크 기사 대방패",
     glyph: "▱",
     color: "#71808a",
     mask: [[1, 1], [1, 1]],
@@ -176,7 +183,7 @@ export const ITEM_DEFS = {
   },
   barbarianAxe: {
     id: "barbarianAxe",
-    name: "혈철 파쇄도끼",
+    name: "붉은강철 전투도끼",
     glyph: "⚒",
     color: "#a45f4d",
     mask: [[1, 1], [0, 1]],
@@ -188,7 +195,7 @@ export const ITEM_DEFS = {
   },
   mechanicRig: {
     id: "mechanicRig",
-    name: "황동 환경 제어기",
+    name: "황동 환경 조율기",
     glyph: "⚙",
     color: "#b28a53",
     mask: [[1, 1], [1, 0]],
@@ -196,7 +203,7 @@ export const ITEM_DEFS = {
     environment: { heat: 2, toxin: 1 },
     classAffinity: "mechanic",
     baseText: "고온 압력을 2, 독성 압력을 1 줄인다.",
-    linkText: "장치와 연결할수록 메카닉 기술의 동력 소모가 감소한다."
+    linkText: "장치와 연결할수록 공성 기술자의 동력 소모가 감소한다."
   },
   martialWraps: {
     id: "martialWraps",
@@ -212,7 +219,7 @@ export const ITEM_DEFS = {
   },
   wardenLens: {
     id: "wardenLens",
-    name: "감시자의 룬안",
+    name: "감시자의 룬 렌즈",
     glyph: "◈",
     color: "#a47db4",
     mask: [[1]],
@@ -222,6 +229,8 @@ export const ITEM_DEFS = {
     linkText: "장치 또는 방어 장비와 맞닿으면 해당 장비의 효과가 강화된다."
   }
 };
+
+for (const definition of Object.values(ITEM_DEFS)) definition.category = "equipment";
 
 export const CLASS_DEFS = {
   knight: {
@@ -237,7 +246,7 @@ export const CLASS_DEFS = {
   },
   barbarian: {
     id: "barbarian",
-    name: "야만인",
+    name: "북방 광전사",
     glyph: "Ƶ",
     color: "#b9654f",
     resourceName: "분노",
@@ -248,14 +257,14 @@ export const CLASS_DEFS = {
   },
   mechanic: {
     id: "mechanic",
-    name: "메카닉",
+    name: "공성 기술자",
     glyph: "⚙",
     color: "#c39a59",
     resourceName: "동력",
     resourceMax: 8,
-    description: "장치 회로와 자동 포탑으로 전장과 환경을 제어한다.",
+    description: "톱니장치와 공성 병기로 전장과 환경을 제어한다.",
     environment: { heat: 1, toxin: 1 },
-    skill: { id: "sentryBurst", name: "자동 포탑", glyph: "⌾", cost: 3, cooldown: 3, description: "시야 안에서 가장 가까운 적을 사격한다." }
+    skill: { id: "sentryBurst", name: "연발 쇠뇌", glyph: "⌾", cost: 3, cooldown: 3, description: "시야 안에서 가장 가까운 적에게 쇠뇌를 발사한다." }
   },
   martial: {
     id: "martial",
@@ -273,26 +282,47 @@ export const CLASS_DEFS = {
 export const TRAIT_DEFS = {
   duneBorn: { id: "duneBorn", name: "사막 태생", description: "고온 압력 -1", environment: { heat: 1 } },
   mineBorn: { id: "mineBorn", name: "광산촌 출신", description: "독성 압력 -1", environment: { toxin: 1 } },
-  winterBlood: { id: "winterBlood", name: "북방의 피", description: "한기 압력 -1", environment: { cold: 1 } },
+  winterBlood: { id: "winterBlood", name: "북부 변경 출신", description: "한기 압력 -1", environment: { cold: 1 } },
   disciplined: { id: "disciplined", name: "집중 수련", description: "기술 숙련 경험치 +25%", masteryBonus: 0.25 }
 };
 
 export const MATERIAL_DEFS = {
-  wood: { id: "wood", name: "목재", glyph: "▤", common: true },
-  ore: { id: "ore", name: "철광석", glyph: "◆", common: true },
-  ingot: { id: "ingot", name: "철괴", glyph: "▰", common: true },
-  sunShard: { id: "sunShard", name: "태양 파편", glyph: "✦" },
-  sporeGland: { id: "sporeGland", name: "심층 포자샘", glyph: "●" },
-  blackSteel: { id: "blackSteel", name: "흑철 파편", glyph: "▣" },
-  watcherEye: { id: "watcherEye", name: "감시자의 수정안", glyph: "◈" }
+  wood: { id: "wood", name: "목재", glyph: "▤", category: "other", common: true, description: "건설과 제련 연료에 쓰는 일반 목재" },
+  food: { id: "food", name: "보급 식량", glyph: "◉", category: "other", common: true, description: "원정대와 영지민을 위한 보급품" },
+
+  copperOre: { id: "copperOre", name: "구리광석", symbol: "Cu", glyph: "●", category: "ore", common: true, description: "전도 장치와 청동계 합금의 기초 광석" },
+  ore: { id: "ore", name: "철광석", symbol: "Fe", glyph: "◆", category: "ore", common: true, description: "무기와 방어구 제작의 기본 광석" },
+  aluminumOre: { id: "aluminumOre", name: "알루미늄광석", symbol: "Al", glyph: "◇", category: "ore", common: true, description: "가벼운 장비와 장치 부품에 쓰는 광석" },
+  tinOre: { id: "tinOre", name: "주석광석", symbol: "Sn", glyph: "⬡", category: "ore", common: true, description: "연금 용기와 합금 제작에 쓰는 광석" },
+  titaniumOre: { id: "titaniumOre", name: "티타늄광석", symbol: "Ti", glyph: "▲", category: "ore", common: true, description: "고급 경량 장비에 쓰는 단단한 광석" },
+  ingot: { id: "ingot", name: "철괴", symbol: "Fe", glyph: "▰", category: "ore", common: true, refined: true, description: "철광석을 영지 대장간에서 제련한 금속괴" },
+  frostIron: { id: "frostIron", name: "설철", symbol: "Fe*", glyph: "❄", category: "ore", description: "북부 심층광산의 냉기를 머금은 특수 철" },
+  mountainIron: { id: "mountainIron", name: "산철", symbol: "Fe*", glyph: "山", category: "ore", description: "동부 산악권의 단조에 적합한 치밀한 철" },
+  blackSteel: { id: "blackSteel", name: "흑철 파편", symbol: "Fe*", glyph: "▣", category: "ore", description: "강적의 장비에서 회수하는 고강도 금속" },
+  glassSand: { id: "glassSand", name: "유리사", symbol: "Si", glyph: "◇", category: "ore", description: "중부 협곡에서 채굴되는 결정성 모래" },
+
+  herb: { id: "herb", name: "약초", glyph: "♣", category: "special", common: true, description: "회복제와 연금 재료로 사용하는 약재" },
+  runeFragment: { id: "runeFragment", name: "룬 조각", glyph: "ᚱ", category: "special", description: "룬 각인과 공용 기술 연구에 쓰는 파편" },
+  manaStone: { id: "manaStone", name: "마석", glyph: "✦", category: "special", description: "마나와 정령력을 저장하는 광물성 특수 소재" },
+  venomSac: { id: "venomSac", name: "맹독낭", glyph: "♢", category: "special", description: "독성 생물에게서 얻는 고농축 약재" },
+  sunShard: { id: "sunShard", name: "태양 파편", glyph: "☀", category: "special", description: "강한 열과 빛을 품은 사막의 특수 소재" },
+  sporeGland: { id: "sporeGland", name: "심층 포자샘", glyph: "●", category: "special", description: "남부 심층 생물의 희귀 약재" },
+  watcherEye: { id: "watcherEye", name: "감시자의 수정안", glyph: "◈", category: "special", description: "오염을 감지하는 우두머리의 특수 기관" }
 };
 
 export const WORKER_DEFS = {
   steward: { id: "steward", name: "집사장", glyph: "♙", cost: 0, max: 1, description: "영지의 생산 명령을 관리한다." },
   lumberjack: { id: "lumberjack", name: "벌목꾼", glyph: "♣", cost: 3, max: 3, description: "3턴마다 목재를 생산한다." },
-  miner: { id: "miner", name: "광부", glyph: "♦", cost: 3, max: 3, description: "4턴마다 철광석을 생산한다." },
+  miner: { id: "miner", name: "광부", glyph: "♦", cost: 3, max: 3, description: "4턴마다 영지 광산에서 철광석을 채굴한다." },
   blacksmith: { id: "blacksmith", name: "대장장이", glyph: "⚒", cost: 5, max: 2, description: "광석을 제련하고 설계도로 장비를 제작한다." }
 };
+
+export const WORKER_PROFICIENCY_TIERS = [
+  { id: "novice", name: "초심자", hours: 0, yieldBonus: 0, materialSaving: 0, speedBonus: 0 },
+  { id: "skilled", name: "숙련자", hours: 20, yieldBonus: 0.05, materialSaving: 0.05, speedBonus: 0.05 },
+  { id: "expert", name: "전문가", hours: 60, yieldBonus: 0.1, materialSaving: 0.1, speedBonus: 0.1 },
+  { id: "master", name: "장인", hours: 150, yieldBonus: 0.15, materialSaving: 0.15, speedBonus: 0.15 }
+];
 
 export const AFFIX_DEFS = {
   keen: { id: "keen", name: "예리한", description: "공격 피해 +1", attack: 1 },
@@ -302,13 +332,13 @@ export const AFFIX_DEFS = {
 };
 
 export const CRAFT_RECIPES = [
-  { id: "frontierMantle", itemDefId: "frontierMantle", name: "개척자의 겹망토", materials: { wood: 3, ingot: 1 }, source: "starter" },
+  { id: "frontierMantle", itemDefId: "frontierMantle", name: "변경 순찰자의 겹망토", materials: { wood: 3, ingot: 1 }, source: "starter" },
   { id: "sporeMask", itemDefId: "sporeMask", name: "포자 여과면", materials: { wood: 1, ingot: 1, sporeGland: 1 }, source: "mire" },
-  { id: "knightAegis", itemDefId: "knightAegis", name: "개척 기사 대방패", materials: { ingot: 4, blackSteel: 1 }, classId: "knight" },
-  { id: "barbarianAxe", itemDefId: "barbarianAxe", name: "혈철 파쇄도끼", materials: { wood: 2, ingot: 3, blackSteel: 1 }, classId: "barbarian" },
+  { id: "knightAegis", itemDefId: "knightAegis", name: "그레이마크 기사 대방패", materials: { ingot: 4, blackSteel: 1 }, classId: "knight" },
+  { id: "barbarianAxe", itemDefId: "barbarianAxe", name: "붉은강철 전투도끼", materials: { wood: 2, ingot: 3, blackSteel: 1 }, classId: "barbarian" },
   { id: "mechanicRig", itemDefId: "mechanicRig", name: "황동 환경 제어기", materials: { ingot: 3, sunShard: 1 }, classId: "mechanic" },
   { id: "martialWraps", itemDefId: "martialWraps", name: "청류 경맥포", materials: { wood: 2, sporeGland: 1 }, classId: "martial" },
-  { id: "wardenLens", itemDefId: "wardenLens", name: "감시자의 룬안", materials: { ingot: 3, watcherEye: 1 }, source: "boss" },
+  { id: "wardenLens", itemDefId: "wardenLens", name: "감시자의 룬 렌즈", materials: { ingot: 3, watcherEye: 1 }, source: "boss" },
   { id: "venom", itemDefId: "venom", name: "독성 증류병", materials: { wood: 1, sporeGland: 1 }, researchId: "venom" },
   { id: "ember", itemDefId: "ember", name: "꺼지지 않는 불씨", materials: { ingot: 1, sunShard: 1 }, researchId: "ember" },
   { id: "lantern", itemDefId: "lantern", name: "광맥 랜턴", materials: { ingot: 2, sunShard: 1 }, researchId: "lantern" },
