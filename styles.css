@@ -2795,10 +2795,11 @@ body.battle-active .battle-arena {
   background:
     radial-gradient(ellipse at 50% 69%, color-mix(in srgb, var(--region-color) 15%, transparent), transparent 34%),
     linear-gradient(180deg, #14232a 0 39%, #364338 40% 100%);
-  background-position: center;
+  background-position: calc(50% + var(--bg-pan-x, 0%)) calc(50% + var(--bg-pan-y, 0%));
   background-size: cover;
   background-repeat: no-repeat;
   box-shadow: inset 0 0 110px rgba(0,0,0,.56);
+  transition: background-position 160ms linear;
 }
 
 body.battle-active .battle-arena.region-north {

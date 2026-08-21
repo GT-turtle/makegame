@@ -1276,9 +1276,23 @@ function ensureBattleCamera(battle) {
   view.battleCameraYaw = BATTLE_CAMERA_YAW;
 }
 
+function battleBackgroundPan(player) {
+  if (!player) return { x: 0, y: 0 };
+  const forwardX = Math.cos(view.battleCameraYaw);
+  const forwardY = Math.sin(view.battleCameraYaw);
+  const rightX = -forwardY;
+  const rightY = forwardX;
+  const depth = player.x * forwardX + player.y * forwardY;
+  const lateral = player.x * rightX + player.y * rightY;
+  return {
+    x: Math.max(-16, Math.min(16, -lateral * 0.16)),
+    y: Math.max(-16, Math.min(16, depth * 0.16))
+  };
+}
+
 function battleProjection(entity, battle) {
   const player = battle.units.find((unit) => unit.id === battle.playerId) || entity;
-  if (entity.id === battle.playerId) return { x: 50, y: 58, scale: 1.12, depth: 0, z: 900, visible: true };
+  if (entity.id === battle.playerId) return { x: 50, y: 58, scale: 1.0, depth: 0, z: 900, visible: true };
   const dx = entity.x - player.x;
   const dy = entity.y - player.y;
   const forwardX = Math.cos(view.battleCameraYaw);
@@ -1288,15 +1302,15 @@ function battleProjection(entity, battle) {
   const depth = dx * forwardX + dy * forwardY;
   const lateral = dx * rightX + dy * rightY;
   const frontDepth = Math.max(0, depth);
-  const perspective = 1 / (1 + frontDepth / 260);
-  const x = 50 + lateral * 0.95 * perspective;
-  const y = 58 - frontDepth * 0.4 * perspective - Math.max(0, -depth) * 0.04;
+  const perspective = 1 / (1 + frontDepth / 340);
+  const x = 50 + lateral * 0.72 * perspective;
+  const y = 58 - frontDepth * 0.58 * perspective - Math.max(0, -depth) * 0.058;
   return {
     x,
     y,
     depth,
     z: Math.round(760 - Math.max(-90, Math.min(160, depth)) * 4.7),
-    scale: Math.max(0.7, Math.min(1.0, 1.0 * perspective)),
+    scale: Math.max(0.62, Math.min(0.9, 0.9 * perspective)),
     visible: depth >= -70 && x > -8 && x < 108 && y > 6 && y < 96
   };
 }
@@ -1393,6 +1407,7 @@ function battleScreen(state, defenseMode = false) {
   const battleBasePassive = battle.playerBasePassive || battleBaseClass.passive;
   const battlePassive = battle.playerPassive || battleKit.passive;
   const battlePlayer = battle.units.find((unit) => unit.id === battle.playerId);
+  const bgPan = battleBackgroundPan(battlePlayer);
   const soulStacks = battle.basePassiveState?.soulStacks || 0;
   const soulSeconds = Math.max(0, Math.ceil(((battle.basePassiveState?.soulExpiresAt || 0) - battle.elapsed) / 1000));
   const basePassiveProgress = battleBasePassive.effect === "soulHarvest"
@@ -1426,7 +1441,7 @@ function battleScreen(state, defenseMode = false) {
     <main class="screen battle-screen" style="--region-color:${region.accent}">
       <header class="battle-heading"><div><p class="eyebrow">${defenseMode ? "다중 성문 수성전" : "직접 조작 + 동료 자동전투"} · ${elapsed}초</p><h1>${battle.boss ? "☠" : "⚔"} ${defenseMode ? defenseTitle : battle.encounterName}</h1><small>${defenseMode ? `${defenseDetail} · 방어 시설 ${state.estateDefense.fortification}/5` : `${region.hazard.glyph} ${region.hazard.name} 대응 ${run.hazardMitigation}`} · 고정 아이소메트릭 액션 전장</small></div>${defenseMode && defenseCampaign?.phase === "gates" ? '<button class="defense-map-toggle" data-action="open-defense-map">네 성문 전황</button>' : '<span class="live-indicator">● LIVE</span>'}</header>
       <section class="battle-score"><div><span>${defenseMode ? defenseUnitLabel : adventureUnitLabel}</span><b>${Math.ceil(unitHp)}/${unitMax}</b><i style="--score:${(unitHp / unitMax) * 100}%"></i></div><em>VS</em><div><span>${defenseMode && defenseCampaign?.phase === "inner" ? "성내 침입군" : "몬스터 무리"}</span><b>${Math.ceil(enemyHp)}/${enemyMax}</b><i style="--score:${(enemyHp / enemyMax) * 100}%"></i></div></section>
-      <section class="battle-arena third-person-arena region-${region.id}" aria-label="고정된 아이소메트릭 시점의 실시간 전투장">
+      <section class="battle-arena third-person-arena region-${region.id}" style="--bg-pan-x:${bgPan.x.toFixed(2)}%;--bg-pan-y:${bgPan.y.toFixed(2)}%" aria-label="고정된 아이소메트릭 시점의 실시간 전투장, 배경이 개척자 위치를 따라 이동">
         <div class="battle-horizon"></div>
         <div class="battle-ground-plane"></div>
         <div class="battle-scenery prop-one"></div><div class="battle-scenery prop-two"></div><div class="battle-scenery prop-three"></div>
