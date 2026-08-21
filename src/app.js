@@ -45,8 +45,7 @@ import {
 const app = document.querySelector("#app");
 const engine = new GameEngine();
 const COMBAT_TIME_SCALE = 0.68;
-const BATTLE_CAMERA_ISOMETRIC_YAW = -Math.PI / 4;
-const ENABLE_BATTLE_ISOMETRIC_CAMERA = true;
+const BATTLE_CAMERA_YAW = -Math.PI / 4;
 
 const view = {
   bagOpen: false,
@@ -80,9 +79,6 @@ const view = {
   lastCombatAt: 0,
   battleCameraBattle: null,
   battleCameraYaw: 0,
-  cameraPointerId: null,
-  cameraLastX: 0,
-  cameraRenderFrame: null,
   joystickPointerId: null,
   joystickMode: null,
   joystickCenterX: 0,
@@ -1277,15 +1273,7 @@ function defenseCampaignScreen(state) {
 function ensureBattleCamera(battle) {
   if (view.battleCameraBattle === battle) return;
   view.battleCameraBattle = battle;
-  if (ENABLE_BATTLE_ISOMETRIC_CAMERA) {
-    view.battleCameraYaw = BATTLE_CAMERA_ISOMETRIC_YAW;
-    return;
-  }
-  const player = battle.units.find((unit) => unit.id === battle.playerId);
-  const target = battle.enemies.find((enemy) => enemy.id === battle.playerTargetId && enemy.hp > 0)
-    || battle.enemies.find((enemy) => enemy.boss && enemy.hp > 0)
-    || battle.enemies.find((enemy) => enemy.hp > 0);
-  view.battleCameraYaw = player && target ? Math.atan2(target.y - player.y, target.x - player.x) : 0;
+  view.battleCameraYaw = BATTLE_CAMERA_YAW;
 }
 
 function battleProjection(entity, battle) {
@@ -1435,10 +1423,9 @@ function battleScreen(state, defenseMode = false) {
     && Number(battle.resultRevealAt || 0) > Date.now();
   return `
     <main class="screen battle-screen" style="--region-color:${region.accent}">
-      <header class="battle-heading"><div><p class="eyebrow">${defenseMode ? "다중 성문 수성전" : "직접 조작 + 동료 자동전투"} · ${elapsed}초</p><h1>${battle.boss ? "☠" : "⚔"} ${defenseMode ? defenseTitle : battle.encounterName}</h1><small>${defenseMode ? `${defenseDetail} · 방어 시설 ${state.estateDefense.fortification}/5` : `${region.hazard.glyph} ${region.hazard.name} 대응 ${run.hazardMitigation}`} · 후방 시점 액션 전장</small></div>${defenseMode && defenseCampaign?.phase === "gates" ? '<button class="defense-map-toggle" data-action="open-defense-map">네 성문 전황</button>' : '<span class="live-indicator">● LIVE</span>'}</header>
+      <header class="battle-heading"><div><p class="eyebrow">${defenseMode ? "다중 성문 수성전" : "직접 조작 + 동료 자동전투"} · ${elapsed}초</p><h1>${battle.boss ? "☠" : "⚔"} ${defenseMode ? defenseTitle : battle.encounterName}</h1><small>${defenseMode ? `${defenseDetail} · 방어 시설 ${state.estateDefense.fortification}/5` : `${region.hazard.glyph} ${region.hazard.name} 대응 ${run.hazardMitigation}`} · 고정 아이소메트릭 액션 전장</small></div>${defenseMode && defenseCampaign?.phase === "gates" ? '<button class="defense-map-toggle" data-action="open-defense-map">네 성문 전황</button>' : '<span class="live-indicator">● LIVE</span>'}</header>
       <section class="battle-score"><div><span>${defenseMode ? defenseUnitLabel : adventureUnitLabel}</span><b>${Math.ceil(unitHp)}/${unitMax}</b><i style="--score:${(unitHp / unitMax) * 100}%"></i></div><em>VS</em><div><span>${defenseMode && defenseCampaign?.phase === "inner" ? "성내 침입군" : "몬스터 무리"}</span><b>${Math.ceil(enemyHp)}/${enemyMax}</b><i style="--score:${(enemyHp / enemyMax) * 100}%"></i></div></section>
-      <section class="battle-arena third-person-arena region-${region.id}" aria-label="플레이어 뒤에서 바라보는 실시간 전투장">
-        <div class="third-person-camera-zone" data-control="camera" aria-label="드래그해 카메라 회전"><span>화면을 드래그해 시야 회전</span></div>
+      <section class="battle-arena third-person-arena region-${region.id}" aria-label="고정된 아이소메트릭 시점의 실시간 전투장">
         <div class="battle-horizon"></div>
         <div class="battle-ground-plane"></div>
         <div class="battle-scenery prop-one"></div><div class="battle-scenery prop-two"></div><div class="battle-scenery prop-three"></div>
@@ -2472,14 +2459,6 @@ function beginJoystickControl(pointerId, mode, clientX, clientY) {
   if (mode === "field") view.fieldMoveTimer = setInterval(stepFieldJoystick, 300);
 }
 
-function focusBattleCameraOnTarget() {
-  if (ENABLE_BATTLE_ISOMETRIC_CAMERA) return;
-  const battle = engine.state.estateDefense?.battle || engine.state.adventure?.run?.battle;
-  const player = battle?.units.find((unit) => unit.id === battle.playerId);
-  const target = battle?.enemies.find((enemy) => enemy.id === battle.playerTargetId && enemy.hp > 0);
-  if (player && target) view.battleCameraYaw = Math.atan2(target.y - player.y, target.x - player.x);
-}
-
 function openFrontierRegion(regionId) {
   const resolvedRegionId = WORLD_REGION_DEFS[regionId] && !WORLD_REGION_DEFS[regionId].locked ? regionId : "central";
   const regionZones = Object.values(FRONTIER_ZONE_DEFS).filter((zone) => zone.regionId === resolvedRegionId);
@@ -2580,11 +2559,6 @@ app.addEventListener("pointerdown", (event) => {
   event.preventDefault();
   if (control.dataset.control === "joystick") {
     beginJoystickControl(event.pointerId, control.dataset.controlMode, event.clientX, event.clientY);
-    return;
-  }
-  if (control.dataset.control === "camera") {
-    view.cameraPointerId = event.pointerId;
-    view.cameraLastX = event.clientX;
   }
 });
 
@@ -2595,9 +2569,6 @@ app.addEventListener("mousedown", (event) => {
   if (control.dataset.control === "joystick") {
     if (view.joystickPointerId !== null) return;
     beginJoystickControl("mouse", control.dataset.controlMode, event.clientX, event.clientY);
-  } else if (control.dataset.control === "camera") {
-    view.cameraPointerId = "mouse";
-    view.cameraLastX = event.clientX;
   }
 });
 
@@ -2616,19 +2587,6 @@ window.addEventListener("pointermove", (event) => {
     event.preventDefault();
     updateJoystick(event.clientX, event.clientY);
   }
-  if (event.pointerId === view.cameraPointerId) {
-    event.preventDefault();
-    const deltaX = event.clientX - view.cameraLastX;
-    view.cameraLastX = event.clientX;
-    view.battleCameraYaw += deltaX * 0.009;
-    if (view.joystickMode === "combat") steerCombatFromJoystick();
-    if (!view.cameraRenderFrame) {
-      view.cameraRenderFrame = requestAnimationFrame(() => {
-        view.cameraRenderFrame = null;
-        render();
-      });
-    }
-  }
 }, { passive: false });
 
 function releasePointerControl(event) {
@@ -2640,7 +2598,6 @@ function releasePointerControl(event) {
     }
   }
   if (event.pointerId === view.joystickPointerId) stopJoystickControl();
-  if (event.pointerId === view.cameraPointerId) view.cameraPointerId = null;
 }
 
 window.addEventListener("pointerup", releasePointerControl);
@@ -2648,23 +2605,10 @@ window.addEventListener("pointercancel", releasePointerControl);
 
 window.addEventListener("mousemove", (event) => {
   if (view.joystickPointerId === "mouse") updateJoystick(event.clientX, event.clientY);
-  if (view.cameraPointerId === "mouse") {
-    const deltaX = event.clientX - view.cameraLastX;
-    view.cameraLastX = event.clientX;
-    view.battleCameraYaw += deltaX * 0.009;
-    if (view.joystickMode === "combat") steerCombatFromJoystick();
-    if (!view.cameraRenderFrame) {
-      view.cameraRenderFrame = requestAnimationFrame(() => {
-        view.cameraRenderFrame = null;
-        render();
-      });
-    }
-  }
 });
 
 window.addEventListener("mouseup", () => {
   if (view.joystickPointerId === "mouse") stopJoystickControl();
-  if (view.cameraPointerId === "mouse") view.cameraPointerId = null;
 });
 
 app.addEventListener("click", (event) => {
@@ -2952,10 +2896,7 @@ app.addEventListener("click", (event) => {
       ? engine.playerDefenseAction(button.dataset.playerAction)
       : engine.playerRealtimeAction(button.dataset.playerAction);
     if (!accepted) showToast("재사용 대기시간이나 적과의 거리를 확인해줘.");
-    else if (button.dataset.playerAction === "attack") {
-      focusBattleCameraOnTarget();
-      render();
-    }
+    else if (button.dataset.playerAction === "attack") render();
   }
   if (action === "confirm-battle-start") {
     if (engine.confirmRealtimeBattleStart()) {

@@ -2843,29 +2843,6 @@ body.battle-active .battle-horizon,
 body.battle-active .battle-ground-plane,
 body.battle-active .battle-scenery { display: none; }
 
-.third-person-camera-zone {
-  position: absolute;
-  z-index: 4;
-  inset: 0;
-  touch-action: none;
-}
-
-.third-person-camera-zone > span {
-  position: absolute;
-  right: 17%;
-  top: 51%;
-  padding: 6px 10px;
-  border: 1px solid rgba(255,255,255,.16);
-  border-radius: 99px;
-  background: rgba(4,8,7,.45);
-  color: rgba(235,241,235,.58);
-  font-size: 8px;
-  animation: camera-help-fade 4s 1.5s both;
-  pointer-events: none;
-}
-
-@keyframes camera-help-fade { 0%, 55% { opacity: 1; } 100% { opacity: 0; } }
-
 .battle-reticle {
   position: absolute;
   z-index: 500;
