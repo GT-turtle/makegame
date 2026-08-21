@@ -2743,13 +2743,25 @@ body.battle-active {
   height: 100dvh;
   overflow: hidden;
   background: #070b09;
+  display: flex;
+  align-items: center;
 }
 
-body.battle-active #app,
+body.battle-active #app {
+  width: 100%;
+  max-width: none;
+  /* 폴더블처럼 화면비가 16:9보다 정사각형에 가까우면 높이를 잘라 위아래를 여백으로 두고,
+     일반 폰처럼 이미 16:9보다 넓으면 그대로 전체 높이를 쓴다. */
+  height: min(100dvh, calc(100vw * 9 / 16));
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+}
+
 body.battle-active .app-shell {
   width: 100%;
   max-width: none;
-  height: 100dvh;
+  height: 100%;
   min-height: 0;
   overflow: hidden;
   border: 0;
@@ -2762,7 +2774,7 @@ body.battle-active .battle-screen {
   display: block;
   width: 100%;
   max-width: none;
-  height: 100dvh;
+  height: 100%;
   min-height: 320px;
   margin: 0;
   padding: 0;
