@@ -113,15 +113,12 @@ function portraitClass(index) {
 }
 
 const PLAYER_BATTLE_ART_CLASSES = Object.freeze({
-  spiritCrusader: "player-art-webtoon player-webtoon-crusader",
-  heavyNecromancer: "player-art-webtoon player-webtoon-necromancer",
+  crusader: "player-art-webtoon player-webtoon-crusader",
+  necromancer: "player-art-webtoon player-webtoon-necromancer",
   barbarian: "player-art-webtoon player-webtoon-barbarian",
   tracker: "player-art-webtoon player-webtoon-tracker",
   maehwa: "player-art-webtoon player-webtoon-maehwa",
-  crusader: "player-art-webtoon player-webtoon-crusader",
-  spiritBarbarian: "player-art-webtoon player-webtoon-barbarian",
-  archmage: "player-art-webtoon player-webtoon-archmage",
-  grandMage: "player-art-webtoon player-webtoon-archmage"
+  archmage: "player-art-webtoon player-webtoon-archmage"
 });
 
 const PLAYER_BATTLE_ART_WOLF_FORM = "player-art-webtoon player-webtoon-shapeshifter-wolf";
@@ -129,10 +126,9 @@ const PLAYER_BATTLE_ART_WOLF_FORM = "player-art-webtoon player-webtoon-shapeshif
 const BATTLE_COMPANION_REGION_FALLBACK = Object.freeze(["north", "south", "east", "west", "central", "north"]);
 
 const PLAYER_KIT_CONCEPT_ART = Object.freeze({
-  spiritCrusader: "./assets/character-crusader-webtoon-v1.png",
-  heavyNecromancer: "./assets/character-necromancer-webtoon-v1.png",
+  crusader: "./assets/character-crusader-webtoon-v1.png",
+  necromancer: "./assets/character-necromancer-webtoon-v1.png",
   archmage: "./assets/character-archmage-webtoon-v2.png",
-  grandMage: "./assets/character-archmage-webtoon-v2.png",
   barbarian: "./assets/character-barbarian-webtoon-v1.png",
   spiritBarbarian: "./assets/character-shapeshifter-wolf-webtoon-v2.png",
   tracker: "./assets/character-tracker-webtoon-v1.png",
@@ -156,7 +152,9 @@ const COMPANION_BATTLE_ART_CLASSES = Object.freeze({
 
 function playerBattleArtClass(kitId, transformed = false) {
   if (transformed && kitId === "spiritBarbarian") return PLAYER_BATTLE_ART_WOLF_FORM;
-  return PLAYER_BATTLE_ART_CLASSES[kitId] || "";
+  if (PLAYER_BATTLE_ART_CLASSES[kitId]) return PLAYER_BATTLE_ART_CLASSES[kitId];
+  const baseClassId = playerKitDefinition(kitId).baseClassId;
+  return PLAYER_BATTLE_ART_CLASSES[baseClassId] || "";
 }
 
 function monsterBattleArtClass(entity) {
@@ -1797,7 +1795,7 @@ function classOverlay(state) {
             const baseClass = playerBaseClassDefinition(kit.baseClassId);
             const primary = BASIC_DISCIPLINE_DEFS[kit.primaryId];
             const inherited = BASIC_DISCIPLINE_DEFS[kit.inheritedId];
-            const conceptArt = PLAYER_KIT_CONCEPT_ART[kit.id];
+            const conceptArt = PLAYER_KIT_CONCEPT_ART[kit.id] || PLAYER_KIT_CONCEPT_ART[kit.baseClassId];
             return `
               <button class="class-choice class-choice-illustrated ${selected ? "selected" : ""}" style="--class-color:${kit.color}" data-action="select-commander-kit" data-kit-id="${kit.id}">
                 <span class="class-choice-art" aria-hidden="true">${conceptArt ? `<img src="${conceptArt}" alt="" draggable="false">` : `<span class="class-glyph">${kit.glyph}</span>`}</span>

@@ -339,6 +339,218 @@ export const PLAYER_KIT_DEFS = {
       { id: "bloodRend", name: "혈맥 절단", glyph: "⌁", cooldownMs: 4600, effect: "bloodRend", description: "단일 적을 공격하고 긴 출혈을 중첩시킨다." }
     ],
     ultimate: { id: "storedApex", name: "봉인 우두머리", glyph: "☠", cooldownMs: 15000, effect: "storedApex", description: "마지막으로 저장한 우두머리 한 마리를 중갑·중병기로 강화해 소환한다." }
+  },
+  heavyCrusader: {
+    id: "heavyCrusader",
+    name: "중갑을 두른 크루세이더",
+    shortName: "중갑크루",
+    glyph: "♜",
+    color: "#b08a6a",
+    baseClassId: "crusader",
+    primaryId: "holy",
+    inheritedId: "heavy",
+    description: "피격을 복수의 힘으로 바꾸어 상대를 출혈시키는 중갑 돌격형.",
+    passive: {
+      id: "vengefulPlate",
+      name: "복수의 갑주",
+      glyph: "▰",
+      description: "피격당한 피해의 절반을 복수치로 쌓는다. 스킬을 쓰면 복수치를 소모해 추가 효과를 낸다."
+    },
+    stats: { maxHp: 64, damage: 8, range: 11, speed: 15, attackMs: 700, armor: 0.28, color: "#b08a6a", glyph: "♜" },
+    defaultLoadout: ["heavyBlessing", "heavyWard", "heavyLance"],
+    skills: [
+      { id: "heavyBlessing", name: "우직한 치유", glyph: "✚", cooldownMs: 5400, effect: "heavyBlessing", description: "가장 다친 아군을 회복한다. 복수치가 있으면 회복량이 늘어난다." },
+      { id: "heavyWard", name: "철벽 강화", glyph: "❖", cooldownMs: 7600, effect: "heavyWard", description: "아군 전체의 방어를 높이고, 공격한 적에게 출혈을 되돌린다." },
+      { id: "heavyLance", name: "복수의 창", glyph: "▲", cooldownMs: 4800, effect: "heavyLance", description: "단일 적을 꿰뚫어 기절시키고 출혈을 남긴다. 복수치를 소모해 피해가 늘어난다." },
+      { id: "heavyBulwark", name: "도발의 함성", glyph: "☗", cooldownMs: 8600, effect: "heavyBulwark", description: "주변 적의 시선을 자신에게 모으고, 복수치를 소모해 스스로를 회복한다." }
+    ],
+    ultimate: { id: "heavyJudgment", name: "심판의 출혈", glyph: "✦", cooldownMs: 13000, effect: "heavyJudgment", description: "쌓아 둔 복수치를 모두 터뜨려 목표 주변에 강한 피해와 긴 출혈을 남긴다." }
+  },
+  archeryNecromancer: {
+    id: "archeryNecromancer",
+    name: "궁술을 익힌 네크로맨서",
+    shortName: "궁사네크",
+    glyph: "☠",
+    color: "#8aa06a",
+    baseClassId: "necromancer",
+    primaryId: "spirit",
+    inheritedId: "archery",
+    description: "소환보다 자신을 강화해 영혼의 조준으로 직접 싸우는 형태.",
+    passive: {
+      id: "spiritedAim",
+      name: "사령의 조준",
+      glyph: "➹",
+      description: "수확한 영혼 하나당 자신의 공격력이 오른다."
+    },
+    stats: { maxHp: 40, damage: 10, range: 20, speed: 15, attackMs: 700, armor: 0.09, color: "#8aa06a", glyph: "☠" },
+    defaultLoadout: ["spiritDecay", "huntersMark", "spiritRaise"],
+    skills: [
+      { id: "spiritDecay", name: "쇠약의 저주", glyph: "☣", cooldownMs: 6200, effect: "spiritDecay", description: "주변 적 전체에게 부패를 부여해 지속 피해를 입힌다." },
+      { id: "huntersMark", name: "사령 조준", glyph: "➶", cooldownMs: 4200, effect: "huntersMark", description: "단일 적을 저격한다. 체력이 낮은 적에게는 추가 피해를 준다." },
+      { id: "spiritRaise", name: "망자 부활", glyph: "⚰", cooldownMs: 9000, effect: "spiritRaise", description: "이번 전투에서 쓰러진 적 최대 3마리를 자신의 능력치만큼 버프해 아군으로 되살린다. 전투당 1회만 쓸 수 있다." },
+      { id: "spiritWard", name: "영혼 보호막", glyph: "◈", cooldownMs: 7000, effect: "spiritWard", description: "자신의 방어력을 높이고 소량 회복한다." }
+    ],
+    ultimate: { id: "spiritArrowStorm", name: "사령의 화살비", glyph: "☄", cooldownMs: 13000, effect: "spiritArrowStorm", description: "넓은 범위에 영혼의 화살을 퍼부어 큰 피해를 입힌다." }
+  },
+  archeryMaehwa: {
+    id: "archeryMaehwa",
+    name: "궁술을 익힌 매화",
+    shortName: "암살자",
+    glyph: "❀",
+    color: "#6a6f8f",
+    baseClassId: "maehwa",
+    primaryId: "sword",
+    inheritedId: "archery",
+    description: "은신과 일격필살에 특화된 근접 암살형.",
+    passive: {
+      id: "shadowBlade",
+      name: "그림자 검",
+      glyph: "➹",
+      effect: "stealthWhenIdle",
+      idleMs: 2000,
+      description: "적과 2초 이상 접촉이 없으면 은신한다. 은신 중 공격은 치명적이다."
+    },
+    stats: { maxHp: 38, damage: 10, range: 8, speed: 18, attackMs: 580, armor: 0.09, color: "#6a6f8f", glyph: "❀" },
+    defaultLoadout: ["swiftStrike", "shadowExecution", "phantomCut"],
+    skills: [
+      { id: "swiftStrike", name: "쾌속검", glyph: "⚔", cooldownMs: 5200, effect: "swiftStrike", description: "목표에게 순식간에 접근해 벤다." },
+      { id: "shadowExecution", name: "그림자 처형", glyph: "☾", cooldownMs: 6600, effect: "shadowExecution", description: "체력이 낮은 적을 즉시 처형하듯 크게 벤다." },
+      { id: "phantomCut", name: "환영 베기", glyph: "☾", cooldownMs: 6000, effect: "phantomCut", description: "목표의 이로운 효과를 지우고 크게 벤다." },
+      { id: "fleetStep", name: "쾌보", glyph: "➶", cooldownMs: 8000, effect: "fleetStep", description: "짧은 시간 공격 속도를 크게 높인다." }
+    ],
+    ultimate: { id: "oneShotKill", name: "일격필살", glyph: "❀", cooldownMs: 14000, effect: "oneShotKill", description: "목표에게 필살의 일격을 가한다. 은신 중이라면 위력이 크게 늘어난다." }
+  },
+  magicMaehwa: {
+    id: "magicMaehwa",
+    name: "마법을 익힌 매화",
+    shortName: "마검사",
+    glyph: "❀",
+    color: "#8a6fb0",
+    baseClassId: "maehwa",
+    primaryId: "sword",
+    inheritedId: "magic",
+    description: "검에 원소 마법을 실어 베는 검사형 마법 전투.",
+    passive: {
+      id: "elementalEdge",
+      name: "원소 검환",
+      glyph: "✦",
+      description: "베는 공격에 원소의 힘이 실린다."
+    },
+    stats: { maxHp: 40, damage: 9, range: 9, speed: 16, attackMs: 620, armor: 0.1, color: "#8a6fb0", glyph: "❀" },
+    defaultLoadout: ["elementalStrike", "elementalWhirl", "phantomCut"],
+    skills: [
+      { id: "elementalStrike", name: "화염검 일섬", glyph: "♨", cooldownMs: 5200, effect: "elementalStrike", description: "목표에게 접근해 화염이 실린 일격을 가한다." },
+      { id: "elementalWhirl", name: "빙결검 선풍", glyph: "❄", cooldownMs: 6600, effect: "elementalWhirl", description: "자신 주변을 냉기로 휩쓴다." },
+      { id: "phantomCut", name: "환영 베기", glyph: "☾", cooldownMs: 6000, effect: "phantomCut", description: "목표의 이로운 효과를 지우고 크게 벤다." },
+      { id: "fleetStep", name: "쾌보", glyph: "➶", cooldownMs: 8000, effect: "fleetStep", description: "짧은 시간 공격 속도를 크게 높인다." }
+    ],
+    ultimate: { id: "elementalBlade", name: "마검 폭풍", glyph: "✦", cooldownMs: 12500, effect: "elementalBlade", description: "목표의 방어를 무너뜨리며 원소 폭발을 일으킨다." }
+  },
+  spiritArchmage: {
+    id: "spiritArchmage",
+    name: "정령술을 더한 아크메이지",
+    shortName: "정령아크",
+    glyph: "✦",
+    color: "#6ab08f",
+    baseClassId: "archmage",
+    primaryId: "magic",
+    inheritedId: "spirit",
+    description: "원소 마법에 정령 계약을 더해 상태이상을 극대화한다.",
+    passive: {
+      id: "elementalContract",
+      name: "원소 계약",
+      glyph: "♧",
+      description: "상태이상의 위력과 지속시간이 늘어난다."
+    },
+    stats: { maxHp: 32, damage: 9, range: 24, speed: 13, attackMs: 900, armor: 0.05, color: "#6ab08f", glyph: "✦" },
+    defaultLoadout: ["fireBolt", "frostNova", "spiritBond"],
+    skills: [
+      { id: "fireBolt", name: "화염 창", glyph: "♨", cooldownMs: 4400, effect: "fireBolt", description: "단일 적에게 화염 피해를 입히고 화상을 남긴다." },
+      { id: "frostNova", name: "빙결 폭발", glyph: "❄", cooldownMs: 6800, effect: "frostNova", description: "주변 적에게 냉기 피해를 입히고 빙결시킨다." },
+      { id: "spiritBond", name: "정령 결속", glyph: "♧", cooldownMs: 8600, effect: "spiritBond", description: "마나를 소모해 작은 정령을 소환한다." },
+      { id: "manaShield", name: "마나 보호막", glyph: "◈", cooldownMs: 9000, effect: "manaShield", description: "마나를 소모해 피해를 흡수하는 보호막을 두른다." }
+    ],
+    ultimate: { id: "elementalConvergence", name: "삼원소 심판", glyph: "✦", cooldownMs: 14000, effect: "elementalConvergence", description: "목표 주변에 화염·냉기·부패를 함께 퍼붓는다." }
+  },
+  holyArchmage: {
+    id: "holyArchmage",
+    name: "신성을 더한 아크메이지",
+    shortName: "신성아크",
+    glyph: "✦",
+    color: "#c0a866",
+    baseClassId: "archmage",
+    primaryId: "magic",
+    inheritedId: "holy",
+    description: "공격 마법을 신성 속성으로 바꾸어 아군을 함께 치유한다.",
+    passive: {
+      id: "sacredCircuit",
+      name: "신성 회로",
+      glyph: "✧",
+      description: "보유한 마나가 많을수록 회복력이 오른다."
+    },
+    stats: { maxHp: 34, damage: 8, range: 22, speed: 14, attackMs: 880, armor: 0.06, color: "#c0a866", glyph: "✦" },
+    defaultLoadout: ["sacredBolt", "purifyingWave", "healingWord"],
+    skills: [
+      { id: "sacredBolt", name: "성스러운 화살", glyph: "✧", cooldownMs: 4600, effect: "sacredBolt", description: "단일 적에게 신성 피해를 입히고 스스로를 조금 회복한다." },
+      { id: "purifyingWave", name: "정화의 파동", glyph: "☼", cooldownMs: 6800, effect: "purifyingWave", description: "주변 적에게 신성 피해를 입힌다." },
+      { id: "healingWord", name: "치유의 주문", glyph: "✚", cooldownMs: 6200, effect: "healingWord", description: "마나를 소모해 가장 다친 아군을 회복한다." },
+      { id: "manaShield", name: "마나 보호막", glyph: "◈", cooldownMs: 9000, effect: "manaShield", description: "마나를 소모해 피해를 흡수하는 보호막을 두른다." }
+    ],
+    ultimate: { id: "heavenlyJudgment", name: "천상의 심판", glyph: "✦", cooldownMs: 14000, effect: "heavenlyJudgment", description: "목표 주변에 신성 파도를 일으키고 아군 전체를 회복시킨다." }
+  },
+  spiritTracker: {
+    id: "spiritTracker",
+    name: "정령술을 더한 추적자",
+    shortName: "정령추적",
+    glyph: "➹",
+    color: "#6aa0a8",
+    baseClassId: "tracker",
+    primaryId: "archery",
+    inheritedId: "spirit",
+    description: "화살에 정령의 힘을 담아 다양한 상태이상을 퍼뜨린다.",
+    passive: {
+      id: "spiritedShadow",
+      name: "정령의 은신",
+      glyph: "➹",
+      effect: "stealthWhenIdle",
+      idleMs: 3000,
+      description: "적과 3초 이상 접촉이 없으면 은신한다. 은신 중 공격은 치명적이다."
+    },
+    stats: { maxHp: 36, damage: 9, range: 23, speed: 15, attackMs: 800, armor: 0.06, color: "#6aa0a8", glyph: "➹" },
+    defaultLoadout: ["elementalArrow", "scatterShot", "shadowStrike"],
+    skills: [
+      { id: "elementalArrow", name: "정령 화살", glyph: "♧", cooldownMs: 3800, effect: "elementalArrow", description: "단일 적을 저격하고 무작위 상태이상을 부여한다." },
+      { id: "scatterShot", name: "산탄 사격", glyph: "❋", cooldownMs: 6400, effect: "scatterShot", description: "부채꼴 범위의 적에게 원거리 피해를 입힌다." },
+      { id: "shadowStrike", name: "그림자 강타", glyph: "☾", cooldownMs: 5200, effect: "shadowStrike", description: "체력이 낮은 적에게 추가 피해를 입힌다." },
+      { id: "vanish", name: "은신 잠입", glyph: "✧", cooldownMs: 9000, effect: "vanish", description: "즉시 은신 상태가 되어 다음 공격을 강화한다." }
+    ],
+    ultimate: { id: "elementalVolley", name: "정령 일제 사격", glyph: "➹", cooldownMs: 13000, effect: "elementalVolley", description: "넓은 범위에 정령 화살을 퍼부어 상태이상을 함께 남긴다." }
+  },
+  heavyTracker: {
+    id: "heavyTracker",
+    name: "중갑을 두른 추적자",
+    shortName: "대궁병",
+    glyph: "➹",
+    color: "#a08a5a",
+    baseClassId: "tracker",
+    primaryId: "archery",
+    inheritedId: "heavy",
+    description: "은신 대신 중갑으로 버티며 대궁으로 강하게 쏘아붙이는 형태.",
+    passive: {
+      id: "steadyBrace",
+      name: "중갑 사수",
+      glyph: "▰",
+      description: "기술을 사용할 때마다 잠시 자신의 방어력이 오른다."
+    },
+    stats: { maxHp: 48, damage: 10, range: 21, speed: 12, attackMs: 900, armor: 0.19, color: "#a08a5a", glyph: "➹" },
+    defaultLoadout: ["aimedShot", "suppressingShot", "braceStance"],
+    skills: [
+      { id: "aimedShot", name: "조준 사격", glyph: "➶", cooldownMs: 3800, effect: "aimedShot", description: "단일 적을 원거리에서 저격한다." },
+      { id: "suppressingShot", name: "제압 사격", glyph: "☗", cooldownMs: 5800, effect: "suppressingShot", description: "단일 적에게 피해를 입히고 잠시 묶어 둔다." },
+      { id: "braceStance", name: "방어 태세", glyph: "❖", cooldownMs: 7600, effect: "braceStance", description: "스스로의 방어를 크게 높인다." },
+      { id: "scatterShot", name: "산탄 사격", glyph: "❋", cooldownMs: 6400, effect: "scatterShot", description: "부채꼴 범위의 적에게 원거리 피해를 입힌다." }
+    ],
+    ultimate: { id: "piercingShot", name: "관통 사격", glyph: "➹", cooldownMs: 13500, effect: "piercingShot", description: "강력한 화살로 목표를 꿰뚫어 큰 피해를 입히고 묶어 둔다." }
   }
 };
 

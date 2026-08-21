@@ -583,6 +583,165 @@ test("아크메이지 스킬 4개+궁 1개가 실제 전투 효과로 모두 실
   assert.equal(issuePlayerAction(back, "skill1"), true); // manaFocusSkill
 });
 
+test("중갑크루 전승은 스킬 4개+궁 1개가 실행되고 복수치가 쌓이고 소모된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "heavyCrusader";
+  const front = createAutoBattle("duneRaiders", "heavycrusader-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  front.vengeanceStored = 40;
+  assert.equal(issuePlayerAction(front, "skill1"), true); // heavyBlessing
+  assert.ok(front.vengeanceStored < 40);
+  assert.equal(issuePlayerAction(front, "skill2"), true); // heavyWard
+  assert.equal(issuePlayerAction(front, "skill3"), true); // heavyLance
+  front.vengeanceStored = 40;
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // heavyJudgment
+  assert.equal(front.vengeanceStored, 0);
+
+  commander.skillLoadouts.heavyCrusader = ["heavyBulwark"];
+  const back = createAutoBattle("duneRaiders", "heavycrusader-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  assert.equal(issuePlayerAction(back, "skill1"), true); // heavyBulwark
+  assert.equal(back.enemies.some((enemy) => enemy.forcedTargetId === backPlayer.id), true);
+});
+
+test("궁사네크 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "archeryNecromancer";
+  const front = createAutoBattle("duneRaiders", "archerynecro-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // spiritDecay
+  assert.equal(issuePlayerAction(front, "skill2"), true); // huntersMark
+  front.enemies[1].hp = 0;
+  assert.equal(issuePlayerAction(front, "skill3"), true); // spiritRaise
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // spiritArrowStorm
+
+  commander.skillLoadouts.archeryNecromancer = ["spiritWard"];
+  const back = createAutoBattle("duneRaiders", "archerynecro-back", "field", STARTING_PARTY, {}, { commander });
+  assert.equal(issuePlayerAction(back, "skill1"), true); // spiritWard
+});
+
+test("암살자(궁사매화) 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "archeryMaehwa";
+  const front = createAutoBattle("duneRaiders", "archerymaehwa-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // swiftStrike
+  assert.equal(issuePlayerAction(front, "skill2"), true); // shadowExecution
+  assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // oneShotKill
+
+  commander.skillLoadouts.archeryMaehwa = ["fleetStep"];
+  const back = createAutoBattle("duneRaiders", "archerymaehwa-back", "field", STARTING_PARTY, {}, { commander });
+  assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep
+});
+
+test("마검사(마법매화) 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "magicMaehwa";
+  const front = createAutoBattle("duneRaiders", "magicmaehwa-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // elementalStrike
+  assert.equal(issuePlayerAction(front, "skill2"), true); // elementalWhirl
+  assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // elementalBlade
+
+  commander.skillLoadouts.magicMaehwa = ["fleetStep"];
+  const back = createAutoBattle("duneRaiders", "magicmaehwa-back", "field", STARTING_PARTY, {}, { commander });
+  assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep
+});
+
+test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 정령을 소환한다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "spiritArchmage";
+  const front = createAutoBattle("duneRaiders", "spiritarchmage-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt
+  assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova
+  assert.equal(issuePlayerAction(front, "skill3"), true); // spiritBond
+  assert.equal(front.units.some((unit) => unit.summonType === "spiritWisp"), true);
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // elementalConvergence
+
+  commander.skillLoadouts.spiritArchmage = ["manaShield"];
+  const back = createAutoBattle("duneRaiders", "spiritarchmage-back", "field", STARTING_PARTY, {}, { commander });
+  assert.equal(issuePlayerAction(back, "skill1"), true); // manaShield
+});
+
+test("신성아크 전승은 스킬 4개+궁 1개가 모두 실행되고 아군을 회복시킨다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "holyArchmage";
+  const front = createAutoBattle("duneRaiders", "holyarchmage-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  for (const unit of front.units) unit.hp = Math.round(unit.maxHp * 0.5);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // sacredBolt
+  assert.equal(issuePlayerAction(front, "skill2"), true); // purifyingWave
+  assert.equal(issuePlayerAction(front, "skill3"), true); // healingWord
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // heavenlyJudgment
+
+  commander.skillLoadouts.holyArchmage = ["manaShield"];
+  const back = createAutoBattle("duneRaiders", "holyarchmage-back", "field", STARTING_PARTY, {}, { commander });
+  assert.equal(issuePlayerAction(back, "skill1"), true); // manaShield
+});
+
+test("정령추적 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "spiritTracker";
+  const front = createAutoBattle("duneRaiders", "spirittracker-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // elementalArrow
+  assert.equal(issuePlayerAction(front, "skill2"), true); // scatterShot
+  assert.equal(issuePlayerAction(front, "skill3"), true); // shadowStrike
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // elementalVolley
+
+  commander.skillLoadouts.spiritTracker = ["vanish"];
+  const back = createAutoBattle("duneRaiders", "spirittracker-back", "field", STARTING_PARTY, {}, { commander });
+  assert.equal(issuePlayerAction(back, "skill1"), true); // vanish
+});
+
+test("대궁병(중갑추적) 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "heavyTracker";
+  const front = createAutoBattle("duneRaiders", "heavytracker-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // aimedShot
+  assert.equal(issuePlayerAction(front, "skill2"), true); // suppressingShot
+  assert.equal(front.enemies[0].rootedUntil > 0, true);
+  assert.equal(issuePlayerAction(front, "skill3"), true); // braceStance
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // piercingShot
+
+  commander.skillLoadouts.heavyTracker = ["scatterShot"];
+  const back = createAutoBattle("duneRaiders", "heavytracker-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  assert.equal(issuePlayerAction(back, "skill1"), true); // scatterShot
+});
+
 test("친화도·직업 전용 능력치와 출혈·화상·크루세이더 해제가 구분된다", () => {
   const crusaderCommander = createDefaultCommander();
   crusaderCommander.level = 5;

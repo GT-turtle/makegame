@@ -1006,6 +1006,12 @@ export function tickAutoBattle(battle, deltaMs) {
       if (target.hp > 0 && target.positiveEffects?.frostRetaliation?.endsAt > battle.elapsed) {
         applyCombatStatus(battle, actor, "frost", target, { stacks: 1 });
       }
+      if (target.hp > 0 && target.positiveEffects?.bleedRetaliation?.endsAt > battle.elapsed) {
+        applyCombatStatus(battle, actor, "bleed", target, { stacks: 1 });
+      }
+      if (isPlayerTarget && battle.playerKitId === "heavyCrusader" && damage > 0) {
+        battle.vengeanceStored = Math.min(240, (battle.vengeanceStored || 0) + damage * 0.5);
+      }
       if (actor.lifeSteal && actor.hp > 0) actor.hp = Math.min(actor.maxHp, actor.hp + Math.max(1, Math.floor(damage * actor.lifeSteal)));
       target.lastHit = 260;
       recordPlayerHit(battle, target, damage);
@@ -1167,6 +1173,21 @@ function applyKitPassive(battle, player) {
     player.defenseUntil = Math.max(player.defenseUntil || 0, battle.elapsed + 1200);
     player.defenseMultiplier = Math.min(player.defenseMultiplier ?? 1, 0.8);
     healCombatant(player, 4);
+  }
+  if (battle.playerKitId === "archeryNecromancer") {
+    const stacks = battle.basePassiveState?.soulStacks || 0;
+    player.passiveDamageMultiplier = 1 + stacks * 0.06;
+  }
+  if (battle.playerKitId === "spiritArchmage") {
+    player.statusPotency = Math.max(player.statusPotency || 1, 1.25);
+  }
+  if (battle.playerKitId === "holyArchmage") {
+    const manaRatio = player.maxMana > 0 ? player.mana / player.maxMana : 0;
+    player.healingPower = Math.max(player.healingPower || 1, 1 + manaRatio * 0.5);
+  }
+  if (battle.playerKitId === "heavyTracker") {
+    player.defenseUntil = Math.max(player.defenseUntil || 0, battle.elapsed + 1500);
+    player.defenseMultiplier = Math.min(player.defenseMultiplier ?? 1, 0.75);
   }
 }
 
@@ -1415,6 +1436,172 @@ function resolvePlayerSkill(battle, player, skill) {
     const result = damageArea(battle, player, target, 12, 1.6);
     for (const enemy of result.targets) applyCombatStatus(battle, enemy, "stun", player, { durationMs: 1000 });
     pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 벼락 · 기절`);
+  } else if (skill.effect === "heavyBlessing") {
+    const ally = living(battle.units).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+    if (!ally) return false;
+    const vengeance = battle.vengeanceStored || 0;
+    const bonus = Math.round(vengeance * 0.5);
+    battle.vengeanceStored = vengeance - bonus;
+    const healed = healCombatant(ally, 10 * player.healingPower + bonus);
+    pushBattleLog(battle, `${skill.name}: ${ally.name} ${healed} 회복`);
+  } else if (skill.effect === "heavyWard") {
+    for (const unit of living(battle.units)) {
+      unit.defenseUntil = battle.elapsed + 4600;
+      unit.defenseMultiplier = 0.6;
+      unit.positiveEffects ||= {};
+      unit.positiveEffects.bleedRetaliation = { endsAt: battle.elapsed + 4600 };
+    }
+    pushBattleLog(battle, `${skill.name}: 아군 ${living(battle.units).length}명 보호 · 피격 시 출혈 반격`);
+  } else if (skill.effect === "heavyLance") {
+    if (!target || distanceBetween(player, target) > 46) return false;
+    const vengeance = battle.vengeanceStored || 0;
+    const bonus = Math.min(1.2, vengeance * 0.01);
+    battle.vengeanceStored = vengeance * 0.5;
+    const damage = damageCombatant(player, target, 1.4 + bonus);
+    if (target.hp > 0) {
+      applyCombatStatus(battle, target, "stun", player, { durationMs: 800 });
+      applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
+    }
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 기절 · 출혈`);
+  } else if (skill.effect === "heavyBulwark") {
+    const taunted = living(battle.enemies).filter((enemy) => distanceBetween(player, enemy) <= 30);
+    for (const enemy of taunted) {
+      enemy.forcedTargetId = player.id;
+      enemy.forcedTargetUntil = battle.elapsed + 4200;
+    }
+    player.defenseUntil = battle.elapsed + 4200;
+    player.defenseMultiplier = 0.55;
+    const vengeance = battle.vengeanceStored || 0;
+    const consumed = Math.round(vengeance * 0.6);
+    battle.vengeanceStored = vengeance - consumed;
+    const healed = healCombatant(player, consumed);
+    pushBattleLog(battle, `${skill.name}: 적 ${taunted.length}명의 시선을 끌고 ${healed} 회복`);
+  } else if (skill.effect === "heavyJudgment") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const vengeance = battle.vengeanceStored || 0;
+    const result = damageArea(battle, player, target, 26, 1.1 + vengeance * 0.012);
+    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "bleed", player, { stacks: 3 });
+    battle.vengeanceStored = 0;
+    pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 복수의 출혈`);
+  } else if (skill.effect === "huntersMark") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const lowHp = target.hp / target.maxHp <= 0.35;
+    const damage = damageCombatant(player, target, lowHp ? 2.2 : 1.4);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${lowHp ? " · 약점 저격" : ""}`);
+  } else if (skill.effect === "spiritArrowStorm") {
+    if (!target || distanceBetween(player, target) > 60) return false;
+    const result = damageArea(battle, player, target, 30, 1.3);
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 영혼의 화살비`);
+  } else if (skill.effect === "shadowExecution") {
+    if (!target || distanceBetween(player, target) > 22) return false;
+    const lowHp = target.hp / target.maxHp <= 0.4;
+    const damage = damageCombatant(player, target, lowHp ? 2.6 : 1.4);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${lowHp ? " · 처형" : ""}`);
+  } else if (skill.effect === "oneShotKill") {
+    if (!target || distanceBetween(player, target) > 22) return false;
+    const stealthy = Boolean(player.positiveEffects?.stealth);
+    const damage = damageCombatant(player, target, stealthy ? 3.6 : 2.2);
+    if (stealthy) delete player.positiveEffects.stealth;
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${stealthy ? " · 은신 일격" : ""}`);
+  } else if (skill.effect === "elementalStrike") {
+    if (!target) return false;
+    dashToTarget(player, target, 5);
+    const damage = damageCombatant(player, target, 1.4);
+    if (target.hp > 0) applyCombatStatus(battle, target, "burn", player);
+    pushBattleLog(battle, `${skill.name}: ${target.name}에게 접근해 ${damage} 피해 · 화상`);
+  } else if (skill.effect === "elementalWhirl") {
+    const result = damageArea(battle, player, player, 18, 0.85);
+    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "frost", player, { stacks: 1 });
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 냉기 피해`);
+  } else if (skill.effect === "elementalBlade") {
+    if (!target || distanceBetween(player, target) > 22) return false;
+    const existingShred = target.statuses?.decay?.armorShred || 0;
+    const damage = damageCombatant(player, target, 1.5 + existingShred * 3);
+    if (target.hp > 0) {
+      applyCombatStatus(battle, target, "burn", player);
+      applyCombatStatus(battle, target, "frost", player, { stacks: 1 });
+    }
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 원소 폭발`);
+  } else if (skill.effect === "spiritBond") {
+    const cost = 25;
+    if ((player.mana || 0) < cost) return false;
+    if (battle.units.some((unit) => unit.summonType === "spiritWisp" && unit.hp > 0)) return false;
+    player.mana -= cost;
+    const wisp = createCombatant(
+      { id: "spiritWisp", name: "정령 결속", glyph: "♧", color: "#8fd0b0", maxHp: 20, damage: 4, range: 18, speed: 14, attackMs: 900, armor: 0 },
+      `summon-wisp-${Math.round(battle.elapsed)}`,
+      "unit",
+      5,
+      { level: player.level }
+    );
+    wisp.summonType = "spiritWisp";
+    wisp.role = "정령";
+    wisp.x = Math.max(7, Math.min(93, player.x + 4));
+    wisp.y = Math.max(10, Math.min(90, player.y - 4));
+    applySummonScaling(battle, wisp, player, false, false);
+    battle.units.push(wisp);
+    pushBattleLog(battle, `${skill.name}: 정령을 소환했다.`);
+  } else if (skill.effect === "elementalConvergence") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const result = damageArea(battle, player, target, 24, 1.2);
+    for (const enemy of result.targets) {
+      applyCombatStatus(battle, enemy, "burn", player);
+      applyCombatStatus(battle, enemy, "frost", player, { stacks: 1 });
+      applyCombatStatus(battle, enemy, "decay", player);
+    }
+    pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 삼원소 재앙`);
+  } else if (skill.effect === "sacredBolt") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const damage = damageCombatant(player, target, 1.4);
+    healCombatant(player, Math.round(damage * 0.25));
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 자신 회복`);
+  } else if (skill.effect === "purifyingWave") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const result = damageArea(battle, player, target, 22, 0.9);
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 신성 피해`);
+  } else if (skill.effect === "healingWord") {
+    const cost = 20;
+    if ((player.mana || 0) < cost) return false;
+    const ally = living(battle.units).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+    if (!ally) return false;
+    player.mana -= cost;
+    const healed = healCombatant(ally, 14 * (player.healingPower || 1));
+    pushBattleLog(battle, `${skill.name}: ${ally.name} ${healed} 회복`);
+  } else if (skill.effect === "heavenlyJudgment") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const result = damageArea(battle, player, target, 26, 1.1);
+    for (const unit of living(battle.units)) healCombatant(unit, 10 * (player.healingPower || 1));
+    pushBattleLog(battle, `${skill.name}: ${result.targets.length}명 타격 · 아군 전체 회복`);
+  } else if (skill.effect === "elementalArrow") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const damage = damageCombatant(player, target, 1.4);
+    if (target.hp > 0) {
+      const statusId = ["burn", "frost", "poison"][Math.floor(Math.random() * 3)];
+      applyCombatStatus(battle, target, statusId, player);
+    }
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 상태이상`);
+  } else if (skill.effect === "elementalVolley") {
+    if (!target || distanceBetween(player, target) > 60) return false;
+    const result = damageArea(battle, player, target, 30, 1.2);
+    for (const enemy of result.targets) {
+      const statusId = ["burn", "frost", "poison"][Math.floor(Math.random() * 3)];
+      applyCombatStatus(battle, enemy, statusId, player);
+    }
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 정령 화살비`);
+  } else if (skill.effect === "suppressingShot") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const damage = damageCombatant(player, target, 1.3);
+    if (target.hp > 0) target.rootedUntil = battle.elapsed + 1500;
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 속박`);
+  } else if (skill.effect === "braceStance") {
+    player.defenseUntil = battle.elapsed + 5000;
+    player.defenseMultiplier = 0.5;
+    pushBattleLog(battle, `${skill.name}: 방어 태세 돌입`);
+  } else if (skill.effect === "piercingShot") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const damage = damageCombatant(player, target, 2.4);
+    if (target.hp > 0) target.rootedUntil = battle.elapsed + 2000;
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 강한 속박`);
   } else {
     return false;
   }
