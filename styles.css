@@ -2450,6 +2450,9 @@ button:disabled {
 .battle-entity.hit i { filter: brightness(2.2); transform: scale(1.08); }
 .battle-entity.down { opacity: 0.18; filter: grayscale(1); }
 .battle-entity.focused i { outline: 2px solid #f3d77d; outline-offset: 3px; }
+.battle-entity.telegraphing i { outline: 2px solid #ff4d4d; outline-offset: 3px; animation: telegraph-pulse 0.32s ease-in-out infinite; }
+.battle-telegraph-mark { position: absolute; left: 50%; top: -13px; transform: translateX(-50%); color: #ff4d4d; font: 900 11px/1 system-ui; font-style: normal; text-shadow: 0 0 6px rgba(255,77,77,.9); animation: telegraph-pulse 0.32s ease-in-out infinite; }
+@keyframes telegraph-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
 .battle-orders { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .battle-orders button { min-height: 67px; display: grid; grid-template-rows: auto auto auto; justify-items: center; gap: 2px; padding: 7px 4px; border: 1px solid #5b593e; border-radius: 11px; background: linear-gradient(#25271b, #171a14); color: var(--text); }

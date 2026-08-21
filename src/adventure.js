@@ -5,6 +5,7 @@ export const DUNGEON_SIZE = 15;
 export const FIELD_VIEW_SIZE = 11;
 export const DUNGEON_VIEW_SIZE = 11;
 
+export const ATTACK_TELEGRAPH_MS = 320;
 export const PARTY_LIMIT = 2;
 export const STARTING_ROSTER = ["snow_guard", "venom_tracker", "formation_officer", "oath_knight", "desert_lancer"];
 export const STARTING_PARTY = ["snow_guard", "oath_knight"];
@@ -550,6 +551,7 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
     y: unitSide ? unitY : enemyY,
     boss: Boolean(definition.boss),
     lastHit: 0,
+    telegraphTargetId: null,
     statuses: {},
     positiveEffects: {}
   };
@@ -879,9 +881,15 @@ export function tickAutoBattle(battle, deltaMs) {
       }
     }
     if (actor.controlled) continue;
-    if (actorDisabled(actor, battle)) continue;
+    if (actorDisabled(actor, battle)) {
+      actor.telegraphTargetId = null;
+      continue;
+    }
     const targets = living(actor.team === "unit" ? battle.enemies : battle.units);
-    if (!targets.length) continue;
+    if (!targets.length) {
+      actor.telegraphTargetId = null;
+      continue;
+    }
     let target = null;
     if (actor.team === "enemy" && actor.forcedTargetUntil > battle.elapsed && actor.forcedTargetId) {
       target = targets.find((entry) => entry.id === actor.forcedTargetId) || null;
@@ -893,6 +901,7 @@ export function tickAutoBattle(battle, deltaMs) {
     const distance = distanceBetween(target, actor);
     const chargeBoost = actor.team === "unit" && battle.command.chargeUntil > battle.elapsed;
     if (distance > actor.range) {
+      actor.telegraphTargetId = null;
       if ((actor.rootedUntil || 0) > battle.elapsed) continue;
       const dx = target.x - actor.x;
       const dy = target.y - actor.y;
@@ -903,6 +912,7 @@ export function tickAutoBattle(battle, deltaMs) {
       actor.y = Math.max(8, Math.min(92, actor.y));
       continue;
     }
+    actor.telegraphTargetId = actor.cooldown > 0 && actor.cooldown <= ATTACK_TELEGRAPH_MS ? target.id : null;
     if (actor.cooldown > 0) continue;
     const dodging = target.id === battle.playerId && battle.playerDodgeUntil > battle.elapsed;
     const personalDefense = (target.defenseUntil || 0) > battle.elapsed ? (target.defenseMultiplier || 0.55) : 1;
@@ -929,6 +939,7 @@ export function tickAutoBattle(battle, deltaMs) {
     target.lastHit = 260;
     recordPlayerHit(battle, target, damage);
     actor.cooldown = actor.attackMs;
+    actor.telegraphTargetId = null;
     if (target.hp <= 0) pushBattleLog(battle, `${actor.name}이 ${target.name}을 쓰러뜨렸다.`);
   }
   refreshBaseClassPassive(battle);

@@ -1278,7 +1278,7 @@ function ensureBattleCamera(battle) {
 
 function battleProjection(entity, battle) {
   const player = battle.units.find((unit) => unit.id === battle.playerId) || entity;
-  if (entity.id === battle.playerId) return { x: 50, y: 80, scale: 1.36, depth: 0, z: 900, visible: true };
+  if (entity.id === battle.playerId) return { x: 50, y: 58, scale: 1.12, depth: 0, z: 900, visible: true };
   const dx = entity.x - player.x;
   const dy = entity.y - player.y;
   const forwardX = Math.cos(view.battleCameraYaw);
@@ -1288,16 +1288,16 @@ function battleProjection(entity, battle) {
   const depth = dx * forwardX + dy * forwardY;
   const lateral = dx * rightX + dy * rightY;
   const frontDepth = Math.max(0, depth);
-  const perspective = 1 / (1 + frontDepth / 82);
-  const x = 50 + lateral * 2.22 * perspective;
-  const y = 80 - frontDepth * 0.78 * perspective - Math.max(0, -depth) * 0.08;
+  const perspective = 1 / (1 + frontDepth / 260);
+  const x = 50 + lateral * 0.95 * perspective;
+  const y = 58 - frontDepth * 0.4 * perspective - Math.max(0, -depth) * 0.04;
   return {
     x,
     y,
     depth,
-    z: Math.round(760 - Math.max(-48, Math.min(130, depth)) * 4.7),
-    scale: Math.max(0.46, Math.min(1.2, 1.22 * perspective)),
-    visible: depth >= -24 && x > -8 && x < 108 && y > 15 && y < 92
+    z: Math.round(760 - Math.max(-90, Math.min(160, depth)) * 4.7),
+    scale: Math.max(0.7, Math.min(1.0, 1.0 * perspective)),
+    visible: depth >= -70 && x > -8 && x < 108 && y > 6 && y < 96
   };
 }
 
@@ -1345,6 +1345,7 @@ function battleEntity(entity, battle) {
     entity.positiveEffects?.boneArmor?.endsAt > battle.elapsed ? '<u class="positive bone" title="뼈 갑옷">▣</u>' : ""
   ].filter(Boolean);
   const weaponGlyph = ({ greatsword: "⚔", warhammer: "◆", ironTeeth: "⌁", ironClaws: "Ψ" })[entity.weaponOverlay] || "";
+  const telegraphing = entity.team === "enemy" && entity.hp > 0 && Boolean(entity.telegraphTargetId);
   if (entity.controlled) {
     return `
       <div class="third-person-player ${playerArt ? `unit-art-player ${playerArt}` : "unit-art-fallback"} ${entity.lastHit ? "hit" : ""}" style="--entity-color:${entity.color};--entity-hp:${hpRatio * 100}%" aria-label="${escapeHtml(entity.name)} 체력 ${Math.ceil(entity.hp)}/${entity.maxHp}">
@@ -1356,13 +1357,13 @@ function battleEntity(entity, battle) {
     `;
   }
   return `
-    <button class="battle-entity third-person-entity team-${entity.team} ${monsterArt ? "unit-art-monster" : companionArt ? "unit-art-companion" : "unit-art-portrait"} ${speciesClass} ${companionRegion ? `ally-region-${companionRegion}` : ""} ${entity.hp <= 0 ? "down" : ""} ${entity.lastHit ? "hit" : ""} ${targeted ? "focused" : ""} ${projection.visible ? "" : "off-camera"}"
+    <button class="battle-entity third-person-entity team-${entity.team} ${monsterArt ? "unit-art-monster" : companionArt ? "unit-art-companion" : "unit-art-portrait"} ${speciesClass} ${companionRegion ? `ally-region-${companionRegion}` : ""} ${entity.hp <= 0 ? "down" : ""} ${entity.lastHit ? "hit" : ""} ${targeted ? "focused" : ""} ${telegraphing ? "telegraphing" : ""} ${projection.visible ? "" : "off-camera"}"
       style="--entity-x:${projection.x}%;--entity-y:${projection.y}%;--entity-z:${projection.z};--entity-scale:${projection.scale.toFixed(2)};--entity-color:${entity.color};--entity-hp:${hpRatio * 100}%"
       data-action="${entity.team === "enemy" && entity.hp > 0 ? "battle-player-target" : "inspect-battle-unit"}"
       data-target-id="${entity.id}"
       ${entity.hp <= 0 ? "disabled" : ""}
-      aria-label="${escapeHtml(entity.name)} 체력 ${Math.ceil(entity.hp)}/${entity.maxHp}"
-    ><i class="${monsterArt || companionArt || portrait}">${entity.team === "enemy" || entity.summonType ? entity.glyph : ""}${weaponGlyph ? `<u class="summon-weapon weapon-${entity.weaponOverlay}">${weaponGlyph}</u>` : ""}</i><span>${entity.name}</span><em><b></b></em>${statuses.length || positive.length ? `<small class="battle-status-row">${[...positive, ...statuses].join("")}</small>` : ""}</button>
+      aria-label="${escapeHtml(entity.name)} 체력 ${Math.ceil(entity.hp)}/${entity.maxHp}${telegraphing ? " · 공격 예고" : ""}"
+    ><i class="${monsterArt || companionArt || portrait}">${entity.team === "enemy" || entity.summonType ? entity.glyph : ""}${weaponGlyph ? `<u class="summon-weapon weapon-${entity.weaponOverlay}">${weaponGlyph}</u>` : ""}</i><span>${entity.name}</span><em><b></b></em>${telegraphing ? '<i class="battle-telegraph-mark">!</i>' : ""}${statuses.length || positive.length ? `<small class="battle-status-row">${[...positive, ...statuses].join("")}</small>` : ""}</button>
   `;
 }
 
