@@ -537,10 +537,10 @@ test("매화 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다
   assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep
 });
 
-test("변신술사 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행되고 늑대형에서 스킬이 바뀐다", () => {
+test("바바리안의 정령 전사 전승은 스킬 4개+궁 1개가 모두 실행되고 늑대형에서 스킬이 바뀐다", () => {
   const commander = createDefaultCommander();
-  commander.combatKitId = "shapeshifter";
-  const front = createAutoBattle("duneRaiders", "shapeshifter-front", "field", STARTING_PARTY, {}, { commander });
+  commander.combatKitId = "spiritBarbarian";
+  const front = createAutoBattle("duneRaiders", "spiritbarbarian-front", "field", STARTING_PARTY, {}, { commander });
   const player = front.units.find((unit) => unit.controlled);
   player.x = front.enemies[0].x - 5;
   player.y = front.enemies[0].y;
@@ -556,8 +556,8 @@ test("변신술사 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행
   selectPlayerTarget(front, front.enemies[1].id);
   assert.equal(issuePlayerAction(front, "skill1"), true); // rendingClaw (wolf form, dashes in)
 
-  commander.skillLoadouts.shapeshifter = ["menacingRoar"];
-  const back = createAutoBattle("duneRaiders", "shapeshifter-back", "field", STARTING_PARTY, {}, { commander });
+  commander.skillLoadouts.spiritBarbarian = ["menacingRoar"];
+  const back = createAutoBattle("duneRaiders", "spiritbarbarian-back", "field", STARTING_PARTY, {}, { commander });
   const backPlayer = back.units.find((unit) => unit.controlled);
   backPlayer.x = back.enemies[0].x - 5;
   backPlayer.y = back.enemies[0].y;

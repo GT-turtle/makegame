@@ -138,32 +138,6 @@ export const PLAYER_BASE_CLASS_DEFS = {
     ],
     ultimate: { id: "plumBlossomDance", name: "매화검무", glyph: "❀", cooldownMs: 12500, effect: "plumBlossomDance", description: "목표의 방어를 무너뜨리며 그만큼 강하게 벤다." }
   },
-  shapeshifter: {
-    id: "shapeshifter",
-    name: "변신술사",
-    glyph: "Ж",
-    disciplineId: "spirit",
-    statProfile: {
-      base: { strength: 11, agility: 8, intelligence: 5, defense: 10, divineAffinity: 0, natureAffinity: 15, hpRegen: 0.22, maxMana: 40, manaRegen: 0.7 },
-      growth: { strength: 0.9, agility: 0.6, intelligence: 0.4, defense: 0.75, natureAffinity: 1.3, hpRegen: 0.02, maxMana: 1.6, manaRegen: 0.03 }
-    },
-    passive: {
-      id: "wildAdaptation",
-      name: "야성 적응",
-      glyph: "Ж",
-      effect: "formAdaptive",
-      formArmorBonus: 0.08,
-      formDamageBonus: 0.25,
-      description: "인간형일 때는 방어력이, 늑대형일 때는 공격력이 오른다."
-    },
-    skills: [
-      { id: "rendingClaw", name: "베기", glyph: "Ψ", cooldownMs: 4600, effect: "rendingClaw", description: "단일 적을 공격한다. 늑대형일 때는 먼저 달려든다." },
-      { id: "sweepingClaw", name: "휩쓸기", glyph: "❋", cooldownMs: 6600, effect: "sweepingClaw", description: "자신 주변을 공격한다. 늑대형일 때 위력이 커진다." },
-      { id: "wildRecovery", name: "야생의 회복", glyph: "✚", cooldownMs: 8200, effect: "wildRecovery", description: "스스로를 회복하고 짧은 지속 회복을 얻는다." },
-      { id: "menacingRoar", name: "위협의 포효", glyph: "҂", cooldownMs: 7400, effect: "menacingRoar", description: "주변 적을 위협해 잠시 묶어 둔다." }
-    ],
-    ultimate: { id: "werewolfForm", name: "늑대인간 변신", glyph: "Ж", cooldownMs: 16000, effect: "werewolfForm", description: "늑대인간으로 변신해 공격력·방어력·속도가 오르고 공격에 출혈이 붙는다." }
-  },
   archmage: {
     id: "archmage",
     name: "아크메이지",
@@ -272,21 +246,31 @@ export const PLAYER_KIT_DEFS = {
     skills: PLAYER_BASE_CLASS_DEFS.maehwa.skills,
     ultimate: PLAYER_BASE_CLASS_DEFS.maehwa.ultimate
   },
-  shapeshifter: {
-    id: "shapeshifter",
-    name: "변신술사",
-    shortName: "변신술사",
+  spiritBarbarian: {
+    id: "spiritBarbarian",
+    name: "정령을 익힌 바바리안",
+    shortName: "정령 전사",
     glyph: "Ж",
-    color: "#7a8f6a",
-    baseClassId: "shapeshifter",
-    primaryId: "spirit",
-    inheritedId: null,
-    description: "아직 보조 계통을 배우지 않은 순수 변신술사.",
-    passive: { id: "none", name: "없음", glyph: "—", description: "전승을 익히면 추가 패시브를 얻는다." },
-    stats: { maxHp: 52, damage: 8, range: 9, speed: 16, attackMs: 700, armor: 0.16, color: "#7a8f6a", glyph: "Ж" },
+    color: "#8a9f5a",
+    baseClassId: "barbarian",
+    primaryId: "heavy",
+    inheritedId: "spirit",
+    description: "야만적 힘에 정령의 야성을 더해 늑대인간으로 변신하는 전사.",
+    passive: {
+      id: "feralSpirit",
+      name: "야성 정령",
+      glyph: "Ж",
+      description: "늑대인간으로 변신한 동안 받는 피해가 줄고 회복이 늘어난다."
+    },
+    stats: { maxHp: 70, damage: 11, range: 7, speed: 16, attackMs: 750, armor: 0.22, color: "#8a9f5a", glyph: "Ж" },
     defaultLoadout: ["rendingClaw", "sweepingClaw", "wildRecovery"],
-    skills: PLAYER_BASE_CLASS_DEFS.shapeshifter.skills,
-    ultimate: PLAYER_BASE_CLASS_DEFS.shapeshifter.ultimate
+    skills: [
+      { id: "rendingClaw", name: "베기", glyph: "Ψ", cooldownMs: 4600, effect: "rendingClaw", description: "단일 적을 공격한다. 늑대형일 때는 먼저 달려든다." },
+      { id: "sweepingClaw", name: "휩쓸기", glyph: "❋", cooldownMs: 6600, effect: "sweepingClaw", description: "자신 주변을 공격한다. 늑대형일 때 위력이 커진다." },
+      { id: "wildRecovery", name: "야생의 회복", glyph: "✚", cooldownMs: 8200, effect: "wildRecovery", description: "스스로를 회복하고 짧은 지속 회복을 얻는다." },
+      { id: "menacingRoar", name: "위협의 포효", glyph: "҂", cooldownMs: 7400, effect: "menacingRoar", description: "주변 적을 위협해 잠시 묶어 둔다." }
+    ],
+    ultimate: { id: "werewolfForm", name: "늑대인간 변신", glyph: "Ж", cooldownMs: 16000, effect: "werewolfForm", description: "늑대인간으로 변신해 공격력·방어력·속도가 오르고 공격에 출혈이 붙는다." }
   },
   archmage: {
     id: "archmage",

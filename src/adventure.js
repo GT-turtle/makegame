@@ -1163,6 +1163,11 @@ function applyKitPassive(battle, player) {
   if (battle.playerKitId === "heavyNecromancer") {
     for (const summon of battle.units.filter((unit) => unit.summonType && unit.hp > 0)) healCombatant(summon, 3);
   }
+  if (battle.playerKitId === "spiritBarbarian" && player.positiveEffects?.wolfForm?.endsAt > battle.elapsed) {
+    player.defenseUntil = Math.max(player.defenseUntil || 0, battle.elapsed + 1200);
+    player.defenseMultiplier = Math.min(player.defenseMultiplier ?? 1, 0.8);
+    healCombatant(player, 4);
+  }
 }
 
 function resolvePlayerSkill(battle, player, skill) {

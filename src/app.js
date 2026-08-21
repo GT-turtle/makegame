@@ -119,12 +119,12 @@ const PLAYER_BATTLE_ART_CLASSES = Object.freeze({
   tracker: "player-art-webtoon player-webtoon-tracker",
   maehwa: "player-art-webtoon player-webtoon-maehwa",
   crusader: "player-art-webtoon player-webtoon-crusader",
-  shapeshifter: "player-art-webtoon player-webtoon-shapeshifter-human",
-  shapeshifterHuman: "player-art-webtoon player-webtoon-shapeshifter-human",
-  shapeshifterWolf: "player-art-webtoon player-webtoon-shapeshifter-wolf",
+  spiritBarbarian: "player-art-webtoon player-webtoon-barbarian",
   archmage: "player-art-webtoon player-webtoon-archmage",
   grandMage: "player-art-webtoon player-webtoon-archmage"
 });
+
+const PLAYER_BATTLE_ART_WOLF_FORM = "player-art-webtoon player-webtoon-shapeshifter-wolf";
 
 const BATTLE_COMPANION_REGION_FALLBACK = Object.freeze(["north", "south", "east", "west", "central", "north"]);
 
@@ -134,9 +134,9 @@ const PLAYER_KIT_CONCEPT_ART = Object.freeze({
   archmage: "./assets/character-archmage-webtoon-v2.png",
   grandMage: "./assets/character-archmage-webtoon-v2.png",
   barbarian: "./assets/character-barbarian-webtoon-v1.png",
+  spiritBarbarian: "./assets/character-shapeshifter-wolf-webtoon-v2.png",
   tracker: "./assets/character-tracker-webtoon-v1.png",
-  maehwa: "./assets/character-maehwa-webtoon-v1.png",
-  shapeshifter: "./assets/character-shapeshifter-human-webtoon-v1.png"
+  maehwa: "./assets/character-maehwa-webtoon-v1.png"
 });
 
 const MONSTER_BATTLE_ART_CLASSES = Object.freeze({
@@ -154,7 +154,8 @@ const COMPANION_BATTLE_ART_CLASSES = Object.freeze({
   central: "companion-sprite companion-central"
 });
 
-function playerBattleArtClass(kitId) {
+function playerBattleArtClass(kitId, transformed = false) {
+  if (transformed && kitId === "spiritBarbarian") return PLAYER_BATTLE_ART_WOLF_FORM;
   return PLAYER_BATTLE_ART_CLASSES[kitId] || "";
 }
 
@@ -1349,7 +1350,7 @@ function battleEntity(entity, battle) {
   const targeted = battle.playerTargetId === entity.id;
   const projection = battleProjection(entity, battle);
   const portrait = entity.team === "unit" && !entity.summonType ? portraitClass(portraitIndexForUnit(entity)) : "";
-  const playerArt = playerBattleArtClass(battle.playerKitId);
+  const playerArt = playerBattleArtClass(battle.playerKitId, Boolean(entity.positiveEffects?.wolfForm));
   const monsterArt = entity.team === "enemy" || entity.summonType ? monsterBattleArtClass(entity) : "";
   const companionRegion = entity.team === "unit" && !entity.controlled && !entity.summonType ? battleCompanionClass(entity) : "";
   const companionArt = companionRegion ? COMPANION_BATTLE_ART_CLASSES[companionRegion] : "";
