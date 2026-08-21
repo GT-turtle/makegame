@@ -67,7 +67,8 @@ try {
 
 $sourceApk = Join-Path $buildRoot "app\outputs\apk\release\app-release.apk"
 $distDir = Join-Path $projectDir "dist"
-$targetApk = Join-Path $distDir "packforge-prototype-v0.4.0.apk"
+$packageJson = Get-Content -LiteralPath (Join-Path $projectDir "package.json") -Raw | ConvertFrom-Json
+$targetApk = Join-Path $distDir ("packforge-prototype-v" + $packageJson.version + ".apk")
 
 New-Item -ItemType Directory -Path $distDir -Force | Out-Null
 Copy-Item -LiteralPath $sourceApk -Destination $targetApk -Force

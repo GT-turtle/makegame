@@ -17,4 +17,9 @@ await cp(path.join(projectDir, "src"), path.join(webDir, "src"), {
   force: true
 });
 
+await cp(path.join(projectDir, "assets"), path.join(webDir, "assets"), {
+  recursive: true,
+  force: true
+});
+
 console.log("Android web assets prepared in www/.");
