@@ -249,7 +249,7 @@ export const PLAYER_KIT_DEFS = {
   spiritBarbarian: {
     id: "spiritBarbarian",
     name: "정령을 익힌 바바리안",
-    shortName: "정령 전사",
+    shortName: "정령바바",
     glyph: "Ж",
     color: "#8a9f5a",
     baseClassId: "barbarian",
