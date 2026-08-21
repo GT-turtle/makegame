@@ -132,7 +132,11 @@ const PLAYER_KIT_CONCEPT_ART = Object.freeze({
   spiritCrusader: "./assets/character-crusader-webtoon-v1.png",
   heavyNecromancer: "./assets/character-necromancer-webtoon-v1.png",
   archmage: "./assets/character-archmage-webtoon-v2.png",
-  grandMage: "./assets/character-archmage-webtoon-v2.png"
+  grandMage: "./assets/character-archmage-webtoon-v2.png",
+  barbarian: "./assets/character-barbarian-webtoon-v1.png",
+  tracker: "./assets/character-tracker-webtoon-v1.png",
+  maehwa: "./assets/character-maehwa-webtoon-v1.png",
+  shapeshifter: "./assets/character-shapeshifter-human-webtoon-v1.png"
 });
 
 const MONSTER_BATTLE_ART_CLASSES = Object.freeze({
@@ -1848,26 +1852,6 @@ function classOverlay(state) {
             </button>
           `).join("")}
         </div>
-        <section class="inheritance-concept-codex" aria-labelledby="inheritance-concept-title">
-          <div class="section-heading"><h2 id="inheritance-concept-title">전승 도감 · 준비 중</h2><span>컨셉 미리보기 · 현재 선택 불가</span></div>
-          <div class="inheritance-concept-grid">
-            <article class="inheritance-concept-card barbarian-concept" aria-disabled="true">
-              <div class="inheritance-concept-art single-art"><img src="./assets/character-barbarian-webtoon-v1.png" alt="거대한 특대검을 든 바바리안 컨셉 원화" loading="lazy" draggable="false"></div>
-              <div class="inheritance-concept-copy"><p class="eyebrow">준비 중 · 특대검 전승</p><h3>바바리안</h3><p>육중한 특대검으로 전열을 깨고, 받은 피해를 공격 기회로 바꾸는 근접 전투형.</p><span>선택 불가 · 컨셉 원화</span></div>
-            </article>
-            <article class="inheritance-concept-card shapeshifter-concept" aria-disabled="true">
-              <div class="inheritance-concept-art dual-form-art" aria-label="변신술사의 인간형과 늑대형 크기 비교">
-                <figure class="shapeshifter-form human-form"><img src="./assets/character-shapeshifter-human-webtoon-v1.png" alt="변신술사 인간형 컨셉 원화" loading="lazy" draggable="false"><figcaption><b>전투형 170cm</b><span>기술·공격 시 이족 전투</span></figcaption></figure>
-                <figure class="shapeshifter-form wolf-form"><img src="./assets/character-shapeshifter-wolf-webtoon-v2.png" alt="변신술사 늑대형 컨셉 원화" loading="lazy" draggable="false"><figcaption><b>야수형 250cm</b><span>이동/회피 시 사족 질주</span></figcaption></figure>
-              </div>
-              <div class="inheritance-concept-copy"><p class="eyebrow">준비 중 · 정령 변신 전승</p><h3>변신술사</h3><p>전투할 때는 인간형을 유지하고, 이동하거나 회피할 때 거대한 늑대형으로 전환한다.</p><span>선택 불가 · 두 형태 비교</span></div>
-            </article>
-            <article class="inheritance-concept-card archmage-concept" aria-disabled="true">
-              <div class="inheritance-concept-art single-art archmage-art"><img src="./assets/character-archmage-webtoon-v2.png" alt="아이보리와 짙은 남색 의상에 거대한 모자와 지팡이를 든 여성 대마법사 컨셉 원화" loading="lazy" draggable="false"></div>
-              <div class="inheritance-concept-copy"><p class="eyebrow">준비 중 · 순수 마법 전승</p><h3>대마법사</h3><p>160cm의 작은 체구와 대비되는 거대한 모자와 지팡이를 든 원거리 마법 전투형. 아이보리와 짙은 남색을 바탕으로 마법광만 청록색으로 빛난다.</p><span>선택 불가 · 컨셉 원화</span></div>
-            </article>
-          </div>
-        </section>
       </section>
     </div>
   `;

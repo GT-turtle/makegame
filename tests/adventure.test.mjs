@@ -432,7 +432,7 @@ test("두 전승의 액티브 10개(스킬 4개+궁 1개 × 2)가 실제 전투 
   assert.equal(heavyBack.consumedCorpseIds.length, 1);
 });
 
-test("두 기본 직업(전승 전)의 액티브 10개도 스킬 4개+궁 1개 구조로 실행된다", () => {
+test("크루세이더·네크로맨서 기본 직업 스킬 4개+궁 1개가 문서 스펙대로 실행된다", () => {
   const crusaderCommander = createDefaultCommander();
   crusaderCommander.combatKitId = "crusader";
   const crusaderFront = createAutoBattle("duneRaiders", "crusader-front", "field", STARTING_PARTY, {}, { commander: crusaderCommander });
@@ -442,37 +442,145 @@ test("두 기본 직업(전승 전)의 액티브 10개도 스킬 4개+궁 1개 �
   selectPlayerTarget(crusaderFront, crusaderFront.enemies[0].id);
   assert.equal(issuePlayerAction(crusaderFront, "skill1"), true); // holyBlessing
   assert.equal(issuePlayerAction(crusaderFront, "skill2"), true); // holyWard
-  assert.equal(issuePlayerAction(crusaderFront, "skill3"), true); // holyBurst
+  assert.equal(issuePlayerAction(crusaderFront, "skill3"), true); // holyLance (stun)
   assert.equal(issuePlayerAction(crusaderFront, "ultimate"), true); // holyJudgment
 
-  crusaderCommander.skillLoadouts.crusader = ["holyLance"];
+  crusaderCommander.skillLoadouts.crusader = ["holyBulwark"];
   const crusaderBack = createAutoBattle("duneRaiders", "crusader-back", "field", STARTING_PARTY, {}, { commander: crusaderCommander });
   const crusaderBackPlayer = crusaderBack.units.find((unit) => unit.controlled);
   crusaderBackPlayer.x = crusaderBack.enemies[0].x - 5;
   crusaderBackPlayer.y = crusaderBack.enemies[0].y;
   selectPlayerTarget(crusaderBack, crusaderBack.enemies[0].id);
-  assert.equal(issuePlayerAction(crusaderBack, "skill1"), true); // holyLance
+  assert.equal(issuePlayerAction(crusaderBack, "skill1"), true); // holyBulwark
+  assert.equal(crusaderBack.enemies.some((enemy) => enemy.forcedTargetId === crusaderBackPlayer.id), true);
 
   const necromancerCommander = createDefaultCommander();
   necromancerCommander.combatKitId = "necromancer";
+  necromancerCommander.storedBoss = { defId: "testBear", name: "시험 큰곰", species: "bear", glyph: "B", color: "#999", maxHp: 80, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.12 };
   const necroFront = createAutoBattle("duneRaiders", "necro-front", "field", STARTING_PARTY, {}, { commander: necromancerCommander });
   const necroPlayer = necroFront.units.find((unit) => unit.controlled);
   necroPlayer.x = necroFront.enemies[0].x - 5;
   necroPlayer.y = necroFront.enemies[0].y;
   selectPlayerTarget(necroFront, necroFront.enemies[0].id);
-  assert.equal(issuePlayerAction(necroFront, "skill1"), true); // spiritDecay
-  assert.equal(issuePlayerAction(necroFront, "ultimate"), true); // spiritNova
+  assert.equal(issuePlayerAction(necroFront, "skill1"), true); // spiritDecay (AoE)
+  assert.equal(issuePlayerAction(necroFront, "ultimate"), true); // spiritApex (storedApex)
+  assert.equal(necroFront.units.some((unit) => unit.summonType === "storedBoss"), true);
   necroFront.enemies[0].hp = 0;
-  assert.equal(issuePlayerAction(necroFront, "skill2"), true); // spiritRaise
-  assert.equal(issuePlayerAction(necroFront, "skill3"), true); // spiritWard
+  assert.equal(issuePlayerAction(necroFront, "skill2"), true); // spiritRaise (up to 3, one-time)
+  assert.equal(necroFront.spiritRaiseUsed, true);
+  assert.equal(issuePlayerAction(necroFront, "skill3"), true); // spiritWard (self)
 
-  necromancerCommander.skillLoadouts.necromancer = ["spiritDrain"];
+  necromancerCommander.skillLoadouts.necromancer = ["spiritBolt"];
   const necroBack = createAutoBattle("duneRaiders", "necro-back", "field", STARTING_PARTY, {}, { commander: necromancerCommander });
   const necroBackPlayer = necroBack.units.find((unit) => unit.controlled);
   necroBackPlayer.x = necroBack.enemies[0].x - 8;
   necroBackPlayer.y = necroBack.enemies[0].y;
   selectPlayerTarget(necroBack, necroBack.enemies[0].id);
-  assert.equal(issuePlayerAction(necroBack, "skill1"), true); // spiritDrain
+  assert.equal(issuePlayerAction(necroBack, "skill1"), true); // spiritBolt
+});
+
+test("바바리안 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "barbarian";
+  const front = createAutoBattle("duneRaiders", "barbarian-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // battleRoar
+  assert.equal(issuePlayerAction(front, "skill2"), true); // earthSlam
+  assert.equal(issuePlayerAction(front, "skill3"), true); // cleave
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // berserkerRage
+
+  commander.skillLoadouts.barbarian = ["recklessCharge"];
+  const back = createAutoBattle("duneRaiders", "barbarian-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  selectPlayerTarget(back, back.enemies[0].id);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // recklessCharge
+});
+
+test("추적자 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "tracker";
+  const front = createAutoBattle("duneRaiders", "tracker-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // aimedShot
+  assert.equal(issuePlayerAction(front, "skill2"), true); // scatterShot
+  assert.equal(issuePlayerAction(front, "skill3"), true); // shadowStrike
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // arrowStorm
+
+  commander.skillLoadouts.tracker = ["vanish"];
+  const back = createAutoBattle("duneRaiders", "tracker-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // vanish
+  assert.equal(Boolean(backPlayer.positiveEffects?.stealth), true);
+});
+
+test("매화 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "maehwa";
+  const front = createAutoBattle("duneRaiders", "maehwa-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // swiftStrike
+  assert.equal(issuePlayerAction(front, "skill2"), true); // whirlwindSlash
+  assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // plumBlossomDance
+
+  commander.skillLoadouts.maehwa = ["fleetStep"];
+  const back = createAutoBattle("duneRaiders", "maehwa-back", "field", STARTING_PARTY, {}, { commander });
+  assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep
+});
+
+test("변신술사 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행되고 늑대형에서 스킬이 바뀐다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "shapeshifter";
+  const front = createAutoBattle("duneRaiders", "shapeshifter-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // rendingClaw (human form)
+  assert.equal(issuePlayerAction(front, "skill2"), true); // sweepingClaw (human form)
+  assert.equal(issuePlayerAction(front, "skill3"), true); // wildRecovery
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // werewolfForm
+  assert.equal(Boolean(player.positiveEffects?.wolfForm), true);
+  front.playerReadyAt.skill1 = 0;
+  player.x = front.enemies[1].x - 40;
+  player.y = front.enemies[1].y;
+  selectPlayerTarget(front, front.enemies[1].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // rendingClaw (wolf form, dashes in)
+
+  commander.skillLoadouts.shapeshifter = ["menacingRoar"];
+  const back = createAutoBattle("duneRaiders", "shapeshifter-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  assert.equal(issuePlayerAction(back, "skill1"), true); // menacingRoar
+});
+
+test("아크메이지 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "archmage";
+  const front = createAutoBattle("duneRaiders", "archmage-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt
+  assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova
+  assert.equal(issuePlayerAction(front, "skill3"), true); // manaShield
+  assert.equal(Boolean(player.positiveEffects?.shield), true);
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // lightningCage
+
+  commander.skillLoadouts.archmage = ["manaFocusSkill"];
+  const back = createAutoBattle("duneRaiders", "archmage-back", "field", STARTING_PARTY, {}, { commander });
+  assert.equal(issuePlayerAction(back, "skill1"), true); // manaFocusSkill
 });
 
 test("친화도·직업 전용 능력치와 출혈·화상·크루세이더 해제가 구분된다", () => {

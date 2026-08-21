@@ -652,6 +652,15 @@ function distanceBetween(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+function dashToTarget(player, target, standoff = 6) {
+  const dx = target.x - player.x;
+  const dy = target.y - player.y;
+  const distance = Math.max(0.001, Math.hypot(dx, dy));
+  const travel = Math.max(0, distance - standoff);
+  player.x = Math.max(5, Math.min(95, player.x + (dx / distance) * travel));
+  player.y = Math.max(8, Math.min(92, player.y + (dy / distance) * travel));
+}
+
 function pushBattleLog(battle, text) {
   battle.log.unshift(text);
   battle.log = battle.log.slice(0, 5);
@@ -729,6 +738,16 @@ function frostMultiplier(actor) {
   return Math.max(0.58, 1 - stacks * 0.12);
 }
 
+function hasteSpeedMultiplier(actor, battle) {
+  const haste = actor.positiveEffects?.haste;
+  return haste && haste.endsAt > battle.elapsed ? (haste.speedMultiplier || 1) : 1;
+}
+
+function hasteAttackDivisor(actor, battle) {
+  const haste = actor.positiveEffects?.haste;
+  return haste && haste.endsAt > battle.elapsed ? (haste.attackSpeedMultiplier || 1) : 1;
+}
+
 function tickCombatantEffects(battle, actor, step) {
   actor.statuses ||= {};
   actor.positiveEffects ||= {};
@@ -767,6 +786,9 @@ function tickCombatantEffects(battle, actor, step) {
       actor.regenRemainder -= whole;
     }
   }
+  if (actor.hp > 0 && actor.manaRegen > 0 && actor.maxMana > 0) {
+    actor.mana = Math.min(actor.maxMana, actor.mana + actor.manaRegen * (step / 1000));
+  }
 }
 
 function tickGroundEffects(battle) {
@@ -780,33 +802,66 @@ function tickGroundEffects(battle) {
   battle.groundEffects = (battle.groundEffects || []).filter((effect) => battle.elapsed < effect.endsAt);
 }
 
+function ensureBasePassiveState(battle) {
+  battle.basePassiveState ||= { hitCount: 0, soulStacks: 0, soulExpiresAt: 0, harvestedEnemyIds: [], lastActionAt: 0 };
+  return battle.basePassiveState;
+}
+
+function markPlayerActive(battle) {
+  ensureBasePassiveState(battle).lastActionAt = battle.elapsed;
+}
+
 function refreshBaseClassPassive(battle) {
   const passive = battle.playerBasePassive;
-  if (passive?.effect !== "soulHarvest") return;
-  battle.basePassiveState ||= { hitCount: 0, soulStacks: 0, soulExpiresAt: 0, harvestedEnemyIds: [] };
-  const state = battle.basePassiveState;
-  if (state.soulStacks > 0 && battle.elapsed >= state.soulExpiresAt) {
-    state.soulStacks = 0;
-    state.soulExpiresAt = 0;
-    pushBattleLog(battle, `${passive.name}: 붙잡아 둔 영혼이 흩어졌다.`);
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  if (!passive || !player) return;
+  const state = ensureBasePassiveState(battle);
+  if (passive.effect === "soulHarvest") {
+    if (state.soulStacks > 0 && battle.elapsed >= state.soulExpiresAt) {
+      state.soulStacks = 0;
+      state.soulExpiresAt = 0;
+      pushBattleLog(battle, `${passive.name}: 붙잡아 둔 영혼이 흩어졌다.`);
+    }
+    const newlyDefeated = battle.enemies.filter((enemy) => enemy.hp <= 0 && !state.harvestedEnemyIds.includes(enemy.id));
+    if (newlyDefeated.length) {
+      state.harvestedEnemyIds.push(...newlyDefeated.map((enemy) => enemy.id));
+      const previous = state.soulStacks || 0;
+      state.soulStacks = Math.min(passive.maxStacks || 3, previous + newlyDefeated.length);
+      state.soulExpiresAt = battle.elapsed + (passive.durationMs || 12000);
+      if (state.soulStacks > previous) pushBattleLog(battle, `${passive.name}: 영혼 ${state.soulStacks}/${passive.maxStacks}`);
+    }
+    const summonMultiplier = 1 + (state.soulStacks || 0) * (passive.summonDamagePerStack || 0);
+    for (const unit of battle.units.filter((entry) => entry.summonType)) unit.passiveDamageMultiplier = summonMultiplier;
+  } else if (passive.effect === "rageScaling") {
+    player.rageBaseArmor ??= player.armor;
+    player.rageBaseHpRegen ??= player.hpRegen;
+    const missing = player.hp > 0 ? 1 - player.hp / player.maxHp : 0;
+    const berserk = player.positiveEffects?.berserk?.endsAt > battle.elapsed ? player.positiveEffects.berserk : null;
+    player.passiveDamageMultiplier = 1 + missing * (passive.damagePerMissing || 0.6) + (berserk?.bonus || 0);
+    player.armor = Math.min(0.58, player.rageBaseArmor + missing * (passive.armorPerMissing || 0.15));
+    player.hpRegen = player.rageBaseHpRegen + missing * (passive.hpRegenPerMissing || 1.5);
+  } else if (passive.effect === "manaFocus") {
+    const manaRatio = player.maxMana > 0 ? player.mana / player.maxMana : 0;
+    player.passiveDamageMultiplier = 1 + manaRatio * (passive.damagePerMana || 0.4);
+  } else if (passive.effect === "stealthWhenIdle") {
+    const idleFor = battle.elapsed - (state.lastActionAt || 0);
+    if (idleFor >= (passive.idleMs || 3000)) {
+      player.positiveEffects ||= {};
+      player.positiveEffects.stealth = { endsAt: battle.elapsed + 500 };
+    }
+  } else if (passive.effect === "formAdaptive") {
+    const transformed = Boolean(player.positiveEffects?.wolfForm);
+    player.armor = Math.min(0.58, (player.rageBaseArmor ??= player.armor) + (transformed ? 0 : (passive.formArmorBonus || 0.08)));
+    player.passiveDamageMultiplier = 1 + (transformed ? (passive.formDamageBonus || 0.25) : 0);
   }
-  const newlyDefeated = battle.enemies.filter((enemy) => enemy.hp <= 0 && !state.harvestedEnemyIds.includes(enemy.id));
-  if (newlyDefeated.length) {
-    state.harvestedEnemyIds.push(...newlyDefeated.map((enemy) => enemy.id));
-    const previous = state.soulStacks || 0;
-    state.soulStacks = Math.min(passive.maxStacks || 3, previous + newlyDefeated.length);
-    state.soulExpiresAt = battle.elapsed + (passive.durationMs || 12000);
-    if (state.soulStacks > previous) pushBattleLog(battle, `${passive.name}: 영혼 ${state.soulStacks}/${passive.maxStacks}`);
-  }
-  const summonMultiplier = 1 + (state.soulStacks || 0) * (passive.summonDamagePerStack || 0);
-  for (const unit of battle.units.filter((entry) => entry.summonType)) unit.passiveDamageMultiplier = summonMultiplier;
 }
 
 function recordPlayerHit(battle, target, damage) {
   const passive = battle.playerBasePassive;
-  if (target.id !== battle.playerId || target.hp <= 0 || damage <= 0 || passive?.effect !== "hitCycleHeal") return;
-  battle.basePassiveState ||= { hitCount: 0, soulStacks: 0, soulExpiresAt: 0, harvestedEnemyIds: [] };
-  const state = battle.basePassiveState;
+  if (target.id !== battle.playerId || target.hp <= 0 || damage <= 0) return;
+  markPlayerActive(battle);
+  if (passive?.effect !== "hitCycleHeal") return;
+  const state = ensureBasePassiveState(battle);
   state.hitCount = (state.hitCount || 0) + 1;
   if (state.hitCount < passive.hitsRequired) return;
   state.hitCount = 0;
@@ -828,7 +883,7 @@ export function tickAutoBattle(battle, deltaMs) {
     if (inputLength > 0.08) {
       const normalizedX = inputX / Math.max(1, inputLength);
       const normalizedY = inputY / Math.max(1, inputLength);
-      const travel = player.speed * frostMultiplier(player) * Math.min(1, inputLength) * (step / 1000);
+      const travel = player.speed * frostMultiplier(player) * hasteSpeedMultiplier(player, battle) * Math.min(1, inputLength) * (step / 1000);
       player.moveTarget = null;
       player.x = Math.max(5, Math.min(95, player.x + normalizedX * travel));
       player.y = Math.max(8, Math.min(92, player.y + normalizedY * travel));
@@ -837,7 +892,7 @@ export function tickAutoBattle(battle, deltaMs) {
       const dx = player.moveTarget.x - player.x;
       const dy = player.moveTarget.y - player.y;
       const distance = Math.hypot(dx, dy);
-      const travel = player.speed * frostMultiplier(player) * (step / 1000);
+      const travel = player.speed * frostMultiplier(player) * hasteSpeedMultiplier(player, battle) * (step / 1000);
       if (distance <= travel || distance < 0.8) {
         player.x = player.moveTarget.x;
         player.y = player.moveTarget.y;
@@ -925,22 +980,37 @@ export function tickAutoBattle(battle, deltaMs) {
     const carryBonus = 1 + activeBuffs * actor.buffCarry;
     const chargeDamage = chargeBoost ? 1.35 + actor.chargeDamage : 1;
     const rawDamage = actor.damage * (actor.passiveDamageMultiplier || 1) * chargeDamage * lowHealthBonus * carryBonus;
-    const damage = Math.max(1, Math.round(rawDamage * guardReduction * armorReduction));
-    target.hp = Math.max(0, target.hp - damage);
-    actor.attackCount = (actor.attackCount || 0) + 1;
-    if (target.hp > 0 && actor.poisonDamage) applyCombatStatus(battle, target, "poison", actor, { stacks: actor.poisonDamage });
-    if (target.hp > 0 && actor.statusOnHit && actor.attackCount % (actor.statusEvery || 1) === 0) {
-      applyCombatStatus(battle, target, actor.statusOnHit.id, actor, actor.statusOnHit);
-    }
-    if (target.hp > 0 && target.positiveEffects?.frostRetaliation?.endsAt > battle.elapsed) {
-      applyCombatStatus(battle, actor, "frost", target, { stacks: 1 });
-    }
-    if (actor.lifeSteal && actor.hp > 0) actor.hp = Math.min(actor.maxHp, actor.hp + Math.max(1, Math.floor(damage * actor.lifeSteal)));
-    target.lastHit = 260;
-    recordPlayerHit(battle, target, damage);
+    const fullDamage = Math.max(1, Math.round(rawDamage * guardReduction * armorReduction));
+    const isPlayerTarget = target.id === battle.playerId;
+    const dodgeChance = isPlayerTarget && battle.playerBasePassive?.effect === "dodgeChance" ? battle.playerBasePassive.chance || 0 : 0;
+    const dodged = dodgeChance > 0 && Math.random() < dodgeChance;
     actor.cooldown = actor.attackMs;
     actor.telegraphTargetId = null;
-    if (target.hp <= 0) pushBattleLog(battle, `${actor.name}이 ${target.name}을 쓰러뜨렸다.`);
+    if (dodged) {
+      pushBattleLog(battle, `${target.name}이 ${actor.name}의 공격을 회피했다.`);
+    } else {
+      const shield = target.positiveEffects?.shield;
+      let damage = fullDamage;
+      if (shield && shield.amount > 0) {
+        const absorbed = Math.min(shield.amount, damage);
+        shield.amount -= absorbed;
+        damage -= absorbed;
+        if (shield.amount <= 0) delete target.positiveEffects.shield;
+      }
+      target.hp = Math.max(0, target.hp - damage);
+      actor.attackCount = (actor.attackCount || 0) + 1;
+      if (target.hp > 0 && actor.poisonDamage) applyCombatStatus(battle, target, "poison", actor, { stacks: actor.poisonDamage });
+      if (target.hp > 0 && actor.statusOnHit && actor.attackCount % (actor.statusEvery || 1) === 0) {
+        applyCombatStatus(battle, target, actor.statusOnHit.id, actor, actor.statusOnHit);
+      }
+      if (target.hp > 0 && target.positiveEffects?.frostRetaliation?.endsAt > battle.elapsed) {
+        applyCombatStatus(battle, actor, "frost", target, { stacks: 1 });
+      }
+      if (actor.lifeSteal && actor.hp > 0) actor.hp = Math.min(actor.maxHp, actor.hp + Math.max(1, Math.floor(damage * actor.lifeSteal)));
+      target.lastHit = 260;
+      recordPlayerHit(battle, target, damage);
+      if (target.hp <= 0) pushBattleLog(battle, `${actor.name}이 ${target.name}을 쓰러뜨렸다.`);
+    }
   }
   refreshBaseClassPassive(battle);
   if (!living(battle.enemies).length) {
@@ -1170,55 +1240,181 @@ function resolvePlayerSkill(battle, player, skill) {
   } else if (skill.effect === "holyBlessing") {
     const ally = living(battle.units).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
     if (!ally) return false;
-    const dispelled = dispelHarmfulStatus(ally);
-    const healed = healCombatant(ally, 10 * player.healingPower);
-    pushBattleLog(battle, `${skill.name}: ${ally.name} ${healed} 회복${dispelled ? ` · ${dispelled.name} 해제` : ""}`);
+    const healed = healCombatant(ally, 12 * player.healingPower);
+    pushBattleLog(battle, `${skill.name}: ${ally.name} ${healed} 회복`);
   } else if (skill.effect === "holyWard") {
     for (const unit of living(battle.units)) {
       unit.defenseUntil = battle.elapsed + 4600;
       unit.defenseMultiplier = 0.6;
     }
     pushBattleLog(battle, `${skill.name}: 아군 ${living(battle.units).length}명 보호`);
-  } else if (skill.effect === "holyBurst") {
-    const result = damageArea(battle, player, player, 20, 0.7);
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격`);
   } else if (skill.effect === "holyLance") {
     if (!target || distanceBetween(player, target) > 46) return false;
     const damage = damageCombatant(player, target, 1.4);
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
+    if (target.hp > 0) applyCombatStatus(battle, target, "stun", player, { durationMs: 800 });
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 기절`);
+  } else if (skill.effect === "holyBulwark") {
+    const taunted = living(battle.enemies).filter((enemy) => distanceBetween(player, enemy) <= 30);
+    for (const enemy of taunted) {
+      enemy.forcedTargetId = player.id;
+      enemy.forcedTargetUntil = battle.elapsed + 4200;
+    }
+    player.defenseUntil = battle.elapsed + 4200;
+    player.defenseMultiplier = 0.55;
+    pushBattleLog(battle, `${skill.name}: 적 ${taunted.length}명의 시선을 끌고 방어를 높였다.`);
   } else if (skill.effect === "holyJudgment") {
     if (!target || distanceBetween(player, target) > 55) return false;
     const result = damageArea(battle, player, target, 26, 1.1);
     pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 신성 파도`);
   } else if (skill.effect === "spiritDecay") {
-    if (!target || distanceBetween(player, target) > 46) return false;
-    const damage = damageCombatant(player, target, 0.9);
-    if (target.hp > 0) applyCombatStatus(battle, target, "decay", player);
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 부패`);
+    const result = damageArea(battle, player, player, 22, 0.55);
+    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "decay", player);
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 부패`);
+  } else if (skill.effect === "spiritBolt") {
+    if (!target || distanceBetween(player, target) > 50) return false;
+    const damage = damageCombatant(player, target, 1.3);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
   } else if (skill.effect === "spiritRaise") {
-    const summons = raiseAvailableCorpses(battle, player, { limit: 1, armed: false });
+    if (battle.spiritRaiseUsed) return false;
+    const summons = raiseAvailableCorpses(battle, player, { limit: 3, armed: false });
     if (!summons.length) return false;
-    pushBattleLog(battle, `${skill.name}: 하급 언데드 ${summons.length}기 부활`);
-  } else if (skill.effect === "spiritWard") {
-    for (const unit of living(battle.units)) {
-      unit.defenseUntil = battle.elapsed + 5400;
-      unit.defenseMultiplier = 0.62;
+    for (const summon of summons) {
+      summon.maxHp = Math.round(summon.maxHp + player.maxHp * 0.3);
+      summon.hp = summon.maxHp;
+      summon.damage = Math.round(summon.damage + player.damage * 0.3);
     }
-    pushBattleLog(battle, `${skill.name}: 아군 ${living(battle.units).length}명 보호`);
-  } else if (skill.effect === "spiritDrain") {
-    if (!target || distanceBetween(player, target) > 20) return false;
-    const damage = damageCombatant(player, target, 1.2);
-    player.hp = Math.min(player.maxHp, player.hp + Math.max(1, Math.round(damage * 0.6)));
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 자신 회복`);
-  } else if (skill.effect === "spiritNova") {
+    battle.spiritRaiseUsed = true;
+    pushBattleLog(battle, `${skill.name}: 망자 ${summons.length}기 부활 · 전투당 1회`);
+  } else if (skill.effect === "spiritWard") {
+    player.defenseUntil = battle.elapsed + 5400;
+    player.defenseMultiplier = 0.6;
+    healCombatant(player, 8);
+    pushBattleLog(battle, `${skill.name}: 자신 방어 강화 · 소량 회복`);
+  } else if (skill.effect === "battleRoar") {
+    const missing = player.hp > 0 ? 1 - player.hp / player.maxHp : 0;
+    const factor = 1.25 + missing * 0.35;
+    player.positiveEffects ||= {};
+    player.positiveEffects.haste = { speedMultiplier: factor, attackSpeedMultiplier: factor, endsAt: battle.elapsed + 5000 };
+    pushBattleLog(battle, `${skill.name}: 공격·이동 속도 상승`);
+  } else if (skill.effect === "earthSlam") {
+    const result = damageArea(battle, player, player, 20, 1.0);
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격`);
+  } else if (skill.effect === "recklessCharge") {
+    if (!target) return false;
+    dashToTarget(player, target, 6);
+    const damage = damageCombatant(player, target, 1.5);
+    pushBattleLog(battle, `${skill.name}: ${target.name}에게 돌진해 ${damage} 피해`);
+  } else if (skill.effect === "cleave") {
+    if (!target || distanceBetween(player, target) > 18) return false;
+    const damage = damageCombatant(player, target, 1.6);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
+  } else if (skill.effect === "berserkerRage") {
+    player.positiveEffects ||= {};
+    player.positiveEffects.berserk = { bonus: 0.35, lifeSteal: 0.25, endsAt: battle.elapsed + 8000 };
+    pushBattleLog(battle, `${skill.name}: 격노가 폭증하고 흡혈이 붙었다.`);
+  } else if (skill.effect === "aimedShot") {
+    if (!target || distanceBetween(player, target) > 60) return false;
+    const damage = damageCombatant(player, target, 1.5);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
+  } else if (skill.effect === "scatterShot") {
     if (!target || distanceBetween(player, target) > 55) return false;
-    const result = damageArea(battle, player, target, 24, 1.0);
-    player.hp = Math.min(player.maxHp, player.hp + Math.max(1, Math.round(result.totalDamage * 0.3)));
-    pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 사령 파동 · 자신 회복`);
+    const result = damageArea(battle, player, target, 22, 0.75);
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격`);
+  } else if (skill.effect === "shadowStrike") {
+    if (!target || distanceBetween(player, target) > 50) return false;
+    const lowHp = target.hp / target.maxHp <= 0.35;
+    const damage = damageCombatant(player, target, lowHp ? 2.4 : 1.3);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${lowHp ? " · 약점 강타" : ""}`);
+  } else if (skill.effect === "vanish") {
+    player.positiveEffects ||= {};
+    player.positiveEffects.stealth = { endsAt: battle.elapsed + 4000 };
+    pushBattleLog(battle, `${skill.name}: 즉시 은신했다.`);
+  } else if (skill.effect === "arrowStorm") {
+    if (!target || distanceBetween(player, target) > 60) return false;
+    const result = damageArea(battle, player, target, 30, 1.3);
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 화살 세례`);
+  } else if (skill.effect === "swiftStrike") {
+    if (!target) return false;
+    dashToTarget(player, target, 5);
+    const damage = damageCombatant(player, target, 1.4);
+    pushBattleLog(battle, `${skill.name}: ${target.name}에게 접근해 ${damage} 피해`);
+  } else if (skill.effect === "whirlwindSlash") {
+    const result = damageArea(battle, player, player, 18, 0.85);
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격`);
+  } else if (skill.effect === "phantomCut") {
+    if (!target || distanceBetween(player, target) > 20) return false;
+    const hadBuffs = Boolean(target.positiveEffects && Object.keys(target.positiveEffects).length);
+    target.positiveEffects = {};
+    const damage = damageCombatant(player, target, hadBuffs ? 2.0 : 1.6);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${hadBuffs ? " · 이로운 효과 제거" : ""}`);
+  } else if (skill.effect === "fleetStep") {
+    player.positiveEffects ||= {};
+    player.positiveEffects.haste = { speedMultiplier: 1.15, attackSpeedMultiplier: 1.5, endsAt: battle.elapsed + 5000 };
+    pushBattleLog(battle, `${skill.name}: 공격 속도가 크게 상승`);
+  } else if (skill.effect === "plumBlossomDance") {
+    if (!target || distanceBetween(player, target) > 22) return false;
+    const existingShred = target.statuses?.decay?.armorShred || 0;
+    const damage = damageCombatant(player, target, 1.5 + existingShred * 3);
+    if (target.hp > 0) applyCombatStatus(battle, target, "decay", player, { armorShred: 0.18 });
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 방어 붕괴`);
+  } else if (skill.effect === "rendingClaw") {
+    if (!target) return false;
+    const transformed = Boolean(player.positiveEffects?.wolfForm);
+    if (!transformed && distanceBetween(player, target) > 18) return false;
+    if (transformed) dashToTarget(player, target, 5);
+    const damage = damageCombatant(player, target, transformed ? 1.6 : 1.3);
+    if (transformed && target.hp > 0) applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
+  } else if (skill.effect === "sweepingClaw") {
+    const transformed = Boolean(player.positiveEffects?.wolfForm);
+    const result = damageArea(battle, player, player, transformed ? 24 : 18, transformed ? 1.1 : 0.75);
+    if (transformed) for (const enemy of result.targets) if (enemy.hp > 0) applyCombatStatus(battle, enemy, "bleed", player, { stacks: 1 });
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격`);
+  } else if (skill.effect === "wildRecovery") {
+    const healed = healCombatant(player, Math.round(player.maxHp * 0.18));
+    player.positiveEffects ||= {};
+    player.positiveEffects.regeneration = { amount: Math.max(1, Math.round(player.maxHp * 0.03)), nextTickAt: battle.elapsed + 1000, endsAt: battle.elapsed + 4000 };
+    pushBattleLog(battle, `${skill.name}: 자신 ${healed} 회복 · 지속 회복`);
+  } else if (skill.effect === "menacingRoar") {
+    const feared = living(battle.enemies).filter((enemy) => distanceBetween(player, enemy) <= 22);
+    for (const enemy of feared) applyCombatStatus(battle, enemy, "stun", player, { durationMs: 1200 });
+    pushBattleLog(battle, `${skill.name}: 적 ${feared.length}명을 위협해 묶었다.`);
+  } else if (skill.effect === "werewolfForm") {
+    player.positiveEffects ||= {};
+    player.positiveEffects.wolfForm = { endsAt: battle.elapsed + 9000 };
+    player.positiveEffects.haste = { speedMultiplier: 1.3, attackSpeedMultiplier: 1.3, endsAt: battle.elapsed + 9000 };
+    pushBattleLog(battle, `${skill.name}: 늑대인간으로 변신했다.`);
+  } else if (skill.effect === "fireBolt") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const damage = damageCombatant(player, target, 1.4);
+    if (target.hp > 0) applyCombatStatus(battle, target, "burn", player);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 화상`);
+  } else if (skill.effect === "frostNova") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const result = damageArea(battle, player, target, 22, 0.9);
+    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "frost", player, { stacks: 1 });
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 냉기 피해 · 빙결`);
+  } else if (skill.effect === "manaShield") {
+    const cost = Math.min(player.mana || 0, Math.max(20, Math.round((player.maxMana || 0) * 0.4)));
+    if (cost <= 0) return false;
+    player.mana -= cost;
+    player.positiveEffects ||= {};
+    player.positiveEffects.shield = { amount: Math.round(cost * 1.2), endsAt: battle.elapsed + 8000 };
+    pushBattleLog(battle, `${skill.name}: 마나 ${cost} 소모 · 보호막 ${Math.round(cost * 1.2)}`);
+  } else if (skill.effect === "manaFocusSkill") {
+    player.mana = Math.min(player.maxMana || 0, (player.mana || 0) + Math.round((player.maxMana || 0) * 0.35));
+    const healed = healCombatant(player, Math.round(player.maxHp * 0.08));
+    pushBattleLog(battle, `${skill.name}: 마나 회복 · 자신 ${healed} 회복`);
+  } else if (skill.effect === "lightningCage") {
+    if (!target || distanceBetween(player, target) > 50) return false;
+    const result = damageArea(battle, player, target, 12, 1.6);
+    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "stun", player, { durationMs: 1000 });
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 벼락 · 기절`);
   } else {
     return false;
   }
   applyKitPassive(battle, player);
+  markPlayerActive(battle);
   battle.lastPlayerSkillId = skill.id;
   return true;
 }
@@ -1244,10 +1440,16 @@ export function issuePlayerAction(battle, action) {
       battle.playerReadyAt.attack = battle.elapsed + 280;
       return false;
     }
-    const damage = Math.max(1, Math.round(player.damage * (1 - effectiveArmor(target))));
+    const stealthy = Boolean(player.positiveEffects?.stealth);
+    const damage = Math.max(1, Math.round(player.damage * (player.passiveDamageMultiplier || 1) * (stealthy ? 1.8 : 1) * (1 - effectiveArmor(target))));
     target.hp = Math.max(0, target.hp - damage);
     target.lastHit = 260;
-    battle.playerReadyAt.attack = battle.elapsed + player.attackMs;
+    if (stealthy) delete player.positiveEffects.stealth;
+    if (target.hp > 0 && player.positiveEffects?.wolfForm) applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
+    const lifeSteal = player.positiveEffects?.berserk?.endsAt > battle.elapsed ? player.positiveEffects.berserk.lifeSteal || 0 : 0;
+    if (lifeSteal > 0) player.hp = Math.min(player.maxHp, player.hp + Math.max(1, Math.round(damage * lifeSteal)));
+    battle.playerReadyAt.attack = battle.elapsed + player.attackMs / hasteAttackDivisor(player, battle);
+    markPlayerActive(battle);
     if (target.hp <= 0) pushBattleLog(battle, `개척자가 ${target.name}을 쓰러뜨렸다.`);
     refreshBaseClassPassive(battle);
     return true;
