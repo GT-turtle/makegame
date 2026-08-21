@@ -1185,9 +1185,9 @@ function applyKitPassive(battle, player) {
     const manaRatio = player.maxMana > 0 ? player.mana / player.maxMana : 0;
     player.healingPower = Math.max(player.healingPower || 1, 1 + manaRatio * 0.5);
   }
-  if (battle.playerKitId === "heavyTracker") {
+  if (battle.playerKitId === "heavyTracker" && player.positiveEffects?.siegeMode?.endsAt > battle.elapsed) {
     player.defenseUntil = Math.max(player.defenseUntil || 0, battle.elapsed + 1500);
-    player.defenseMultiplier = Math.min(player.defenseMultiplier ?? 1, 0.75);
+    player.defenseMultiplier = Math.min(player.defenseMultiplier ?? 1, 0.7);
   }
 }
 
@@ -1344,8 +1344,9 @@ function resolvePlayerSkill(battle, player, skill) {
     pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
   } else if (skill.effect === "scatterShot") {
     if (!target || distanceBetween(player, target) > 55) return false;
-    const result = damageArea(battle, player, target, 22, 0.75);
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격`);
+    const sieged = Boolean(player.positiveEffects?.siegeMode);
+    const result = damageArea(battle, player, target, sieged ? 30 : 22, sieged ? 1.3 : 0.75);
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격${sieged ? " · 포격 강화" : ""}`);
   } else if (skill.effect === "shadowStrike") {
     if (!target || distanceBetween(player, target) > 50) return false;
     const lowHp = target.hp / target.maxHp <= 0.35;
@@ -1593,15 +1594,19 @@ function resolvePlayerSkill(battle, player, skill) {
     const damage = damageCombatant(player, target, 1.3);
     if (target.hp > 0) target.rootedUntil = battle.elapsed + 1500;
     pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 속박`);
-  } else if (skill.effect === "braceStance") {
-    player.defenseUntil = battle.elapsed + 5000;
-    player.defenseMultiplier = 0.5;
-    pushBattleLog(battle, `${skill.name}: 방어 태세 돌입`);
+  } else if (skill.effect === "siegeStance") {
+    player.positiveEffects ||= {};
+    player.positiveEffects.siegeMode = { endsAt: battle.elapsed + 7000 };
+    player.positiveEffects.haste = { speedMultiplier: 0.08, attackSpeedMultiplier: 0.55, endsAt: battle.elapsed + 7000 };
+    player.defenseUntil = battle.elapsed + 7000;
+    player.defenseMultiplier = 0.55;
+    pushBattleLog(battle, `${skill.name}: 포격 모드 돌입 · 방어 강화, 이동·공속 저하`);
   } else if (skill.effect === "piercingShot") {
     if (!target || distanceBetween(player, target) > 55) return false;
-    const damage = damageCombatant(player, target, 2.4);
+    const sieged = Boolean(player.positiveEffects?.siegeMode);
+    const damage = damageCombatant(player, target, sieged ? 3.4 : 2.4);
     if (target.hp > 0) target.rootedUntil = battle.elapsed + 2000;
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 강한 속박`);
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 강한 속박${sieged ? " · 포격 강화" : ""}`);
   } else {
     return false;
   }

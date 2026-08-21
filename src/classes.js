@@ -535,22 +535,22 @@ export const PLAYER_KIT_DEFS = {
     baseClassId: "tracker",
     primaryId: "archery",
     inheritedId: "heavy",
-    description: "은신 대신 중갑으로 버티며 대궁으로 강하게 쏘아붙이는 형태.",
+    description: "은신 대신 포격 모드로 자리를 지키며 압도적인 화력을 내는 시즈탱크형.",
     passive: {
-      id: "steadyBrace",
-      name: "중갑 사수",
+      id: "fixedBattery",
+      name: "고정 포대",
       glyph: "▰",
-      description: "기술을 사용할 때마다 잠시 자신의 방어력이 오른다."
+      description: "포격 모드인 동안 기술을 사용할 때마다 방어력이 잠시 더 오른다."
     },
     stats: { maxHp: 48, damage: 10, range: 21, speed: 12, attackMs: 900, armor: 0.19, color: "#a08a5a", glyph: "➹" },
-    defaultLoadout: ["aimedShot", "suppressingShot", "braceStance"],
+    defaultLoadout: ["aimedShot", "suppressingShot", "siegeStance"],
     skills: [
       { id: "aimedShot", name: "조준 사격", glyph: "➶", cooldownMs: 3800, effect: "aimedShot", description: "단일 적을 원거리에서 저격한다." },
       { id: "suppressingShot", name: "제압 사격", glyph: "☗", cooldownMs: 5800, effect: "suppressingShot", description: "단일 적에게 피해를 입히고 잠시 묶어 둔다." },
-      { id: "braceStance", name: "방어 태세", glyph: "❖", cooldownMs: 7600, effect: "braceStance", description: "스스로의 방어를 크게 높인다." },
-      { id: "scatterShot", name: "산탄 사격", glyph: "❋", cooldownMs: 6400, effect: "scatterShot", description: "부채꼴 범위의 적에게 원거리 피해를 입힌다." }
+      { id: "siegeStance", name: "포격 태세", glyph: "❖", cooldownMs: 9000, effect: "siegeStance", description: "포격 모드로 전환한다. 이동·공격 속도가 느려지지만 방어력이 크게 오르고 산탄 사격·관통 사격의 위력이 강해진다." },
+      { id: "scatterShot", name: "산탄 사격", glyph: "❋", cooldownMs: 6400, effect: "scatterShot", description: "부채꼴 범위의 적에게 원거리 피해를 입힌다. 포격 모드에서는 범위와 위력이 늘어난다." }
     ],
-    ultimate: { id: "piercingShot", name: "관통 사격", glyph: "➹", cooldownMs: 13500, effect: "piercingShot", description: "강력한 화살로 목표를 꿰뚫어 큰 피해를 입히고 묶어 둔다." }
+    ultimate: { id: "piercingShot", name: "관통 사격", glyph: "➹", cooldownMs: 13500, effect: "piercingShot", description: "강력한 화살로 목표를 꿰뚫어 큰 피해를 입히고 묶어 둔다. 포격 모드에서는 위력이 더 강해진다." }
   }
 };
 

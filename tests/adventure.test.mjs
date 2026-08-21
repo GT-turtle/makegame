@@ -720,7 +720,7 @@ test("정령추적 전승은 스킬 4개+궁 1개가 모두 실행된다", () =>
   assert.equal(issuePlayerAction(back, "skill1"), true); // vanish
 });
 
-test("대궁병(중갑추적) 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
+test("대궁병(중갑추적)은 포격 태세로 시즈탱크처럼 이동·공속이 느려지고 화력이 강해진다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "heavyTracker";
   const front = createAutoBattle("duneRaiders", "heavytracker-front", "field", STARTING_PARTY, {}, { commander });
@@ -731,15 +731,18 @@ test("대궁병(중갑추적) 전승은 스킬 4개+궁 1개가 모두 실행된
   assert.equal(issuePlayerAction(front, "skill1"), true); // aimedShot
   assert.equal(issuePlayerAction(front, "skill2"), true); // suppressingShot
   assert.equal(front.enemies[0].rootedUntil > 0, true);
-  assert.equal(issuePlayerAction(front, "skill3"), true); // braceStance
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // piercingShot
+  assert.equal(issuePlayerAction(front, "skill3"), true); // siegeStance
+  assert.equal(Boolean(player.positiveEffects?.siegeMode), true);
+  assert.ok(player.positiveEffects.haste.speedMultiplier < 1);
+  assert.ok(player.positiveEffects.haste.attackSpeedMultiplier < 1);
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // piercingShot, empowered while sieged
 
   commander.skillLoadouts.heavyTracker = ["scatterShot"];
   const back = createAutoBattle("duneRaiders", "heavytracker-back", "field", STARTING_PARTY, {}, { commander });
   const backPlayer = back.units.find((unit) => unit.controlled);
   backPlayer.x = back.enemies[0].x - 5;
   backPlayer.y = back.enemies[0].y;
-  assert.equal(issuePlayerAction(back, "skill1"), true); // scatterShot
+  assert.equal(issuePlayerAction(back, "skill1"), true); // scatterShot, not sieged yet
 });
 
 test("친화도·직업 전용 능력치와 출혈·화상·크루세이더 해제가 구분된다", () => {
