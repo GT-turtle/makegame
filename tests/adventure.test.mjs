@@ -575,11 +575,19 @@ test("매화 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다
   assert.equal(issuePlayerAction(front, "skill1"), true); // swiftStrike
   assert.equal(issuePlayerAction(front, "skill2"), true); // whirlwindSlash
   assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // plumBlossomDance
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // plumBlossomDance(낙화)
 
   commander.skillLoadouts.maehwa = ["fleetStep"];
-  const back = createAutoBattle("duneRaiders", "maehwa-back", "field", STARTING_PARTY, {}, { commander });
-  assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep
+  const marksBack = createAutoBattle("duneRaiders", "maehwa-marks", "field", STARTING_PARTY, {}, { commander });
+  const marksPlayer = marksBack.units.find((unit) => unit.controlled);
+  marksPlayer.x = marksBack.enemies[0].x - 5;
+  marksPlayer.y = marksBack.enemies[0].y;
+  selectPlayerTarget(marksBack, marksBack.enemies[0].id);
+  assert.equal(issuePlayerAction(marksBack, "skill1"), true); // fleetStep(개화), 표식 부여 시작
+  assert.equal(issuePlayerAction(marksBack, "attack"), true);
+  assert.ok(marksBack.enemies[0].maehwaMarks > 0);
+  assert.equal(issuePlayerAction(marksBack, "ultimate"), true); // plumBlossomDance, 표식 소모
+  assert.equal(marksBack.enemies[0].maehwaMarks, 0);
 });
 
 test("바바리안의 정령 전사 전승은 스킬 4개+궁 1개가 모두 실행되고 출혈·늑대 변신 보너스가 적용된다", () => {
@@ -676,7 +684,7 @@ test("궁사네크 전승은 스킬 4개+궁 1개가 모두 실행된다", () =>
   assert.equal(Boolean(backPlayer.positiveEffects?.spiritSurge), true);
 });
 
-test("암살자(궁사매화) 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
+test("암살자(궁사매화) 전승은 스킬 4개+궁 1개가 모두 실행되고 은신 연계가 작동한다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "archeryMaehwa";
   const front = createAutoBattle("duneRaiders", "archerymaehwa-front", "field", STARTING_PARTY, {}, { commander });
@@ -684,54 +692,73 @@ test("암살자(궁사매화) 전승은 스킬 4개+궁 1개가 모두 실행된
   player.x = front.enemies[0].x - 5;
   player.y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
-  assert.equal(issuePlayerAction(front, "skill1"), true); // swiftStrike
-  assert.equal(issuePlayerAction(front, "skill2"), true); // shadowExecution
-  assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // oneShotKill
+  player.positiveEffects = { stealth: { endsAt: front.elapsed + 4000 } };
+  assert.equal(issuePlayerAction(front, "skill1"), true); // swiftStrike(암살), 은신 중 치명타
+  assert.equal(Boolean(player.positiveEffects?.stealth), false);
+  assert.equal(issuePlayerAction(front, "skill2"), true); // whirlwindSlash(연막탄), 후퇴 + 재은신
+  assert.equal(Boolean(player.positiveEffects?.stealth), true);
+  assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut(일섬)
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // plumBlossomDance(일격필살)
 
   commander.skillLoadouts.archeryMaehwa = ["fleetStep"];
   const back = createAutoBattle("duneRaiders", "archerymaehwa-back", "field", STARTING_PARTY, {}, { commander });
-  assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep(은신 개화)
+  assert.equal(Boolean(backPlayer.positiveEffects?.stealth), true);
 });
 
-test("마검사(마법매화) 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
+test("마검사(마법매화) 전승은 스킬 4개+궁 1개가 모두 실행되고 화염·냉기·원거리 검기가 적용된다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "magicMaehwa";
   const front = createAutoBattle("duneRaiders", "magicmaehwa-front", "field", STARTING_PARTY, {}, { commander });
   const player = front.units.find((unit) => unit.controlled);
-  player.x = front.enemies[0].x - 5;
+  player.x = front.enemies[0].x - 24;
   player.y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
-  assert.equal(issuePlayerAction(front, "skill1"), true); // elementalStrike
-  assert.equal(issuePlayerAction(front, "skill2"), true); // elementalWhirl
-  assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // elementalBlade
+  assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut(검기), 기본 매화라면 실패할 사거리(24)에서도 명중
+  assert.equal(issuePlayerAction(front, "skill1"), true); // swiftStrike(화염검 일섬) + 화상
+  assert.equal(Boolean(front.enemies[0].statuses?.burn), true);
+  assert.equal(issuePlayerAction(front, "skill2"), true); // whirlwindSlash(빙결검 선풍) + 빙결
+  assert.equal(Boolean(front.enemies[0].statuses?.frost), true);
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // plumBlossomDance(마력 낙화)
 
   commander.skillLoadouts.magicMaehwa = ["fleetStep"];
   const back = createAutoBattle("duneRaiders", "magicmaehwa-back", "field", STARTING_PARTY, {}, { commander });
-  assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  selectPlayerTarget(back, back.enemies[0].id);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep(마력 개화)
+  assert.equal(issuePlayerAction(back, "attack"), true);
+  assert.equal(Boolean(back.enemies[0].statuses?.frost), true); // 냉기 둔화 부여
 });
 
-test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 정령을 소환한다", () => {
+test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 상태이상·소환·재사용 단축이 강화된다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "spiritArchmage";
   const front = createAutoBattle("duneRaiders", "spiritarchmage-front", "field", STARTING_PARTY, {}, { commander });
   const player = front.units.find((unit) => unit.controlled);
   player.x = front.enemies[0].x - 5;
   player.y = front.enemies[0].y;
+  front.enemies[1].x = front.enemies[0].x;
+  front.enemies[1].y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
-  assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt
-  assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova
-  assert.equal(issuePlayerAction(front, "skill3"), true); // spiritBond
+  assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt(폭염창) + 주변 폭발
+  assert.equal(Boolean(front.enemies[1].statuses?.burn), true);
+  assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova(빙결 폭발)
+  assert.equal(Boolean(front.enemies[0].statuses?.frost), true);
+  assert.equal(issuePlayerAction(front, "skill3"), true); // spiritBond(정령 결속)
   assert.equal(front.units.some((unit) => unit.summonType === "spiritWisp"), true);
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // elementalConvergence
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // lightningCage(삼원소 심판, 넓게)
 
-  commander.skillLoadouts.spiritArchmage = ["manaShield"];
+  commander.skillLoadouts.spiritArchmage = ["manaFocusSkill"];
   const back = createAutoBattle("duneRaiders", "spiritarchmage-back", "field", STARTING_PARTY, {}, { commander });
-  assert.equal(issuePlayerAction(back, "skill1"), true); // manaShield
+  back.playerReadyAt.skill2 = back.elapsed + 5000;
+  assert.equal(issuePlayerAction(back, "skill1"), true); // manaFocusSkill(메모라이즈) + 재사용 대기시간 단축
+  assert.ok(back.playerReadyAt.skill2 < back.elapsed + 5000);
 });
 
-test("신성아크 전승은 스킬 4개+궁 1개가 모두 실행되고 아군을 회복시킨다", () => {
+test("신성아크 전승은 스킬 4개+궁 1개가 모두 실행되고 아군을 회복·축복한다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "holyArchmage";
   const front = createAutoBattle("duneRaiders", "holyarchmage-front", "field", STARTING_PARTY, {}, { commander });
@@ -740,14 +767,19 @@ test("신성아크 전승은 스킬 4개+궁 1개가 모두 실행되고 아군�
   player.y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
   for (const unit of front.units) unit.hp = Math.round(unit.maxHp * 0.5);
-  assert.equal(issuePlayerAction(front, "skill1"), true); // sacredBolt
-  assert.equal(issuePlayerAction(front, "skill2"), true); // purifyingWave
-  assert.equal(issuePlayerAction(front, "skill3"), true); // healingWord
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // heavenlyJudgment
+  assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt(성스러운 화살) - 범위 신성 피해 + 자힐
+  assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova(정화의 파동) - 빙결 대신 지속 피해
+  assert.equal(Boolean(front.enemies[0].statuses?.decay), true);
+  assert.equal(Boolean(front.enemies[0].statuses?.frost), false);
+  assert.equal(issuePlayerAction(front, "skill3"), true); // manaShield(성역) + 지속 회복
+  assert.equal(Boolean(player.positiveEffects?.regeneration), true);
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // heavenlyJudgment(천벌)
+  assert.equal(Boolean(player.positiveEffects?.shield), true);
 
-  commander.skillLoadouts.holyArchmage = ["manaShield"];
+  commander.skillLoadouts.holyArchmage = ["manaFocusSkill"];
   const back = createAutoBattle("duneRaiders", "holyarchmage-back", "field", STARTING_PARTY, {}, { commander });
-  assert.equal(issuePlayerAction(back, "skill1"), true); // manaShield
+  for (const unit of back.units) unit.hp = Math.round(unit.maxHp * 0.5);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // manaFocusSkill(치유의 주문) - 아군 치유 + 상태이상 해제
 });
 
 test("정령추적 전승은 스킬 4개+궁 1개가 모두 실행되고 속성 상태이상을 남긴다", () => {

@@ -124,19 +124,19 @@ export const PLAYER_BASE_CLASS_DEFS = {
     },
     passive: {
       id: "windStep",
-      name: "일보 신법",
+      name: "피했쥬",
       glyph: "❀",
       effect: "dodgeChance",
       chance: 0.18,
       description: "일정 확률로 상대의 공격을 완전히 회피한다."
     },
     skills: [
-      { id: "swiftStrike", name: "쾌속검", glyph: "⚔", cooldownMs: 5200, effect: "swiftStrike", description: "목표에게 순식간에 접근해 벤다." },
+      { id: "swiftStrike", name: "발도", glyph: "⚔", cooldownMs: 5200, effect: "swiftStrike", description: "목표에게 순식간에 접근해 벤다." },
       { id: "whirlwindSlash", name: "선풍참", glyph: "❋", cooldownMs: 6600, effect: "whirlwindSlash", description: "자신 주변을 회전하며 벤다." },
-      { id: "phantomCut", name: "환영 베기", glyph: "☾", cooldownMs: 6000, effect: "phantomCut", description: "목표의 이로운 효과를 지우고 크게 벤다." },
-      { id: "fleetStep", name: "쾌보", glyph: "➶", cooldownMs: 8000, effect: "fleetStep", description: "짧은 시간 공격 속도를 크게 높인다." }
+      { id: "phantomCut", name: "일섬", glyph: "☾", cooldownMs: 6000, effect: "phantomCut", description: "목표의 이로운 효과를 지우고 크게 벤다." },
+      { id: "fleetStep", name: "개화", glyph: "➶", cooldownMs: 8000, effect: "fleetStep", description: "짧은 시간 공격 속도가 크게 오르고, 공격할 때마다 상대에게 방어력 감소 표식이 쌓인다." }
     ],
-    ultimate: { id: "plumBlossomDance", name: "매화검무", glyph: "❀", cooldownMs: 12500, effect: "plumBlossomDance", description: "목표의 방어를 무너뜨리며 그만큼 강하게 벤다." }
+    ultimate: { id: "plumBlossomDance", name: "낙화", glyph: "❀", cooldownMs: 12500, effect: "plumBlossomDance", description: "목표에게 쌓인 표식을 모두 터뜨려 순간적으로 크게 벤다." }
   },
   archmage: {
     id: "archmage",
@@ -149,19 +149,19 @@ export const PLAYER_BASE_CLASS_DEFS = {
     },
     passive: {
       id: "manaCirculation",
-      name: "마나 순환",
+      name: "마나 친화",
       glyph: "✦",
       effect: "manaFocus",
       damagePerMana: 0.4,
-      description: "보유한 마나가 많을수록 마법 공격력이 오른다."
+      description: "마나 비율에 비례해 공격력이 오른다 (마나가 가득할수록 강함)."
     },
     skills: [
-      { id: "fireBolt", name: "화염 창", glyph: "♨", cooldownMs: 4400, effect: "fireBolt", description: "단일 적에게 화염 피해를 입히고 화상을 남긴다." },
-      { id: "frostNova", name: "빙결 폭발", glyph: "❄", cooldownMs: 6800, effect: "frostNova", description: "주변 적에게 냉기 피해를 입히고 빙결시킨다." },
-      { id: "manaShield", name: "마나 보호막", glyph: "◈", cooldownMs: 9000, effect: "manaShield", description: "마나를 소모해 피해를 흡수하는 보호막을 두른다." },
-      { id: "manaFocusSkill", name: "마나 집중", glyph: "✧", cooldownMs: 7000, effect: "manaFocusSkill", description: "마나를 회복하고 스스로를 조금 치유한다." }
+      { id: "fireBolt", name: "불 화살", glyph: "♨", cooldownMs: 4400, effect: "fireBolt", description: "단일 적에게 화염 피해를 입히고 화상을 남긴다." },
+      { id: "frostNova", name: "얼음 비", glyph: "❄", cooldownMs: 6800, effect: "frostNova", description: "주변 적에게 냉기 피해를 입히고 빙결시킨다." },
+      { id: "manaShield", name: "마나 쉴드", glyph: "◈", cooldownMs: 9000, effect: "manaShield", description: "마나를 소모해 피해를 흡수하는 보호막을 두른다." },
+      { id: "manaFocusSkill", name: "명상", glyph: "✧", cooldownMs: 7000, effect: "manaFocusSkill", description: "마나를 회복하고 스스로를 조금 치유한다." }
     ],
-    ultimate: { id: "lightningCage", name: "번개 감옥", glyph: "ϟ", cooldownMs: 13500, effect: "lightningCage", description: "좁은 범위에 벼락을 내리쳐 큰 피해를 입히고 기절시킨다." }
+    ultimate: { id: "lightningCage", name: "낙뢰", glyph: "ϟ", cooldownMs: 13500, effect: "lightningCage", description: "좁은 범위에 벼락을 내리쳐 큰 피해를 입히고 기절시킨다." }
   }
 };
 
@@ -404,21 +404,19 @@ export const PLAYER_KIT_DEFS = {
     description: "은신과 일격필살에 특화된 근접 암살형.",
     passive: {
       id: "shadowBlade",
-      name: "그림자 검",
+      name: "은신",
       glyph: "➹",
-      effect: "stealthWhenIdle",
-      idleMs: 2000,
       description: "적과 2초 이상 접촉이 없으면 은신한다. 은신 중 공격은 치명적이다."
     },
     stats: { maxHp: 38, damage: 10, range: 8, speed: 18, attackMs: 580, armor: 0.09, color: "#6a6f8f", glyph: "❀" },
-    defaultLoadout: ["swiftStrike", "shadowExecution", "phantomCut"],
+    defaultLoadout: ["swiftStrike", "whirlwindSlash", "phantomCut"],
     skills: [
-      { id: "swiftStrike", name: "쾌속검", glyph: "⚔", cooldownMs: 5200, effect: "swiftStrike", description: "목표에게 순식간에 접근해 벤다." },
-      { id: "shadowExecution", name: "그림자 처형", glyph: "☾", cooldownMs: 6600, effect: "shadowExecution", description: "체력이 낮은 적을 즉시 처형하듯 크게 벤다." },
-      { id: "phantomCut", name: "환영 베기", glyph: "☾", cooldownMs: 6000, effect: "phantomCut", description: "목표의 이로운 효과를 지우고 크게 벤다." },
-      { id: "fleetStep", name: "쾌보", glyph: "➶", cooldownMs: 8000, effect: "fleetStep", description: "짧은 시간 공격 속도를 크게 높인다." }
+      { id: "swiftStrike", name: "암살", glyph: "⚔", cooldownMs: 5200, effect: "swiftStrike", description: "목표에게 순식간에 접근해 벤다. 은신 중이라면 치명타가 터진다." },
+      { id: "whirlwindSlash", name: "연막탄", glyph: "☾", cooldownMs: 6600, effect: "whirlwindSlash", description: "자신 주변을 벤 뒤 뒤로 물러나며 은신한다." },
+      { id: "phantomCut", name: "일섬", glyph: "☾", cooldownMs: 6000, effect: "phantomCut", description: "목표의 이로운 효과를 지우고 크게 벤다. 일정 확률로 치명타가 터진다." },
+      { id: "fleetStep", name: "은신 개화", glyph: "➶", cooldownMs: 8000, effect: "fleetStep", description: "짧은 시간 공격 속도가 크게 오르고 즉시 은신하며, 공격할 때마다 상대에게 방어력 감소 표식이 쌓인다." }
     ],
-    ultimate: { id: "oneShotKill", name: "일격필살", glyph: "❀", cooldownMs: 14000, effect: "oneShotKill", description: "목표에게 필살의 일격을 가한다. 은신 중이라면 위력이 크게 늘어난다." }
+    ultimate: { id: "plumBlossomDance", name: "일격필살", glyph: "❀", cooldownMs: 14000, effect: "plumBlossomDance", description: "목표에게 쌓인 표식을 모두 터뜨려 크게 벤다. 은신 중이라면 위력이 크게 늘어난다." }
   },
   magicMaehwa: {
     id: "magicMaehwa",
@@ -432,19 +430,19 @@ export const PLAYER_KIT_DEFS = {
     description: "검에 원소 마법을 실어 베는 검사형 마법 전투.",
     passive: {
       id: "elementalEdge",
-      name: "원소 검환",
+      name: "마검술",
       glyph: "✦",
-      description: "베는 공격에 원소의 힘이 실린다."
+      description: "베는 공격에 마법 데미지가 추가로 실린다."
     },
     stats: { maxHp: 40, damage: 9, range: 9, speed: 16, attackMs: 620, armor: 0.1, color: "#8a6fb0", glyph: "❀" },
-    defaultLoadout: ["elementalStrike", "elementalWhirl", "phantomCut"],
+    defaultLoadout: ["swiftStrike", "whirlwindSlash", "phantomCut"],
     skills: [
-      { id: "elementalStrike", name: "화염검 일섬", glyph: "♨", cooldownMs: 5200, effect: "elementalStrike", description: "목표에게 접근해 화염이 실린 일격을 가한다." },
-      { id: "elementalWhirl", name: "빙결검 선풍", glyph: "❄", cooldownMs: 6600, effect: "elementalWhirl", description: "자신 주변을 냉기로 휩쓴다." },
-      { id: "phantomCut", name: "환영 베기", glyph: "☾", cooldownMs: 6000, effect: "phantomCut", description: "목표의 이로운 효과를 지우고 크게 벤다." },
-      { id: "fleetStep", name: "쾌보", glyph: "➶", cooldownMs: 8000, effect: "fleetStep", description: "짧은 시간 공격 속도를 크게 높인다." }
+      { id: "swiftStrike", name: "화염검 일섬", glyph: "♨", cooldownMs: 5200, effect: "swiftStrike", description: "목표에게 접근해 화염이 실린 일격을 가한다." },
+      { id: "whirlwindSlash", name: "빙결검 선풍", glyph: "❄", cooldownMs: 6600, effect: "whirlwindSlash", description: "자신 주변을 냉기로 휩쓴다." },
+      { id: "phantomCut", name: "검기", glyph: "☾", cooldownMs: 6000, effect: "phantomCut", description: "목표의 이로운 효과를 지우고 원거리에서 검기를 발사한다." },
+      { id: "fleetStep", name: "마력 개화", glyph: "➶", cooldownMs: 8000, effect: "fleetStep", description: "짧은 시간 공격 속도가 크게 오르고, 공격할 때마다 상대에게 방어력 감소 표식과 냉기 둔화가 쌓인다." }
     ],
-    ultimate: { id: "elementalBlade", name: "마검 폭풍", glyph: "✦", cooldownMs: 12500, effect: "elementalBlade", description: "목표의 방어를 무너뜨리며 원소 폭발을 일으킨다." }
+    ultimate: { id: "plumBlossomDance", name: "마력 낙화", glyph: "✦", cooldownMs: 12500, effect: "plumBlossomDance", description: "목표에게 쌓인 표식을 모두 터뜨려 크게 베고, 화염과 냉기가 함께 폭발한다." }
   },
   spiritArchmage: {
     id: "spiritArchmage",
@@ -458,19 +456,19 @@ export const PLAYER_KIT_DEFS = {
     description: "원소 마법에 정령 계약을 더해 상태이상을 극대화한다.",
     passive: {
       id: "elementalContract",
-      name: "원소 계약",
+      name: "자연 친화",
       glyph: "♧",
-      description: "상태이상의 위력과 지속시간이 늘어난다."
+      description: "마나가 낮을수록 마나 회복 속도가 오르고, 상태이상의 위력과 지속시간도 늘어난다."
     },
     stats: { maxHp: 32, damage: 9, range: 24, speed: 13, attackMs: 900, armor: 0.05, color: "#6ab08f", glyph: "✦" },
     defaultLoadout: ["fireBolt", "frostNova", "spiritBond"],
     skills: [
-      { id: "fireBolt", name: "화염 창", glyph: "♨", cooldownMs: 4400, effect: "fireBolt", description: "단일 적에게 화염 피해를 입히고 화상을 남긴다." },
-      { id: "frostNova", name: "빙결 폭발", glyph: "❄", cooldownMs: 6800, effect: "frostNova", description: "주변 적에게 냉기 피해를 입히고 빙결시킨다." },
+      { id: "fireBolt", name: "폭염창", glyph: "♨", cooldownMs: 4400, effect: "fireBolt", description: "단일 적에게 화염 피해를 입히고 화상을 남기며, 주변까지 폭발이 번진다." },
+      { id: "frostNova", name: "빙결 폭발", glyph: "❄", cooldownMs: 6800, effect: "frostNova", description: "주변 적에게 냉기 피해를 입히고 빙결시킨다. 이미 얼어붙은 적에게는 추가 피해가 들어간다." },
       { id: "spiritBond", name: "정령 결속", glyph: "♧", cooldownMs: 8600, effect: "spiritBond", description: "마나를 소모해 작은 정령을 소환한다." },
-      { id: "manaShield", name: "마나 보호막", glyph: "◈", cooldownMs: 9000, effect: "manaShield", description: "마나를 소모해 피해를 흡수하는 보호막을 두른다." }
+      { id: "manaFocusSkill", name: "메모라이즈", glyph: "✧", cooldownMs: 7000, effect: "manaFocusSkill", description: "마나를 회복하고 스스로를 조금 치유하며, 다음 스킬들의 재사용 대기시간을 크게 당긴다." }
     ],
-    ultimate: { id: "elementalConvergence", name: "삼원소 심판", glyph: "✦", cooldownMs: 14000, effect: "elementalConvergence", description: "목표 주변에 화염·냉기·부패를 함께 퍼붓는다." }
+    ultimate: { id: "lightningCage", name: "삼원소 심판", glyph: "✦", cooldownMs: 14000, effect: "lightningCage", description: "넓은 범위에 벼락을 내리쳐 피해를 입히고 기절시킨다. 좁고 강한 기본형과 달리 넓고 약하게 퍼진다." }
   },
   holyArchmage: {
     id: "holyArchmage",
@@ -484,19 +482,19 @@ export const PLAYER_KIT_DEFS = {
     description: "공격 마법을 신성 속성으로 바꾸어 아군을 함께 치유한다.",
     passive: {
       id: "sacredCircuit",
-      name: "신성 회로",
+      name: "마나 친화",
       glyph: "✧",
-      description: "보유한 마나가 많을수록 회복력이 오른다."
+      description: "마나 비율에 비례해 아군 전체의 공격력이 오르고, 보유한 마나가 많을수록 자신의 회복력도 오른다."
     },
     stats: { maxHp: 34, damage: 8, range: 22, speed: 14, attackMs: 880, armor: 0.06, color: "#c0a866", glyph: "✦" },
-    defaultLoadout: ["sacredBolt", "purifyingWave", "healingWord"],
+    defaultLoadout: ["fireBolt", "frostNova", "manaShield"],
     skills: [
-      { id: "sacredBolt", name: "성스러운 화살", glyph: "✧", cooldownMs: 4600, effect: "sacredBolt", description: "단일 적에게 신성 피해를 입히고 스스로를 조금 회복한다." },
-      { id: "purifyingWave", name: "정화의 파동", glyph: "☼", cooldownMs: 6800, effect: "purifyingWave", description: "주변 적에게 신성 피해를 입힌다." },
-      { id: "healingWord", name: "치유의 주문", glyph: "✚", cooldownMs: 6200, effect: "healingWord", description: "마나를 소모해 가장 다친 아군을 회복한다." },
-      { id: "manaShield", name: "마나 보호막", glyph: "◈", cooldownMs: 9000, effect: "manaShield", description: "마나를 소모해 피해를 흡수하는 보호막을 두른다." }
+      { id: "fireBolt", name: "성스러운 화살", glyph: "✧", cooldownMs: 4400, effect: "fireBolt", description: "목표 주변에 신성 피해를 입히고 스스로를 조금 회복한다." },
+      { id: "frostNova", name: "정화의 파동", glyph: "☼", cooldownMs: 6800, effect: "frostNova", description: "주변 적에게 신성 피해를 입히고 지속 피해를 남긴다." },
+      { id: "manaShield", name: "성역", glyph: "◈", cooldownMs: 9000, effect: "manaShield", description: "마나를 소모해 피해를 흡수하는 보호막을 두르고, 스스로 지속 회복한다." },
+      { id: "manaFocusSkill", name: "치유의 주문", glyph: "✚", cooldownMs: 7000, effect: "manaFocusSkill", description: "마나를 회복하고, 가장 다친 아군을 회복시키며 상태이상을 해제한다." }
     ],
-    ultimate: { id: "heavenlyJudgment", name: "천상의 심판", glyph: "✦", cooldownMs: 14000, effect: "heavenlyJudgment", description: "목표 주변에 신성 파도를 일으키고 아군 전체를 회복시킨다." }
+    ultimate: { id: "heavenlyJudgment", name: "천벌", glyph: "✦", cooldownMs: 14000, effect: "heavenlyJudgment", description: "목표 주변에 신성 파도를 일으켜 연속으로 피해를 입히고 아군 전체를 회복·축복한다." }
   },
   spiritTracker: {
     id: "spiritTracker",

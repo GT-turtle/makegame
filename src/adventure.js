@@ -887,10 +887,16 @@ function applyBasePassiveEffect(battle, unit, passive) {
     const manaRatio = unit.maxMana > 0 ? unit.mana / unit.maxMana : 1;
     unit.passiveDamageMultiplier = 1 + manaRatio * (passive.damagePerMana || 0.4);
   } else if (passive.effect === "stealthWhenIdle") {
-    const idleFor = battle.elapsed - (state.lastActionAt || 0);
-    if (idleFor >= (passive.idleMs || 3000)) {
-      unit.positiveEffects ||= {};
-      unit.positiveEffects.stealth = { endsAt: battle.elapsed + 500 };
+    const isPlayer = unit.id === battle.playerId;
+    if (isPlayer && battle.playerKitId === "heavyTracker") {
+      // 중갑 추적자는 은신 대신 저격 태세를 쓰므로 자동 은신을 받지 않는다.
+    } else {
+      const idleMs = isPlayer && battle.playerKitId === "spiritTracker" ? 1800 : (passive.idleMs || 3000);
+      const idleFor = battle.elapsed - (state.lastActionAt || 0);
+      if (idleFor >= idleMs) {
+        unit.positiveEffects ||= {};
+        unit.positiveEffects.stealth = { endsAt: battle.elapsed + 500 };
+      }
     }
   }
 }
@@ -898,6 +904,14 @@ function applyBasePassiveEffect(battle, unit, passive) {
 function refreshBaseClassPassive(battle) {
   const player = battle.units.find((unit) => unit.id === battle.playerId);
   if (player?.hp > 0 && battle.playerBasePassive) applyBasePassiveEffect(battle, player, battle.playerBasePassive);
+  if (player?.hp > 0 && battle.playerKitId === "archeryMaehwa") {
+    const state = battle.passiveState?.[battle.playerId];
+    const idleFor = battle.elapsed - (state?.lastActionAt || 0);
+    if (idleFor >= 2000) {
+      player.positiveEffects ||= {};
+      player.positiveEffects.stealth = { endsAt: battle.elapsed + 500 };
+    }
+  }
   for (const companion of battle.units) {
     if (companion.id === battle.playerId || companion.hp <= 0 || !companion.basePassive) continue;
     applyBasePassiveEffect(battle, companion, companion.basePassive);
@@ -1030,7 +1044,8 @@ export function tickAutoBattle(battle, deltaMs) {
     const rawDamage = actor.damage * (actor.passiveDamageMultiplier || 1) * chargeDamage * lowHealthBonus * carryBonus;
     const fullDamage = Math.max(1, Math.round(rawDamage * guardReduction * armorReduction));
     const isPlayerTarget = target.id === battle.playerId;
-    const dodgeChance = target.team === "unit" && target.basePassive?.effect === "dodgeChance" ? target.basePassive.chance || 0 : 0;
+    const dodgeChance = (target.team === "unit" && target.basePassive?.effect === "dodgeChance" ? target.basePassive.chance || 0 : 0)
+      + (isPlayerTarget ? Math.min(0.3, (actor.maehwaMarks || 0) * 0.05) : 0);
     const dodged = dodgeChance > 0 && Math.random() < dodgeChance;
     actor.cooldown = actor.attackMs;
     actor.telegraphTargetId = null;
@@ -1226,10 +1241,18 @@ function applyKitPassive(battle, player) {
   }
   if (battle.playerKitId === "spiritArchmage") {
     player.statusPotency = Math.max(player.statusPotency || 1, 1.25);
+    const manaRatio = player.maxMana > 0 ? player.mana / player.maxMana : 0;
+    player.manaRegenBase ??= player.manaRegen;
+    player.manaRegen = player.manaRegenBase * (1 + (1 - manaRatio) * 0.8);
   }
   if (battle.playerKitId === "holyArchmage") {
     const manaRatio = player.maxMana > 0 ? player.mana / player.maxMana : 0;
     player.healingPower = Math.max(player.healingPower || 1, 1 + manaRatio * 0.5);
+    const allyMultiplier = 1 + manaRatio * 0.3;
+    for (const ally of living(battle.units)) {
+      if (ally.id === player.id) continue;
+      ally.passiveDamageMultiplier = allyMultiplier;
+    }
   }
   if (battle.playerKitId === "heavyTracker" && player.positiveEffects?.siegeMode?.endsAt > battle.elapsed) {
     player.defenseUntil = Math.max(player.defenseUntil || 0, battle.elapsed + 1500);
@@ -1484,51 +1507,116 @@ function resolvePlayerSkill(battle, player, skill) {
   } else if (skill.effect === "swiftStrike") {
     if (!target) return false;
     dashToTarget(player, target, 5);
-    const damage = damageCombatant(player, target, 1.4);
-    pushBattleLog(battle, `${skill.name}: ${target.name}에게 접근해 ${damage} 피해`);
+    const stealthy = battle.playerKitId === "archeryMaehwa" && Boolean(player.positiveEffects?.stealth);
+    const damage = damageCombatant(player, target, stealthy ? 2.6 : 1.4);
+    if (stealthy) delete player.positiveEffects.stealth;
+    if (battle.playerKitId === "magicMaehwa" && target.hp > 0) applyCombatStatus(battle, target, "burn", player);
+    pushBattleLog(battle, `${skill.name}: ${target.name}에게 접근해 ${damage} 피해${stealthy ? " · 은신 암습" : ""}`);
   } else if (skill.effect === "whirlwindSlash") {
     const result = damageArea(battle, player, player, 18, 0.85);
+    if (battle.playerKitId === "magicMaehwa") {
+      for (const enemy of result.targets) if (enemy.hp > 0) applyCombatStatus(battle, enemy, "frost", player, { stacks: 1 });
+    }
+    if (battle.playerKitId === "archeryMaehwa") {
+      const nearest = nearestTarget(player, living(battle.enemies));
+      if (nearest) retreatFromTarget(player, nearest, 10);
+      player.positiveEffects ||= {};
+      player.positiveEffects.stealth = { endsAt: battle.elapsed + 2000 };
+    }
     pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격`);
   } else if (skill.effect === "phantomCut") {
-    if (!target || distanceBetween(player, target) > 20) return false;
+    const maxRange = battle.playerKitId === "magicMaehwa" ? 50 : 20;
+    if (!target || distanceBetween(player, target) > maxRange) return false;
     const hadBuffs = Boolean(target.positiveEffects && Object.keys(target.positiveEffects).length);
     target.positiveEffects = {};
-    const damage = damageCombatant(player, target, hadBuffs ? 2.0 : 1.6);
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${hadBuffs ? " · 이로운 효과 제거" : ""}`);
+    const critical = battle.playerKitId === "archeryMaehwa" && Math.random() < 0.35;
+    const damage = damageCombatant(player, target, (hadBuffs ? 2.0 : 1.6) * (critical ? 1.5 : 1));
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${hadBuffs ? " · 이로운 효과 제거" : ""}${critical ? " · 치명타" : ""}`);
   } else if (skill.effect === "fleetStep") {
     player.positiveEffects ||= {};
     player.positiveEffects.haste = { speedMultiplier: 1.15, attackSpeedMultiplier: 1.5, endsAt: battle.elapsed + 5000 };
-    pushBattleLog(battle, `${skill.name}: 공격 속도가 크게 상승`);
+    player.positiveEffects.decayOnHit = { endsAt: battle.elapsed + 5000 };
+    if (battle.playerKitId === "archeryMaehwa") player.positiveEffects.stealth = { endsAt: battle.elapsed + 1500 };
+    pushBattleLog(battle, `${skill.name}: 공격 속도가 크게 상승 · 표식 부여 시작`);
   } else if (skill.effect === "plumBlossomDance") {
     if (!target || distanceBetween(player, target) > 22) return false;
-    const existingShred = target.statuses?.decay?.armorShred || 0;
-    const damage = damageCombatant(player, target, 1.5 + existingShred * 3);
-    if (target.hp > 0) applyCombatStatus(battle, target, "decay", player, { armorShred: 0.18 });
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 방어 붕괴`);
+    const marks = target.maehwaMarks || 0;
+    const stealthy = battle.playerKitId === "archeryMaehwa" && Boolean(player.positiveEffects?.stealth);
+    const damage = damageCombatant(player, target, 1.5 + marks * 0.3 + (stealthy ? 1.0 : 0));
+    target.maehwaMarks = 0;
+    if (stealthy) delete player.positiveEffects.stealth;
+    if (battle.playerKitId === "magicMaehwa" && target.hp > 0) {
+      applyCombatStatus(battle, target, "burn", player);
+      applyCombatStatus(battle, target, "frost", player, { stacks: 1 });
+    }
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 표식 제거${stealthy ? " · 은신 일격" : ""}`);
   } else if (skill.effect === "fireBolt") {
     if (!target || distanceBetween(player, target) > 55) return false;
-    const damage = damageCombatant(player, target, 1.4);
-    if (target.hp > 0) applyCombatStatus(battle, target, "burn", player);
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 화상`);
+    if (battle.playerKitId === "holyArchmage") {
+      const result = damageArea(battle, player, target, 20, 1.1);
+      const healed = healCombatant(player, Math.round(player.maxHp * 0.06));
+      pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 신성 피해 · 자신 ${healed} 회복`);
+    } else {
+      const damage = damageCombatant(player, target, 1.4);
+      if (target.hp > 0) applyCombatStatus(battle, target, "burn", player);
+      if (battle.playerKitId === "spiritArchmage") {
+        const nearby = living(battle.enemies).filter((enemy) => enemy.id !== target.id && distanceBetween(target, enemy) <= 14);
+        for (const enemy of nearby) {
+          damageCombatant(player, enemy, 0.8);
+          if (enemy.hp > 0) applyCombatStatus(battle, enemy, "burn", player);
+        }
+      }
+      pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 화상`);
+    }
   } else if (skill.effect === "frostNova") {
     if (!target || distanceBetween(player, target) > 55) return false;
-    const result = damageArea(battle, player, target, 22, 0.9);
-    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "frost", player, { stacks: 1 });
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 냉기 피해 · 빙결`);
+    if (battle.playerKitId === "holyArchmage") {
+      const result = damageArea(battle, player, target, 22, 0.9);
+      for (const enemy of result.targets) applyCombatStatus(battle, enemy, "decay", player);
+      pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 신성 피해 · 지속 피해`);
+    } else {
+      const alreadyFrosted = new Set(living(battle.enemies).filter((enemy) => enemy.statuses?.frost).map((enemy) => enemy.id));
+      const result = damageArea(battle, player, target, 22, 0.9);
+      for (const enemy of result.targets) {
+        if (battle.playerKitId === "spiritArchmage" && alreadyFrosted.has(enemy.id) && enemy.hp > 0) damageCombatant(player, enemy, 0.6);
+        applyCombatStatus(battle, enemy, "frost", player, { stacks: 1 });
+      }
+      pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 냉기 피해 · 빙결`);
+    }
   } else if (skill.effect === "manaShield") {
     const cost = Math.min(player.mana || 0, Math.max(20, Math.round((player.maxMana || 0) * 0.4)));
     if (cost <= 0) return false;
     player.mana -= cost;
     player.positiveEffects ||= {};
     player.positiveEffects.shield = { amount: Math.round(cost * 1.2), endsAt: battle.elapsed + 8000 };
-    pushBattleLog(battle, `${skill.name}: 마나 ${cost} 소모 · 보호막 ${Math.round(cost * 1.2)}`);
+    if (battle.playerKitId === "holyArchmage") {
+      player.positiveEffects.regeneration = { amount: Math.max(1, Math.round(player.maxHp * 0.03)), nextTickAt: battle.elapsed + 1000, endsAt: battle.elapsed + 8000 };
+    }
+    pushBattleLog(battle, `${skill.name}: 마나 ${cost} 소모 · 보호막 ${Math.round(cost * 1.2)}${battle.playerKitId === "holyArchmage" ? " · 지속 회복" : ""}`);
   } else if (skill.effect === "manaFocusSkill") {
     player.mana = Math.min(player.maxMana || 0, (player.mana || 0) + Math.round((player.maxMana || 0) * 0.35));
     const healed = healCombatant(player, Math.round(player.maxHp * 0.08));
-    pushBattleLog(battle, `${skill.name}: 마나 회복 · 자신 ${healed} 회복`);
+    if (battle.playerKitId === "spiritArchmage") {
+      for (const key of ["skill1", "skill2", "skill3", "ultimate"]) {
+        if (battle.playerReadyAt[key]) battle.playerReadyAt[key] = Math.max(battle.elapsed, battle.playerReadyAt[key] - 3000);
+      }
+      pushBattleLog(battle, `${skill.name}: 마나 회복 · 자신 ${healed} 회복 · 재사용 대기시간 단축`);
+    } else if (battle.playerKitId === "holyArchmage") {
+      const ally = living(battle.units).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
+      if (ally) {
+        const dispelled = dispelHarmfulStatus(ally);
+        const allyHealed = healCombatant(ally, 14 * (player.healingPower || 1));
+        pushBattleLog(battle, `${skill.name}: 마나 회복 · ${ally.name} ${allyHealed} 회복${dispelled ? " · 상태이상 해제" : ""}`);
+      } else {
+        pushBattleLog(battle, `${skill.name}: 마나 회복 · 자신 ${healed} 회복`);
+      }
+    } else {
+      pushBattleLog(battle, `${skill.name}: 마나 회복 · 자신 ${healed} 회복`);
+    }
   } else if (skill.effect === "lightningCage") {
     if (!target || distanceBetween(player, target) > 50) return false;
-    const result = damageArea(battle, player, target, 12, 1.6);
+    const wide = battle.playerKitId === "spiritArchmage";
+    const result = damageArea(battle, player, target, wide ? 22 : 12, wide ? 1.0 : 1.6);
     for (const enemy of result.targets) applyCombatStatus(battle, enemy, "stun", player, { durationMs: 1000 });
     pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 벼락 · 기절`);
   } else if (skill.effect === "heavyBlessing") {
@@ -1575,36 +1663,6 @@ function resolvePlayerSkill(battle, player, skill) {
     for (const enemy of result.targets) applyCombatStatus(battle, enemy, "bleed", player, { stacks: 3 });
     battle.vengeanceStored = 0;
     pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 복수의 출혈`);
-  } else if (skill.effect === "shadowExecution") {
-    if (!target || distanceBetween(player, target) > 22) return false;
-    const lowHp = target.hp / target.maxHp <= 0.4;
-    const damage = damageCombatant(player, target, lowHp ? 2.6 : 1.4);
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${lowHp ? " · 처형" : ""}`);
-  } else if (skill.effect === "oneShotKill") {
-    if (!target || distanceBetween(player, target) > 22) return false;
-    const stealthy = Boolean(player.positiveEffects?.stealth);
-    const damage = damageCombatant(player, target, stealthy ? 3.6 : 2.2);
-    if (stealthy) delete player.positiveEffects.stealth;
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${stealthy ? " · 은신 일격" : ""}`);
-  } else if (skill.effect === "elementalStrike") {
-    if (!target) return false;
-    dashToTarget(player, target, 5);
-    const damage = damageCombatant(player, target, 1.4);
-    if (target.hp > 0) applyCombatStatus(battle, target, "burn", player);
-    pushBattleLog(battle, `${skill.name}: ${target.name}에게 접근해 ${damage} 피해 · 화상`);
-  } else if (skill.effect === "elementalWhirl") {
-    const result = damageArea(battle, player, player, 18, 0.85);
-    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "frost", player, { stacks: 1 });
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 냉기 피해`);
-  } else if (skill.effect === "elementalBlade") {
-    if (!target || distanceBetween(player, target) > 22) return false;
-    const existingShred = target.statuses?.decay?.armorShred || 0;
-    const damage = damageCombatant(player, target, 1.5 + existingShred * 3);
-    if (target.hp > 0) {
-      applyCombatStatus(battle, target, "burn", player);
-      applyCombatStatus(battle, target, "frost", player, { stacks: 1 });
-    }
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 원소 폭발`);
   } else if (skill.effect === "spiritBond") {
     const cost = 25;
     if ((player.mana || 0) < cost) return false;
@@ -1633,28 +1691,15 @@ function resolvePlayerSkill(battle, player, skill) {
       applyCombatStatus(battle, enemy, "decay", player);
     }
     pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 삼원소 재앙`);
-  } else if (skill.effect === "sacredBolt") {
-    if (!target || distanceBetween(player, target) > 55) return false;
-    const damage = damageCombatant(player, target, 1.4);
-    healCombatant(player, Math.round(damage * 0.25));
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 자신 회복`);
-  } else if (skill.effect === "purifyingWave") {
-    if (!target || distanceBetween(player, target) > 55) return false;
-    const result = damageArea(battle, player, target, 22, 0.9);
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 신성 피해`);
-  } else if (skill.effect === "healingWord") {
-    const cost = 20;
-    if ((player.mana || 0) < cost) return false;
-    const ally = living(battle.units).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
-    if (!ally) return false;
-    player.mana -= cost;
-    const healed = healCombatant(ally, 14 * (player.healingPower || 1));
-    pushBattleLog(battle, `${skill.name}: ${ally.name} ${healed} 회복`);
   } else if (skill.effect === "heavenlyJudgment") {
     if (!target || distanceBetween(player, target) > 55) return false;
     const result = damageArea(battle, player, target, 26, 1.1);
-    for (const unit of living(battle.units)) healCombatant(unit, 10 * (player.healingPower || 1));
-    pushBattleLog(battle, `${skill.name}: ${result.targets.length}명 타격 · 아군 전체 회복`);
+    for (const unit of living(battle.units)) {
+      healCombatant(unit, 10 * (player.healingPower || 1));
+      unit.positiveEffects ||= {};
+      unit.positiveEffects.shield = { amount: Math.round(unit.maxHp * 0.08), endsAt: battle.elapsed + 4000 };
+    }
+    pushBattleLog(battle, `${skill.name}: ${result.targets.length}명 타격 · 아군 전체 회복 및 축복`);
   } else if (skill.effect === "piercingShot") {
     if (!target || distanceBetween(player, target) > 55) return false;
     const sieged = Boolean(player.positiveEffects?.siegeMode);
@@ -1698,6 +1743,10 @@ export function issuePlayerAction(battle, action) {
     if (stealthy) delete player.positiveEffects.stealth;
     if (target.hp > 0 && battle.playerKitId === "spiritBarbarian") applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
     if (target.hp > 0 && battle.playerKitId === "heavyTracker" && player.positiveEffects?.siegeMode?.endsAt > battle.elapsed) knockback(player, target, 5);
+    if (target.hp > 0 && player.positiveEffects?.decayOnHit?.endsAt > battle.elapsed) {
+      target.maehwaMarks = Math.min(5, (target.maehwaMarks || 0) + 1);
+      if (battle.playerKitId === "magicMaehwa") applyCombatStatus(battle, target, "frost", player, { stacks: 1 });
+    }
     const lifeSteal = player.positiveEffects?.berserk?.endsAt > battle.elapsed ? player.positiveEffects.berserk.lifeSteal || 0 : 0;
     if (lifeSteal > 0) player.hp = Math.min(player.maxHp, player.hp + Math.max(1, Math.round(damage * lifeSteal)));
     battle.playerReadyAt.attack = battle.elapsed + player.attackMs / hasteAttackDivisor(player, battle);
