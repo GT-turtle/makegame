@@ -582,7 +582,7 @@ test("매화 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다
   assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep
 });
 
-test("바바리안의 정령 전사 전승은 스킬 4개+궁 1개가 모두 실행되고 늑대형에서 스킬이 바뀐다", () => {
+test("바바리안의 정령 전사 전승은 스킬 4개+궁 1개가 모두 실행되고 출혈·늑대 변신 보너스가 적용된다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "spiritBarbarian";
   const front = createAutoBattle("duneRaiders", "spiritbarbarian-front", "field", STARTING_PARTY, {}, { commander });
@@ -590,23 +590,21 @@ test("바바리안의 정령 전사 전승은 스킬 4개+궁 1개가 모두 실
   player.x = front.enemies[0].x - 5;
   player.y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
-  assert.equal(issuePlayerAction(front, "skill1"), true); // rendingClaw (human form)
-  assert.equal(issuePlayerAction(front, "skill2"), true); // sweepingClaw (human form)
-  assert.equal(issuePlayerAction(front, "skill3"), true); // wildRecovery
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // werewolfForm
+  assert.equal(issuePlayerAction(front, "skill1"), true); // battleRoar
+  assert.equal(issuePlayerAction(front, "skill2"), true); // earthSlam (+ 출혈)
+  assert.equal(Boolean(front.enemies[0].statuses?.bleed), true);
+  assert.equal(issuePlayerAction(front, "skill3"), true); // recklessCharge (+ 돌격 강화)
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // berserkerRage (+ 늑대 변신)
   assert.equal(Boolean(player.positiveEffects?.wolfForm), true);
-  front.playerReadyAt.skill1 = 0;
-  player.x = front.enemies[1].x - 40;
-  player.y = front.enemies[1].y;
-  selectPlayerTarget(front, front.enemies[1].id);
-  assert.equal(issuePlayerAction(front, "skill1"), true); // rendingClaw (wolf form, dashes in)
+  assert.equal(player.positiveEffects?.berserk?.bonus, 0.5);
 
-  commander.skillLoadouts.spiritBarbarian = ["menacingRoar"];
+  commander.skillLoadouts.spiritBarbarian = ["cleave"];
   const back = createAutoBattle("duneRaiders", "spiritbarbarian-back", "field", STARTING_PARTY, {}, { commander });
   const backPlayer = back.units.find((unit) => unit.controlled);
   backPlayer.x = back.enemies[0].x - 5;
   backPlayer.y = back.enemies[0].y;
-  assert.equal(issuePlayerAction(back, "skill1"), true); // menacingRoar
+  selectPlayerTarget(back, back.enemies[0].id);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // cleave (+ 공격력 대폭 증가)
 });
 
 test("아크메이지 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다", () => {

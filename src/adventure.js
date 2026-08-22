@@ -876,10 +876,6 @@ function applyBasePassiveEffect(battle, unit, passive) {
       unit.positiveEffects ||= {};
       unit.positiveEffects.stealth = { endsAt: battle.elapsed + 500 };
     }
-  } else if (passive.effect === "formAdaptive") {
-    const transformed = Boolean(unit.positiveEffects?.wolfForm);
-    unit.armor = Math.min(0.58, (unit.rageBaseArmor ??= unit.armor) + (transformed ? 0 : (passive.formArmorBonus || 0.08)));
-    unit.passiveDamageMultiplier = 1 + (transformed ? (passive.formDamageBonus || 0.25) : 0);
   }
 }
 
@@ -1203,11 +1199,6 @@ function applyKitPassive(battle, player) {
     player.necroBaseArmor ??= player.armor;
     player.armor = Math.min(0.58, player.necroBaseArmor + stacks * 0.03);
   }
-  if (battle.playerKitId === "spiritBarbarian" && player.positiveEffects?.wolfForm?.endsAt > battle.elapsed) {
-    player.defenseUntil = Math.max(player.defenseUntil || 0, battle.elapsed + 1200);
-    player.defenseMultiplier = Math.min(player.defenseMultiplier ?? 1, 0.8);
-    healCombatant(player, 4);
-  }
   if (battle.playerKitId === "archeryNecromancer") {
     const stacks = battle.passiveState?.[battle.playerId]?.soulStacks || 0;
     const surge = player.positiveEffects?.spiritSurge?.endsAt > battle.elapsed ? 0.3 : 0;
@@ -1377,27 +1368,43 @@ function resolvePlayerSkill(battle, player, skill) {
     }
     pushBattleLog(battle, `${skill.name}: 자신 방어 강화 · 소량 회복${extra}`);
   } else if (skill.effect === "battleRoar") {
+    const isSpiritBarbarian = battle.playerKitId === "spiritBarbarian";
     const missing = player.hp > 0 ? 1 - player.hp / player.maxHp : 0;
-    const factor = 1.25 + missing * 0.35;
+    const berserkActive = player.positiveEffects?.berserk?.endsAt > battle.elapsed;
+    const factor = (isSpiritBarbarian ? 1.35 : 1.25) + missing * (isSpiritBarbarian ? 0.5 : 0.35) + (berserkActive ? 0.2 : 0);
     player.positiveEffects ||= {};
     player.positiveEffects.haste = { speedMultiplier: factor, attackSpeedMultiplier: factor, endsAt: battle.elapsed + 5000 };
     pushBattleLog(battle, `${skill.name}: 공격·이동 속도 상승`);
   } else if (skill.effect === "earthSlam") {
     const result = damageArea(battle, player, player, 20, 1.0);
+    if (battle.playerKitId === "spiritBarbarian") {
+      for (const enemy of result.targets) if (enemy.hp > 0) applyCombatStatus(battle, enemy, "bleed", player, { stacks: 1 });
+    }
     pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격`);
   } else if (skill.effect === "recklessCharge") {
     if (!target) return false;
-    dashToTarget(player, target, 6);
+    const isSpiritBarbarian = battle.playerKitId === "spiritBarbarian";
+    dashToTarget(player, target, isSpiritBarbarian ? 2 : 6);
     const damage = damageCombatant(player, target, 1.5);
+    if (isSpiritBarbarian) {
+      player.positiveEffects ||= {};
+      player.positiveEffects.haste = { speedMultiplier: 1.3, attackSpeedMultiplier: 1.3, endsAt: battle.elapsed + 2000 };
+    }
     pushBattleLog(battle, `${skill.name}: ${target.name}에게 돌진해 ${damage} 피해`);
   } else if (skill.effect === "cleave") {
     if (!target || distanceBetween(player, target) > 18) return false;
-    const damage = damageCombatant(player, target, 1.6);
+    const damage = damageCombatant(player, target, battle.playerKitId === "spiritBarbarian" ? 2.4 : 1.6);
     pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
   } else if (skill.effect === "berserkerRage") {
+    const isSpiritBarbarian = battle.playerKitId === "spiritBarbarian";
     player.positiveEffects ||= {};
-    player.positiveEffects.berserk = { bonus: 0.35, lifeSteal: 0.25, endsAt: battle.elapsed + 8000 };
-    pushBattleLog(battle, `${skill.name}: 격노가 폭증하고 흡혈이 붙었다.`);
+    player.positiveEffects.berserk = { bonus: isSpiritBarbarian ? 0.5 : 0.35, lifeSteal: 0.25, endsAt: battle.elapsed + 8000 };
+    if (isSpiritBarbarian) {
+      player.positiveEffects.wolfForm = { endsAt: battle.elapsed + 8000 };
+      pushBattleLog(battle, `${skill.name}: 격노가 폭증하고 늑대인간으로 변신했다.`);
+    } else {
+      pushBattleLog(battle, `${skill.name}: 격노가 폭증하고 흡혈이 붙었다.`);
+    }
   } else if (skill.effect === "aimedShot") {
     if (!target || distanceBetween(player, target) > 60) return false;
     const damage = damageCombatant(player, target, 1.5);
@@ -1444,33 +1451,6 @@ function resolvePlayerSkill(battle, player, skill) {
     const damage = damageCombatant(player, target, 1.5 + existingShred * 3);
     if (target.hp > 0) applyCombatStatus(battle, target, "decay", player, { armorShred: 0.18 });
     pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 방어 붕괴`);
-  } else if (skill.effect === "rendingClaw") {
-    if (!target) return false;
-    const transformed = Boolean(player.positiveEffects?.wolfForm);
-    if (!transformed && distanceBetween(player, target) > 18) return false;
-    if (transformed) dashToTarget(player, target, 5);
-    const damage = damageCombatant(player, target, transformed ? 1.6 : 1.3);
-    if (transformed && target.hp > 0) applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
-  } else if (skill.effect === "sweepingClaw") {
-    const transformed = Boolean(player.positiveEffects?.wolfForm);
-    const result = damageArea(battle, player, player, transformed ? 24 : 18, transformed ? 1.1 : 0.75);
-    if (transformed) for (const enemy of result.targets) if (enemy.hp > 0) applyCombatStatus(battle, enemy, "bleed", player, { stacks: 1 });
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격`);
-  } else if (skill.effect === "wildRecovery") {
-    const healed = healCombatant(player, Math.round(player.maxHp * 0.18));
-    player.positiveEffects ||= {};
-    player.positiveEffects.regeneration = { amount: Math.max(1, Math.round(player.maxHp * 0.03)), nextTickAt: battle.elapsed + 1000, endsAt: battle.elapsed + 4000 };
-    pushBattleLog(battle, `${skill.name}: 자신 ${healed} 회복 · 지속 회복`);
-  } else if (skill.effect === "menacingRoar") {
-    const feared = living(battle.enemies).filter((enemy) => distanceBetween(player, enemy) <= 22);
-    for (const enemy of feared) applyCombatStatus(battle, enemy, "stun", player, { durationMs: 1200 });
-    pushBattleLog(battle, `${skill.name}: 적 ${feared.length}명을 위협해 묶었다.`);
-  } else if (skill.effect === "werewolfForm") {
-    player.positiveEffects ||= {};
-    player.positiveEffects.wolfForm = { endsAt: battle.elapsed + 9000 };
-    player.positiveEffects.haste = { speedMultiplier: 1.3, attackSpeedMultiplier: 1.3, endsAt: battle.elapsed + 9000 };
-    pushBattleLog(battle, `${skill.name}: 늑대인간으로 변신했다.`);
   } else if (skill.effect === "fireBolt") {
     if (!target || distanceBetween(player, target) > 55) return false;
     const damage = damageCombatant(player, target, 1.4);
@@ -1690,12 +1670,15 @@ export function issuePlayerAction(battle, action) {
     target.hp = Math.max(0, target.hp - damage);
     target.lastHit = 260;
     if (stealthy) delete player.positiveEffects.stealth;
-    if (target.hp > 0 && player.positiveEffects?.wolfForm) applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
+    if (target.hp > 0 && battle.playerKitId === "spiritBarbarian") applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
     const lifeSteal = player.positiveEffects?.berserk?.endsAt > battle.elapsed ? player.positiveEffects.berserk.lifeSteal || 0 : 0;
     if (lifeSteal > 0) player.hp = Math.min(player.maxHp, player.hp + Math.max(1, Math.round(damage * lifeSteal)));
     battle.playerReadyAt.attack = battle.elapsed + player.attackMs / hasteAttackDivisor(player, battle);
     markPlayerActive(battle);
-    if (target.hp <= 0) pushBattleLog(battle, `개척자가 ${target.name}을 쓰러뜨렸다.`);
+    if (target.hp <= 0) {
+      pushBattleLog(battle, `개척자가 ${target.name}을 쓰러뜨렸다.`);
+      if (player.positiveEffects?.wolfForm?.endsAt > battle.elapsed) player.positiveEffects.wolfForm.endsAt += 3000;
+    }
     refreshBaseClassPassive(battle);
     return true;
   }

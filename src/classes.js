@@ -72,7 +72,7 @@ export const PLAYER_BASE_CLASS_DEFS = {
     },
     passive: {
       id: "berserkVigor",
-      name: "격노",
+      name: "나를 죽이지 못한 고통은 성장하게 한다",
       glyph: "Ϟ",
       effect: "rageScaling",
       damagePerMissing: 0.6,
@@ -81,12 +81,12 @@ export const PLAYER_BASE_CLASS_DEFS = {
       description: "체력이 줄어들수록 공격력·방어력·체력 회복 속도가 함께 오른다."
     },
     skills: [
-      { id: "battleRoar", name: "결의의 포효", glyph: "҂", cooldownMs: 7200, effect: "battleRoar", description: "짧은 시간 공격 속도와 이동 속도를 높인다. 체력이 낮을수록 효과가 커진다." },
-      { id: "earthSlam", name: "대지 강타", glyph: "☗", cooldownMs: 6800, effect: "earthSlam", description: "자신 주변을 강타해 피해를 입힌다." },
+      { id: "battleRoar", name: "광란", glyph: "҂", cooldownMs: 7200, effect: "battleRoar", description: "짧은 시간 공격 속도와 이동 속도를 높인다. 체력이 낮을수록 효과가 커진다." },
+      { id: "earthSlam", name: "회전베기", glyph: "☗", cooldownMs: 6800, effect: "earthSlam", description: "자신 주변을 강타해 피해를 입힌다." },
       { id: "recklessCharge", name: "돌진", glyph: "➶", cooldownMs: 5600, effect: "recklessCharge", description: "목표에게 달려들어 피해를 입힌다." },
-      { id: "cleave", name: "가로베기", glyph: "⚔", cooldownMs: 4400, effect: "cleave", description: "단일 적을 강하게 벤다." }
+      { id: "cleave", name: "뚝배기", glyph: "⚔", cooldownMs: 4400, effect: "cleave", description: "단일 적을 강하게 벤다." }
     ],
-    ultimate: { id: "berserkerRage", name: "광전사의 격노", glyph: "Ϟ", cooldownMs: 14000, effect: "berserkerRage", description: "일정 시간 격노 효과가 크게 늘고 공격에 흡혈이 붙는다." }
+    ultimate: { id: "berserkerRage", name: "광폭화", glyph: "Ϟ", cooldownMs: 14000, effect: "berserkerRage", description: "일정 시간 격노 효과가 크게 늘고 공격에 흡혈이 붙는다." }
   },
   tracker: {
     id: "tracker",
@@ -258,19 +258,19 @@ export const PLAYER_KIT_DEFS = {
     description: "야만적 힘에 정령의 야성을 더해 늑대인간으로 변신하는 전사.",
     passive: {
       id: "feralSpirit",
-      name: "야성 정령",
+      name: "나를 죽이지 못한 고통은 분노하게 한다",
       glyph: "Ж",
-      description: "늑대인간으로 변신한 동안 받는 피해가 줄고 회복이 늘어난다."
+      description: "공격할 때마다 상대에게 출혈을 남긴다."
     },
     stats: { maxHp: 70, damage: 11, range: 7, speed: 16, attackMs: 750, armor: 0.22, color: "#8a9f5a", glyph: "Ж" },
-    defaultLoadout: ["rendingClaw", "sweepingClaw", "wildRecovery"],
+    defaultLoadout: ["battleRoar", "earthSlam", "recklessCharge"],
     skills: [
-      { id: "rendingClaw", name: "베기", glyph: "Ψ", cooldownMs: 4600, effect: "rendingClaw", description: "단일 적을 공격한다. 늑대형일 때는 먼저 달려든다." },
-      { id: "sweepingClaw", name: "휩쓸기", glyph: "❋", cooldownMs: 6600, effect: "sweepingClaw", description: "자신 주변을 공격한다. 늑대형일 때 위력이 커진다." },
-      { id: "wildRecovery", name: "야생의 회복", glyph: "✚", cooldownMs: 8200, effect: "wildRecovery", description: "스스로를 회복하고 짧은 지속 회복을 얻는다." },
-      { id: "menacingRoar", name: "위협의 포효", glyph: "҂", cooldownMs: 7400, effect: "menacingRoar", description: "주변 적을 위협해 잠시 묶어 둔다." }
+      { id: "battleRoar", name: "피가 필요해", glyph: "҂", cooldownMs: 7200, effect: "battleRoar", description: "짧은 시간 공격 속도와 이동 속도를 높인다. 체력이 낮을수록, 그리고 다른 전승보다 더 크게 오른다." },
+      { id: "earthSlam", name: "할퀴기", glyph: "☗", cooldownMs: 6800, effect: "earthSlam", description: "자신 주변을 강타해 피해를 입히고 출혈을 남긴다." },
+      { id: "recklessCharge", name: "달리기", glyph: "➶", cooldownMs: 5600, effect: "recklessCharge", description: "목표에게 더 멀리, 더 빠르게 달려들어 피해를 입힌다." },
+      { id: "cleave", name: "물어뜯기", glyph: "⚔", cooldownMs: 4400, effect: "cleave", description: "단일 적을 크게 웃도는 위력으로 문다." }
     ],
-    ultimate: { id: "werewolfForm", name: "늑대인간 변신", glyph: "Ж", cooldownMs: 16000, effect: "werewolfForm", description: "늑대인간으로 변신해 공격력·방어력·속도가 오르고 공격에 출혈이 붙는다." }
+    ultimate: { id: "berserkerRage", name: "변신", glyph: "Ж", cooldownMs: 14000, effect: "berserkerRage", description: "일정 시간 격노 효과가 크게 늘고 공격에 흡혈이 붙으며, 늑대인간으로 변신한다. 적을 죽일수록 변신이 길어진다." }
   },
   archmage: {
     id: "archmage",
