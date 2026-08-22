@@ -601,6 +601,18 @@ export function normalizedPlayerLoadout(commander = {}, kitId = commander.combat
   return selected;
 }
 
+export const RUNE_DEFS = {
+  blueRune: { id: "blueRune", name: "청색 룬", regionId: "north", glyph: "◆", cost: 10, description: "마나 회복 속도가 증가한다." },
+  greenRune: { id: "greenRune", name: "녹색 룬", regionId: "south", glyph: "◆", cost: 10, description: "공격력이 증가한다." },
+  purpleRune: { id: "purpleRune", name: "자색 룬", regionId: "east", glyph: "◆", cost: 10, description: "공격 속도가 증가한다." },
+  yellowRune: { id: "yellowRune", name: "황색 룬", regionId: "west", glyph: "◆", cost: 10, description: "방어력이 증가한다." },
+  redRune: { id: "redRune", name: "적색 룬", regionId: "central", glyph: "◆", cost: 10, description: "체력이 증가한다." }
+};
+
+export function runeDefinition(runeId) {
+  return RUNE_DEFS[runeId] || null;
+}
+
 function grownValue(profile, key, level) {
   const base = Number(profile.base?.[key] || 0);
   const growth = Number(profile.growth?.[key] || 0);
@@ -622,6 +634,12 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
   const criticalChance = baseClass.statProfile.base.criticalChance == null
     ? null
     : Math.max(0, grownValue(profile, "criticalChance", level) + Number(commander.itemBonuses?.criticalChance || 0));
+  const rune = runeDefinition(commander.equippedRuneId);
+  const maxHp = Math.round(kit.stats.maxHp + Math.max(0, level - 1) * (2.2 + strength * 0.055)) * (rune?.id === "redRune" ? 1.08 : 1);
+  const damage = Math.round(kit.stats.damage + Math.max(0, level - 1) * (0.26 + strength * 0.012 + intelligence * 0.01)) * (rune?.id === "greenRune" ? 1.08 : 1);
+  const armor = Math.min(0.58, kit.stats.armor + Math.max(0, level - 1) * 0.0025 + (rune?.id === "yellowRune" ? 0.03 : 0));
+  const attackMs = Math.max(280, Math.round(kit.stats.attackMs * (rune?.id === "purpleRune" ? 0.94 : 1)));
+  const manaRegen = grownValue(profile, "manaRegen", level) + (rune?.id === "blueRune" ? 0.6 : 0);
   return {
     ...kit.stats,
     level,
@@ -631,19 +649,21 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
     defense,
     divineAffinity,
     natureAffinity,
-    maxHp: Math.round(kit.stats.maxHp + Math.max(0, level - 1) * (2.2 + strength * 0.055)),
-    damage: Math.round(kit.stats.damage + Math.max(0, level - 1) * (0.26 + strength * 0.012 + intelligence * 0.01)),
-    armor: Math.min(0.58, kit.stats.armor + Math.max(0, level - 1) * 0.0025),
+    maxHp: Math.round(maxHp),
+    damage: Math.round(damage),
+    armor,
+    attackMs,
     hpRegen: grownValue(profile, "hpRegen", level),
     maxMana: Math.round(grownValue(profile, "maxMana", level)),
-    manaRegen: grownValue(profile, "manaRegen", level),
+    manaRegen,
     statusResistance: Math.max(0, Math.min(0.6, grownValue(profile, "statusResistance", level))),
     statusPotency: 1 + intelligence * 0.02,
     healingPower: 1 + defense * 0.012 + divineAffinity * 0.025,
     summonPower: 1 + intelligence * 0.018 + natureAffinity * 0.025 + (kit.inheritedId === "heavy" ? defense * 0.012 : 0),
     criticalChance,
     cooldownMultiplier: 1 - itemCooldownReduction,
-    cooldownReduction: itemCooldownReduction
+    cooldownReduction: itemCooldownReduction,
+    equippedRuneId: rune?.id || null
   };
 }
 
@@ -655,6 +675,8 @@ export function createDefaultCommander() {
     combatKitId: DEFAULT_PLAYER_KIT_ID,
     storedBoss: null,
     itemBonuses: {},
+    runesOwned: [],
+    equippedRuneId: null,
     skillLoadouts: Object.fromEntries(Object.values(PLAYER_KIT_DEFS).map((kit) => [kit.id, [...kit.defaultLoadout]]))
   };
 }

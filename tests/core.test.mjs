@@ -153,6 +153,122 @@ test("영지 일꾼은 원정 턴에 생산하고 대장간은 설계도로 변�
   assert.equal(engine.state.meta.estate.workerProgress.blacksmith.workHours, beforeSmithHours + 4);
 });
 
+test("생산 동료는 일꾼 없이도 해당 직종을 채우고, 명장 대장장이는 전용 설계도와 품질 보너스를 준다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.state.meta.scrap = 40;
+
+  // 벌목꾼을 고용하지 않아도 동료가 그 자리를 채운다.
+  assert.equal(engine.state.meta.estate.workers.lumberjack, 0);
+  assert.equal(engine.recruitProductionCompanion("veteranWoodcutter"), true);
+  const beforeWood = engine.state.meta.materials.wood;
+  advanceEstate(engine.state, 3);
+  assert.ok(engine.state.meta.materials.wood > beforeWood);
+
+  // 대장장이 없이는 전용 설계도가 제작 목록에 없고, 제작도 거부된다.
+  assert.equal(engine.state.meta.blueprints.includes("masterworkBlade"), false);
+  engine.state.meta.materials.ingot = 10;
+  engine.state.meta.materials.blackSteel = 5;
+  assert.equal(engine.craftRecipe("masterworkBlade", () => 0), false);
+
+  // 명장 대장장이를 영입하면 전용 설계도가 즉시 해금되고 제작 시 품질·부가옵션이 강화된다.
+  assert.equal(engine.recruitProductionCompanion("masterSmith"), true);
+  assert.equal(engine.state.meta.blueprints.includes("masterworkBlade"), true);
+  const sequence = [0, 0, 0, 0.5];
+  let call = 0;
+  const queuedRandom = () => sequence[Math.min(call++, sequence.length - 1)];
+  const crafted = engine.craftRecipe("masterworkBlade", queuedRandom);
+  assert.ok(crafted);
+  assert.equal(crafted.quality, 55);
+  assert.equal(crafted.affixes.length, 2);
+
+  // 같은 동료를 중복 영입할 수 없다.
+  assert.equal(engine.recruitProductionCompanion("masterSmith"), false);
+});
+
+test("제련공은 대장장이 대신 철괴를 만들고, 약초학자는 약초로 야전 약초함을 만든다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  // 기본 상태에서도 제련공 1명이 배정돼 있어 광석·목재가 있으면 철괴가 자동 생산된다.
+  const beforeIngot = engine.state.meta.materials.ingot;
+  const beforeBlacksmithHours = engine.state.meta.estate.workerProgress.blacksmith.workHours;
+  advanceEstate(engine.state, 5);
+  assert.ok(engine.state.meta.materials.ingot > beforeIngot);
+  assert.ok(engine.state.meta.estate.workerProgress.refiner.workHours > 0);
+  assert.equal(engine.state.meta.estate.workerProgress.blacksmith.workHours, beforeBlacksmithHours);
+
+  engine.state.meta.scrap = 20;
+  engine.state.meta.materials.herb = 10;
+  assert.equal(engine.hireWorker("herbalist"), true);
+  const beforeHerbKits = engine.state.inventory.filter((item) => item.defId === "herbKit").length;
+  advanceEstate(engine.state, 4);
+  const afterHerbKits = engine.state.inventory.filter((item) => item.defId === "herbKit").length;
+  assert.ok(afterHerbKits > beforeHerbKits);
+  assert.ok(engine.state.meta.materials.herb < 10);
+});
+
+test("제련공은 지역 원광도 정제 원소로 만들고, 복합 광석은 여러 원소를 동시에 낸다", () => {
+  const single = createInitialState();
+  single.meta.estate.workers.refiner = 1;
+  single.meta.materials.bauxite = 10;
+  single.meta.materials.wood = 10;
+  const beforeAluminum = single.meta.materials.aluminum;
+  advanceEstate(single, 5);
+  assert.ok(single.meta.materials.aluminum > beforeAluminum);
+
+  const compound = createInitialState();
+  compound.meta.estate.workers.refiner = 1;
+  compound.meta.materials.stannite = 40;
+  compound.meta.materials.wood = 40;
+  advanceEstate(compound, 15); // stannite yields copper/ingot at 0.5x per batch, so needs 2+ cycles to round up
+  assert.ok(compound.meta.materials.tin > 0);
+  assert.ok(compound.meta.materials.copper > 0);
+  assert.ok(compound.meta.materials.ingot > 2); // 초기값 2에서 추가로 늘어나야 함
+});
+
+test("연금술사는 연금 계열 설계도에만 품질·부가옵션 보너스를 준다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.state.meta.scrap = 40;
+  engine.state.meta.blueprints.push("venom", "knightAegis");
+  engine.state.meta.materials.wood = 5;
+  engine.state.meta.materials.sporeGland = 5;
+  engine.state.meta.materials.ingot = 10;
+  engine.state.meta.materials.blackSteel = 5;
+  assert.equal(engine.recruitProductionCompanion("alchemist"), true);
+
+  const sequence = [0, 0, 0, 0.5];
+  let call = 0;
+  const queuedRandom = () => sequence[Math.min(call++, sequence.length - 1)];
+  const potion = engine.craftRecipe("venom", queuedRandom); // tags: ["alchemy"]
+  assert.ok(potion);
+  assert.equal(potion.quality, 55);
+  assert.equal(potion.affixes.length, 2);
+
+  call = 0;
+  const shield = engine.craftRecipe("knightAegis", queuedRandom); // tags: ["defense", "rune"], not alchemy
+  assert.ok(shield);
+  assert.equal(shield.quality, 45);
+  assert.equal(shield.affixes.length, 1);
+});
+
+test("룬은 고철로 획득하고 한 번에 하나만 장착할 수 있다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.state.meta.scrap = 15;
+  const commander = engine.state.adventure.commander;
+
+  assert.equal(engine.equipRune("greenRune"), false); // 아직 미보유
+  assert.equal(engine.purchaseRune("greenRune"), true);
+  assert.equal(engine.state.meta.scrap, 5);
+  assert.equal(commander.runesOwned.includes("greenRune"), true);
+  assert.equal(engine.purchaseRune("greenRune"), false); // 중복 획득 불가
+
+  assert.equal(engine.equipRune("greenRune"), true);
+  assert.equal(commander.equippedRuneId, "greenRune");
+
+  // 소지금이 부족해도 이미 보유한 룬은 다시 장착/해제할 수 있다.
+  engine.state.meta.scrap = 0;
+  assert.equal(engine.equipRune(null), true);
+  assert.equal(commander.equippedRuneId, null);
+});
+
 test("작업자는 실제로 생산한 시간만 쌓아 초심자에서 장인까지 숙련된다", () => {
   const state = createInitialState();
   state.meta.estate.workers.lumberjack = 1;
@@ -180,7 +296,7 @@ test("v2 저장은 직업·영지·설계도 기본값을 안전하게 보강한
   assert.equal(migrated.meta.estate.workers.steward, 1);
   assert.equal(migrated.meta.blueprints.includes("frontierMantle"), true);
   assert.equal(migrated.meta.selectedAreaId, "estate");
-  assert.equal(migrated.meta.materials.copperOre, 0);
+  assert.equal(migrated.meta.materials.malachite, 0);
   assert.equal(migrated.meta.materials.runeFragment, 0);
   assert.equal(migrated.meta.estate.workerProgress.blacksmith.workHours, 0);
 });
@@ -188,7 +304,7 @@ test("v2 저장은 직업·영지·설계도 기본값을 안전하게 보강한
 test("모든 물품은 장비·광석·특수·기타 중 하나로 분류된다", () => {
   assert.equal(Object.values(ITEM_DEFS).every((item) => item.category === "equipment"), true);
   assert.equal(Object.values(MATERIAL_DEFS).every((material) => ["ore", "special", "other"].includes(material.category)), true);
-  assert.deepEqual(["copperOre", "ore", "aluminumOre", "tinOre", "titaniumOre"].map((id) => MATERIAL_DEFS[id].symbol), ["Cu", "Fe", "Al", "Sn", "Ti"]);
+  assert.deepEqual(["malachite", "ore", "bauxite", "cassiterite", "rutile", "sphalerite"].map((id) => MATERIAL_DEFS[id].symbol), ["Cu", "Fe", "Al", "Sn", "Ti", "Zn"]);
 });
 
 test("내 영지·사막·설산은 같은 탐험 규약으로 서로 다른 지도를 만든다", () => {

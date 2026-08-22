@@ -94,7 +94,7 @@ export const LIVING_AREA_DEFS = {
 export const DISCOVERY_SITE_DEFS = {
   mine: {
     id: "mine", name: "지역 금속 광산", glyph: "◆", materialId: "ore",
-    materialByRegion: { north: "ore", south: "tinOre", east: "titaniumOre", west: "aluminumOre", central: "copperOre" },
+    materialByRegion: { north: "ore", south: "bauxite", east: "cassiterite", west: "sphalerite", central: "malachite" },
     output: 2, workers: 2, build: { wood: 2, ore: 1 }, risk: 8
   },
   deepMine: {
@@ -102,7 +102,11 @@ export const DISCOVERY_SITE_DEFS = {
     materialByRegion: { north: "frostIron", east: "mountainIron" },
     output: 1, workers: 3, build: { wood: 3, ore: 2 }, risk: 18
   },
-  herb: { id: "herb", name: "야생 약초밭", glyph: "♣", materialId: "herb", output: 2, workers: 1, build: { wood: 1 }, risk: 5 },
+  herb: {
+    id: "herb", name: "야생 약초밭", glyph: "♣", materialId: "herb",
+    materialByRegion: { north: "rhodiola", south: "cinchonaBark", east: "cordyceps", west: "chamomile", central: "aloeVera" },
+    output: 2, workers: 1, build: { wood: 1 }, risk: 5
+  },
   rareHerb: { id: "rareHerb", name: "독성 약초원", glyph: "♢", materialId: "venomSac", output: 1, workers: 2, build: { wood: 2 }, risk: 14 },
   lumber: { id: "lumber", name: "고목 벌목지", glyph: "♠", materialId: "wood", output: 2, workers: 2, build: { ore: 1 }, risk: 7 },
   manaWell: { id: "manaWell", name: "마나 용출지", glyph: "✦", materialId: "manaStone", output: 1, workers: 2, build: { wood: 2, ore: 1 }, risk: 16 },

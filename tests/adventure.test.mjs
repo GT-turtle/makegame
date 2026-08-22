@@ -10,6 +10,7 @@ import {
   STATUS_EFFECT_DEFS,
   STARTING_PARTY,
   STARTING_ROSTER,
+  UNIT_DEFS,
   WORLD_REGION_DEFS,
   applyCombatStatus,
   adventureZoneIsConnected,
@@ -357,32 +358,56 @@ test("기본 직업 패시브는 전승 패시브와 별도로 실제 전투에 
     enemy.attackMs = 16;
     enemy.cooldown = 0;
   }
-  noCycle.playerBasePassive = null;
   const cyclePlayer = cycle.units.find((unit) => unit.controlled);
   const noCyclePlayer = noCycle.units.find((unit) => unit.controlled);
+  noCycle.playerBasePassive = null;
+  noCyclePlayer.basePassive = null;
   for (let hit = 0; hit < 4; hit += 1) {
     tickAutoBattle(cycle, 20);
     tickAutoBattle(noCycle, 20);
   }
-  assert.equal(cycle.basePassiveState.hitCount, 4);
+  assert.equal(cycle.passiveState[cyclePlayer.id].hitCount, 4);
   tickAutoBattle(cycle, 20);
   tickAutoBattle(noCycle, 20);
-  assert.equal(cycle.basePassiveState.hitCount, 0);
+  assert.equal(cycle.passiveState[cyclePlayer.id].hitCount, 0);
   assert.ok(cyclePlayer.hp > noCyclePlayer.hp);
 
   const commander = createDefaultCommander();
   commander.combatKitId = "heavyNecromancer";
   const harvest = createAutoBattle("duneRaiders", "harvest", "field", STARTING_PARTY, {}, { commander });
+  const harvestPlayer = harvest.units.find((unit) => unit.controlled);
   harvest.enemies[0].hp = 0;
   tickAutoBattle(harvest, 20);
   assert.equal(issuePlayerAction(harvest, "skill2"), true);
   const summon = harvest.units.find((unit) => unit.summonType === "raisedDead");
-  assert.equal(harvest.basePassiveState.soulStacks, 1);
+  assert.equal(harvest.passiveState[harvestPlayer.id].soulStacks, 1);
   assert.equal(summon.passiveDamageMultiplier, 1.08);
-  harvest.elapsed = harvest.basePassiveState.soulExpiresAt;
+  harvest.elapsed = harvest.passiveState[harvestPlayer.id].soulExpiresAt;
   tickAutoBattle(harvest, 20);
-  assert.equal(harvest.basePassiveState.soulStacks, 0);
+  assert.equal(harvest.passiveState[harvestPlayer.id].soulStacks, 0);
   assert.equal(summon.passiveDamageMultiplier, 1);
+});
+
+test("동료는 기본 직업의 패시브를 얻고 스펙이 플레이어 레벨을 따라간다", () => {
+  const definition = UNIT_DEFS.winter_berserker;
+  assert.equal(definition.baseClassId, "barbarian");
+
+  const lowCommander = createDefaultCommander();
+  const lowBattle = createAutoBattle("duneRaiders", "low", "field", ["winter_berserker"], {}, { commander: lowCommander });
+  const lowCompanion = lowBattle.units.find((unit) => !unit.controlled);
+  assert.equal(lowCompanion.baseClassId, "barbarian");
+  assert.equal(lowCompanion.basePassive.effect, "rageScaling");
+
+  const highCommander = createDefaultCommander();
+  highCommander.level = 10;
+  const highBattle = createAutoBattle("duneRaiders", "high", "field", ["winter_berserker"], {}, { commander: highCommander });
+  const highCompanion = highBattle.units.find((unit) => !unit.controlled);
+  assert.ok(highCompanion.maxHp > lowCompanion.maxHp);
+  assert.ok(highCompanion.damage > lowCompanion.damage);
+
+  lowCompanion.hp = Math.max(1, Math.round(lowCompanion.maxHp * 0.2));
+  tickAutoBattle(lowBattle, 20);
+  assert.ok(lowCompanion.passiveDamageMultiplier > 1);
 });
 
 test("두 전승의 액티브 10개(스킬 4개+궁 1개 × 2)가 실제 전투 효과로 모두 실행된다", () => {
@@ -776,6 +801,47 @@ test("친화도·직업 전용 능력치와 출혈·화상·크루세이더 해�
   assert.equal(enemy.statuses.burn.stacks, 1);
   assert.ok(enemy.statuses.bleed.expiresAt > enemy.statuses.burn.expiresAt);
   assert.ok(enemy.statuses.burn.tickDamage > enemy.statuses.bleed.tickDamage);
+});
+
+test("장착한 룬은 해당 스탯만 올리고 다른 룬 효과와는 섞이지 않는다", () => {
+  const bare = createDefaultCommander();
+  const bareStats = playerCombatStats(bare, bare.combatKitId);
+
+  const withGreen = createDefaultCommander();
+  withGreen.equippedRuneId = "greenRune";
+  const greenStats = playerCombatStats(withGreen, withGreen.combatKitId);
+  assert.ok(greenStats.damage > bareStats.damage);
+  assert.equal(greenStats.armor, bareStats.armor);
+  assert.equal(greenStats.maxHp, bareStats.maxHp);
+
+  const withYellow = createDefaultCommander();
+  withYellow.equippedRuneId = "yellowRune";
+  const yellowStats = playerCombatStats(withYellow, withYellow.combatKitId);
+  assert.ok(yellowStats.armor > bareStats.armor);
+  assert.equal(yellowStats.damage, bareStats.damage);
+
+  const withPurple = createDefaultCommander();
+  withPurple.equippedRuneId = "purpleRune";
+  const purpleStats = playerCombatStats(withPurple, withPurple.combatKitId);
+  assert.ok(purpleStats.attackMs < bareStats.attackMs);
+});
+
+test("독은 출혈과 달리 중첩당 이동 속도를 늦춘다", () => {
+  const commander = createDefaultCommander();
+  const clean = createAutoBattle("duneRaiders", "clean", "field", [], {}, { commander });
+  const poisoned = createAutoBattle("duneRaiders", "poisoned", "field", [], {}, { commander });
+  const cleanPlayer = clean.units.find((unit) => unit.controlled);
+  const poisonedPlayer = poisoned.units.find((unit) => unit.controlled);
+  const enemy = poisoned.enemies[0];
+  applyCombatStatus(poisoned, poisonedPlayer, "poison", enemy, { stacks: 5 });
+  steerBattlePlayer(clean, 1, 0);
+  steerBattlePlayer(poisoned, 1, 0);
+  tickAutoBattle(clean, 200);
+  tickAutoBattle(poisoned, 200);
+  const cleanDistance = cleanPlayer.x - 27;
+  const poisonedDistance = poisonedPlayer.x - 27;
+  assert.ok(poisonedDistance > 0);
+  assert.ok(poisonedDistance < cleanDistance);
 });
 
 test("무장 부활은 현재 전투의 일반 시체를 최대 3기까지만 재사용한다", () => {

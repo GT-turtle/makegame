@@ -1,7 +1,7 @@
-import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
+import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
 import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency } from "./core.js";
 import { GameEngine } from "./game.js";
-import { BASIC_DISCIPLINE_DEFS, PLAYER_KIT_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { BASIC_DISCIPLINE_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 import {
   DUNGEON_VIEW_SIZE,
   FIELD_VIEW_SIZE,
@@ -414,6 +414,8 @@ function facilityOverlay(state) {
       <div><span>동행 동료</span><strong>${state.adventure.party.length}/${PARTY_LIMIT}명 편성 · 보유 ${state.adventure.roster.length}/15명</strong><small>플레이어는 직접 조작하고 두 동료는 각자 판단해 싸운다.</small></div>
       <button class="primary" data-action="open-roster" ${ongoing ? "disabled" : ""}>부대 편성·육성</button>
     </article>
+    <div class="section-heading"><h2>룬</h2><span>지역마다 발견되는 공용 스탯 룬 · 1개만 장착 가능</span></div>
+    <section class="cards rune-cards">${Object.values(RUNE_DEFS).map((rune) => runeCard(state, rune, ongoing)).join("")}</section>
   `;
 
   if (facility.id === "guild") content = `
@@ -421,6 +423,8 @@ function facilityOverlay(state) {
     <article class="party-management-card"><div><span>원정대 훈련</span><strong>지역 출신 동료와 교차 특성</strong><small>지역을 정복하면 정해진 동료가 차례로 합류한다.</small></div><button class="primary" data-action="open-roster" ${ongoing ? "disabled" : ""}>부대 관리</button></article>
     <div class="section-heading"><h2>영지 인력</h2><span>실제로 일한 시간만 직종 숙련으로 쌓인다</span></div>
     <section class="worker-grid">${Object.values(WORKER_DEFS).map((worker) => workerCard(state, worker, ongoing)).join("")}</section>
+    <div class="section-heading"><h2>생산 동료</h2><span>일꾼을 승격시켜 이름과 개성을 얻은 전속 인력</span></div>
+    <section class="worker-grid">${Object.values(PRODUCTION_COMPANION_DEFS).map((companion) => productionCompanionCard(state, companion, ongoing)).join("")}</section>
   `;
 
   if (facility.id === "forge") {
@@ -554,6 +558,47 @@ function workerCard(state, worker, ongoing) {
       <div><strong>${escapeHtml(worker.name)} ${count}/${worker.max}</strong><small>${escapeHtml(worker.description)}</small></div>
       ${proficiency ? `<div class="worker-proficiency"><span><b>${proficiency.name}</b><small>${proficiencyText}</small></span><i><em style="width:${Math.round(proficiency.ratio * 100)}%"></em></i><small>수득 +${Math.round(proficiency.yieldBonus * 100)}% · 소비 -${Math.round(proficiency.materialSaving * 100)}% · 속도 +${Math.round(proficiency.speedBonus * 100)}%</small></div>` : ""}
       <button class="ghost" data-action="hire-worker" data-worker-id="${worker.id}" ${disabled ? "disabled" : ""}>${isSteward ? "재직 중" : count >= worker.max ? "최대" : `고용 ${worker.cost}`}</button>
+    </article>
+  `;
+}
+
+function productionCompanionCard(state, companion, ongoing) {
+  const recruited = Boolean(state.meta.estate.productionCompanions[companion.id]);
+  const roleName = WORKER_DEFS[companion.workerId].name;
+  const disabled = ongoing || recruited || state.meta.scrap < companion.cost;
+  const bonusText = [
+    companion.yieldBonus ? `수득 +${Math.round(companion.yieldBonus * 100)}%` : null,
+    companion.speedBonus ? `속도 +${Math.round(companion.speedBonus * 100)}%` : null,
+    companion.materialSaving ? `소비 -${Math.round(companion.materialSaving * 100)}%` : null,
+    companion.bonusAffixChance ? `부가옵션 확률 +${Math.round(companion.bonusAffixChance * 100)}%` : null,
+    companion.qualityBonus ? `품질 +${companion.qualityBonus}` : null
+  ].filter(Boolean).join(" · ");
+  return `
+    <article class="worker-card">
+      <span class="worker-glyph">${companion.glyph}</span>
+      <div><strong>${escapeHtml(companion.name)}</strong><small>${roleName} 전속 · ${escapeHtml(companion.primary)} · ${escapeHtml(companion.weakness)}</small></div>
+      <div class="worker-proficiency"><small>${bonusText}</small></div>
+      <button class="ghost" data-action="recruit-production-companion" data-companion-id="${companion.id}" ${disabled ? "disabled" : ""}>${recruited ? "합류 완료" : `영입 ${companion.cost}`}</button>
+    </article>
+  `;
+}
+
+function runeCard(state, rune, ongoing) {
+  const commander = state.adventure.commander;
+  const owned = commander.runesOwned.includes(rune.id);
+  const equipped = commander.equippedRuneId === rune.id;
+  const regionName = WORLD_REGION_DEFS[rune.regionId]?.name || rune.regionId;
+  const disabled = ongoing || (owned ? equipped : state.meta.scrap < rune.cost);
+  const actionLabel = equipped ? "장착 해제" : owned ? "장착" : `획득 ${rune.cost}`;
+  return `
+    <article class="card rune-card">
+      <div class="research-icon">${rune.glyph}</div>
+      <div class="research-main">
+        <p class="eyebrow">${escapeHtml(regionName)} 산출</p>
+        <h3>${escapeHtml(rune.name)}</h3>
+        <p>${escapeHtml(rune.description)}</p>
+      </div>
+      <button class="secondary research-action" data-action="${owned ? "equip-rune" : "purchase-rune"}" data-rune-id="${rune.id}" ${disabled ? "disabled" : ""}>${actionLabel}</button>
     </article>
   `;
 }
@@ -2988,6 +3033,17 @@ app.addEventListener("click", (event) => {
   }
   if (action === "hire-worker") {
     if (!engine.hireWorker(button.dataset.workerId)) showToast("고철, 최대 인원 또는 원정 상태를 확인해줘.");
+  }
+  if (action === "recruit-production-companion") {
+    if (!engine.recruitProductionCompanion(button.dataset.companionId)) showToast("고철, 최대 인원 또는 원정 상태를 확인해줘.");
+  }
+  if (action === "purchase-rune") {
+    if (!engine.purchaseRune(button.dataset.runeId)) showToast("고철 또는 원정 상태를 확인해줘.");
+  }
+  if (action === "equip-rune") {
+    const runeId = button.dataset.runeId;
+    const commander = engine.state.adventure.commander;
+    if (!engine.equipRune(commander.equippedRuneId === runeId ? null : runeId)) showToast("원정 중에는 룬을 바꿀 수 없어.");
   }
   if (action === "craft-recipe") {
     if (!engine.craftRecipe(button.dataset.recipeId)) showToast("설계도와 제작 재료를 확인해줘.");

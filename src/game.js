@@ -1,6 +1,7 @@
-import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
-import { PLAYER_KIT_DEFS, normalizedPlayerLoadout, playerKitDefinition } from "./classes.js";
+import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
+import { PLAYER_KIT_DEFS, RUNE_DEFS, normalizedPlayerLoadout, playerKitDefinition } from "./classes.js";
 import {
+  activeWorkerCount,
   addMaterial,
   adjustedWorkerMaterialCosts,
   advanceEstate,
@@ -1737,7 +1738,7 @@ export class GameEngine {
     const definition = WORKER_DEFS[workerId];
     if (this.state.expedition || this.state.adventure?.run || this.state.estateDefense?.campaign || !definition || workerId === "steward") return false;
     const current = this.state.meta.estate.workers[workerId] || 0;
-    if (current >= definition.max || this.state.meta.scrap < definition.cost) return false;
+    if (activeWorkerCount(this.state, workerId) >= definition.max || this.state.meta.scrap < definition.cost) return false;
     this.state.meta.scrap -= definition.cost;
     this.state.meta.estate.workers[workerId] = current + 1;
     this.addLog(`${definition.name} 고용 완료. 자동 생산 인원 ${current + 1}명.`, "item");
@@ -1747,16 +1748,22 @@ export class GameEngine {
 
   craftRecipe(recipeId, random = Math.random) {
     const recipe = CRAFT_RECIPES.find((entry) => entry.id === recipeId);
-    const workers = this.state.meta.estate.workers;
-    if (this.state.expedition || this.state.adventure?.run || this.state.estateDefense?.campaign || !recipe || workers.blacksmith < 1) return false;
+    if (this.state.expedition || this.state.adventure?.run || this.state.estateDefense?.campaign || !recipe || activeWorkerCount(this.state, "blacksmith") < 1) return false;
     if (!this.state.meta.blueprints.includes(recipe.id)) return false;
+    if (recipe.requiresCompanionId && !this.state.meta.estate.productionCompanions[recipe.requiresCompanionId]) return false;
     const costs = adjustedWorkerMaterialCosts(this.state, "blacksmith", recipe.materials);
     for (const [materialId, amount] of Object.entries(costs)) {
       if ((this.state.meta.materials[materialId] || 0) < amount) return false;
     }
     adjustedWorkerMaterialCosts(this.state, "blacksmith", recipe.materials, true);
     for (const [materialId, amount] of Object.entries(costs)) this.state.meta.materials[materialId] -= amount;
-    const item = createCraftedItem(recipe.itemDefId, createUid(this.state), random);
+    const isAlchemy = Boolean(ITEM_DEFS[recipe.itemDefId].tags?.includes("alchemy"));
+    const bonusCompanionId = isAlchemy ? "alchemist" : "masterSmith";
+    const bonusCompanion = PRODUCTION_COMPANION_DEFS[bonusCompanionId];
+    const craftBonus = this.state.meta.estate.productionCompanions[bonusCompanionId]
+      ? { qualityBonus: bonusCompanion.qualityBonus, bonusAffixChance: bonusCompanion.bonusAffixChance }
+      : {};
+    const item = createCraftedItem(recipe.itemDefId, createUid(this.state), random, craftBonus);
     this.state.inventory.push(item);
     const affixes = item.affixes.map((affixId) => AFFIX_DEFS[affixId].name).join(" · ");
     this.addLog(`제작 완료: ${ITEM_DEFS[item.defId].name} 품질 ${item.quality}${affixes ? ` · ${affixes}` : ""}`, "item");
@@ -1764,6 +1771,45 @@ export class GameEngine {
     if (work.advanced) this.addLog(`대장장이 직종 숙련이 ${work.current.name} 단계에 도달했다.`, "good");
     this.emit();
     return item;
+  }
+
+  recruitProductionCompanion(companionId) {
+    const definition = PRODUCTION_COMPANION_DEFS[companionId];
+    if (this.state.expedition || this.state.adventure?.run || this.state.estateDefense?.campaign || !definition) return false;
+    if (this.state.meta.estate.productionCompanions[companionId]) return false;
+    if (activeWorkerCount(this.state, definition.workerId) >= WORKER_DEFS[definition.workerId].max) return false;
+    if (this.state.meta.scrap < definition.cost) return false;
+    this.state.meta.scrap -= definition.cost;
+    this.state.meta.estate.productionCompanions[companionId] = true;
+    for (const recipeId of definition.recipeIds || []) {
+      if (!this.state.meta.blueprints.includes(recipeId)) this.state.meta.blueprints.push(recipeId);
+    }
+    this.addLog(`${definition.name} 합류. ${WORKER_DEFS[definition.workerId].name} 직종에 전속 배치됐다.`, "item");
+    this.emit();
+    return true;
+  }
+
+  purchaseRune(runeId) {
+    const definition = RUNE_DEFS[runeId];
+    const commander = this.state.adventure.commander;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign || !definition) return false;
+    if (commander.runesOwned.includes(runeId)) return false;
+    if (this.state.meta.scrap < definition.cost) return false;
+    this.state.meta.scrap -= definition.cost;
+    commander.runesOwned.push(runeId);
+    this.addLog(`${definition.name} 획득.`, "item");
+    this.emit();
+    return true;
+  }
+
+  equipRune(runeId) {
+    const commander = this.state.adventure.commander;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    if (runeId !== null && !commander.runesOwned.includes(runeId)) return false;
+    commander.equippedRuneId = runeId;
+    this.addLog(runeId ? `${RUNE_DEFS[runeId].name} 장착.` : "룬 해제.", "item");
+    this.emit();
+    return true;
   }
 
   placeInventoryItem(uid, x, y, rotation) {

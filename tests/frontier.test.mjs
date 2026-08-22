@@ -106,13 +106,13 @@ test("지역 요구 조건은 점령 상태와 requireAny 규칙을 함께 처�
   assert.equal(frontier.zones.north_gorge.status, "available");
 });
 
-test("일반 광산은 지역에 따라 Cu·Fe·Al·Sn·Ti 광석을 생산한다", () => {
+test("일반 광산은 지역에 따라 Cu·Fe·Al·Sn·Zn 광석을 생산한다", () => {
   const mine = DISCOVERY_SITE_DEFS.mine;
-  assert.equal(siteMaterialId(mine, "central"), "copperOre");
+  assert.equal(siteMaterialId(mine, "central"), "malachite");
   assert.equal(siteMaterialId(mine, "north"), "ore");
-  assert.equal(siteMaterialId(mine, "west"), "aluminumOre");
-  assert.equal(siteMaterialId(mine, "south"), "tinOre");
-  assert.equal(siteMaterialId(mine, "east"), "titaniumOre");
+  assert.equal(siteMaterialId(mine, "south"), "bauxite");
+  assert.equal(siteMaterialId(mine, "east"), "cassiterite");
+  assert.equal(siteMaterialId(mine, "west"), "sphalerite");
   assert.equal(DISCOVERY_SITE_DEFS.runeCircle.materialId, "runeFragment");
 });
 

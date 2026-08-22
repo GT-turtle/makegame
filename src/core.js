@@ -6,8 +6,11 @@ import {
   CLASS_DEFS,
   ENEMY_DEFS,
   ITEM_DEFS,
+  HERB_IDS,
   LOOT_TABLE,
   MATERIAL_DEFS,
+  ORE_SMELTING_DEFS,
+  PRODUCTION_COMPANION_DEFS,
   REGION_INFO,
   TRAIT_DEFS,
   WORKER_PROFICIENCY_TIERS,
@@ -185,11 +188,11 @@ export function createItem(defId, uid, x = -1, y = -1, rotation = 0) {
   };
 }
 
-export function createCraftedItem(defId, uid, random = Math.random) {
+export function createCraftedItem(defId, uid, random = Math.random, { qualityBonus = 0, bonusAffixChance = 0 } = {}) {
   const item = createItem(defId, uid);
-  item.quality = 45 + Math.floor(random() * 56);
+  item.quality = Math.min(100, 45 + Math.floor(random() * 56) + qualityBonus);
   const affixIds = Object.keys(AFFIX_DEFS);
-  const affixCount = item.quality >= 85 ? 2 : 1;
+  const affixCount = item.quality >= 85 || random() < bonusAffixChance ? 2 : 1;
   while (item.affixes.length < affixCount) {
     const affixId = affixIds[Math.floor(random() * affixIds.length)];
     if (!item.affixes.includes(affixId)) item.affixes.push(affixId);
@@ -220,19 +223,28 @@ export function createInitialState() {
       blueprints: ["frontierMantle"],
       materials: {
         wood: 4, food: 4,
-        copperOre: 0, ore: 4, aluminumOre: 0, tinOre: 0, titaniumOre: 0, ingot: 2,
-        herb: 2, runeFragment: 0,
+        ore: 4, ingot: 2, magnetiteJacobsite: 0,
+        bauxite: 0, pyrolusite: 0, aluminum: 0, manganese: 0,
+        cassiterite: 0, stannite: 0, rutile: 0, ilmenite: 0, tin: 0, titanium: 0,
+        sphalerite: 0, smithsonite: 0, zinc: 0,
+        malachite: 0, chalcopyrite: 0, copper: 0,
+        herb: 2, rhodiola: 0, arnica: 0, cinchonaBark: 0, clove: 0, cordyceps: 0, ginseng: 0,
+        chamomile: 0, lavender: 0, willowBark: 0, aloeVera: 0, myrrh: 0,
+        runeFragment: 0,
         frostIron: 0, venomSac: 0, mountainIron: 0, manaStone: 0, glassSand: 0,
         sunShard: 0, sporeGland: 0, blackSteel: 0, watcherEye: 0
       },
       estate: {
         tick: 0,
-        workers: { steward: 1, lumberjack: 0, miner: 0, blacksmith: 1 },
+        workers: { steward: 1, lumberjack: 0, miner: 0, refiner: 1, herbalist: 0, blacksmith: 1 },
         workerProgress: {
           lumberjack: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} },
           miner: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} },
+          refiner: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} },
+          herbalist: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} },
           blacksmith: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} }
-        }
+        },
+        productionCompanions: {}
       },
       expeditions: 0,
       victories: 0
@@ -606,14 +618,30 @@ export function workerProficiencyAt(workHours = 0) {
   return [...WORKER_PROFICIENCY_TIERS].reverse().find((tier) => hours >= tier.hours) || WORKER_PROFICIENCY_TIERS[0];
 }
 
+function recruitedProductionCompanions(state, workerId) {
+  return Object.keys(state.meta.estate.productionCompanions || {})
+    .filter((id) => state.meta.estate.productionCompanions[id] && PRODUCTION_COMPANION_DEFS[id]?.workerId === workerId)
+    .map((id) => PRODUCTION_COMPANION_DEFS[id]);
+}
+
+export function activeWorkerCount(state, workerId) {
+  const hired = state.meta.estate.workers[workerId] || 0;
+  return hired + recruitedProductionCompanions(state, workerId).length;
+}
+
 export function workerProficiency(state, workerId) {
   const progress = ensureWorkerProgress(state, workerId);
   const tier = workerProficiencyAt(progress.workHours);
   const level = WORKER_PROFICIENCY_TIERS.indexOf(tier);
   const nextTier = WORKER_PROFICIENCY_TIERS[level + 1] || WORKER_PROFICIENCY_TIERS[WORKER_PROFICIENCY_TIERS.length - 1];
   const span = Math.max(1, nextTier.hours - tier.hours);
+  const companions = recruitedProductionCompanions(state, workerId);
   return {
     ...tier,
+    yieldBonus: tier.yieldBonus + companions.reduce((sum, c) => sum + (c.yieldBonus || 0), 0),
+    speedBonus: tier.speedBonus + companions.reduce((sum, c) => sum + (c.speedBonus || 0), 0),
+    materialSaving: tier.materialSaving + companions.reduce((sum, c) => sum + (c.materialSaving || 0), 0),
+    companions,
     level,
     workHours: progress.workHours,
     nextHours: nextTier.hours,
@@ -650,9 +678,17 @@ export function adjustedWorkerMaterialCosts(state, workerId, materials, commit =
   return costs;
 }
 
-function workerOutputAmount(state, workerId, baseAmount) {
+function workerOutputAmount(state, workerId, baseAmount, outputId = null) {
   const progress = ensureWorkerProgress(state, workerId);
   const tier = workerProficiency(state, workerId);
+  if (outputId) {
+    progress.yieldRemainders ||= {};
+    const remainder = progress.yieldRemainders[outputId] || 0;
+    const total = baseAmount * (1 + tier.yieldBonus) + remainder;
+    const amount = Math.floor(total + 1e-9);
+    progress.yieldRemainders[outputId] = Math.max(0, total - amount);
+    return amount;
+  }
   const total = baseAmount * (1 + tier.yieldBonus) + progress.yieldRemainder;
   const amount = Math.floor(total + 1e-9);
   progress.yieldRemainder = Math.max(0, total - amount);
@@ -676,7 +712,7 @@ export function advanceEstate(state, turns = 1) {
   const events = [];
   for (let turn = 0; turn < turns; turn += 1) {
     estate.tick += 1;
-    const lumberjacks = estate.workers.lumberjack || 0;
+    const lumberjacks = activeWorkerCount(state, "lumberjack");
     const lumberWork = advanceWorkerCycle(state, "lumberjack", 3, lumberjacks);
     if (lumberWork.advanced) events.push(`벌목꾼 직종 숙련: ${lumberWork.current.name}`);
     if (lumberWork.cycles > 0) {
@@ -684,7 +720,7 @@ export function advanceEstate(state, turns = 1) {
       addMaterial(materials, "wood", amount);
       events.push(`벌목꾼: 목재 +${amount}`);
     }
-    const miners = estate.workers.miner || 0;
+    const miners = activeWorkerCount(state, "miner");
     const mineWork = advanceWorkerCycle(state, "miner", 4, miners);
     if (mineWork.advanced) events.push(`광부 직종 숙련: ${mineWork.current.name}`);
     if (mineWork.cycles > 0) {
@@ -692,21 +728,47 @@ export function advanceEstate(state, turns = 1) {
       addMaterial(materials, "ore", amount);
       events.push(`광부: 철광석 +${amount}`);
     }
-    const blacksmiths = estate.workers.blacksmith || 0;
-    const activeBlacksmiths = Math.min(blacksmiths, Math.floor(materials.ore / 2), materials.wood);
-    const smithWork = advanceWorkerCycle(state, "blacksmith", 5, activeBlacksmiths);
-    if (smithWork.advanced) events.push(`대장장이 직종 숙련: ${smithWork.current.name}`);
-    for (let cycle = 0; cycle < smithWork.cycles; cycle += 1) {
-      const batches = Math.min(blacksmiths, Math.floor(materials.ore / 2), materials.wood);
-      if (batches <= 0) break;
-      const baseCosts = { ore: batches * 2, wood: batches };
-      const costs = adjustedWorkerMaterialCosts(state, "blacksmith", baseCosts);
-      if (Object.entries(costs).some(([materialId, amount]) => (materials[materialId] || 0) < amount)) break;
-      adjustedWorkerMaterialCosts(state, "blacksmith", baseCosts, true);
-      for (const [materialId, amount] of Object.entries(costs)) materials[materialId] -= amount;
-      const amount = workerOutputAmount(state, "blacksmith", batches);
-      addMaterial(materials, "ingot", amount);
-      events.push(`대장장이: 철괴 +${amount}`);
+    const refiners = activeWorkerCount(state, "refiner");
+    for (const [oreId, yields] of Object.entries(ORE_SMELTING_DEFS)) {
+      const activeRefiners = Math.min(refiners, Math.floor((materials[oreId] || 0) / 2), materials.wood);
+      const refineWork = advanceWorkerCycle(state, "refiner", 5, activeRefiners);
+      if (refineWork.advanced) events.push(`제련공 직종 숙련: ${refineWork.current.name}`);
+      for (let cycle = 0; cycle < refineWork.cycles; cycle += 1) {
+        const batches = Math.min(refiners, Math.floor((materials[oreId] || 0) / 2), materials.wood);
+        if (batches <= 0) break;
+        const baseCosts = { [oreId]: batches * 2, wood: batches };
+        const costs = adjustedWorkerMaterialCosts(state, "refiner", baseCosts);
+        if (Object.entries(costs).some(([materialId, amount]) => (materials[materialId] || 0) < amount)) break;
+        adjustedWorkerMaterialCosts(state, "refiner", baseCosts, true);
+        for (const [materialId, amount] of Object.entries(costs)) materials[materialId] -= amount;
+        const produced = [];
+        for (const [outputId, ratio] of Object.entries(yields)) {
+          const amount = workerOutputAmount(state, "refiner", batches * ratio, outputId);
+          if (amount > 0) {
+            addMaterial(materials, outputId, amount);
+            produced.push(`${MATERIAL_DEFS[outputId].name} +${amount}`);
+          }
+        }
+        if (produced.length) events.push(`제련공: ${produced.join(", ")}`);
+      }
+    }
+    const herbalists = activeWorkerCount(state, "herbalist");
+    for (const herbId of HERB_IDS) {
+      const activeHerbalists = Math.min(herbalists, materials[herbId] || 0);
+      const herbWork = advanceWorkerCycle(state, "herbalist", 4, activeHerbalists);
+      if (herbWork.advanced) events.push(`약초학자 직종 숙련: ${herbWork.current.name}`);
+      for (let cycle = 0; cycle < herbWork.cycles; cycle += 1) {
+        const batches = Math.min(herbalists, materials[herbId] || 0);
+        if (batches <= 0) break;
+        const baseCosts = { [herbId]: batches };
+        const costs = adjustedWorkerMaterialCosts(state, "herbalist", baseCosts);
+        if (Object.entries(costs).some(([materialId, amount]) => (materials[materialId] || 0) < amount)) break;
+        adjustedWorkerMaterialCosts(state, "herbalist", baseCosts, true);
+        for (const [materialId, amount] of Object.entries(costs)) materials[materialId] -= amount;
+        const amount = workerOutputAmount(state, "herbalist", batches);
+        for (let i = 0; i < amount; i += 1) state.inventory.push(createItem("herbKit", createUid(state)));
+        if (amount > 0) events.push(`약초학자: 야전 약초함 +${amount}`);
+      }
     }
   }
   return events;
@@ -938,6 +1000,7 @@ export function migrateState(rawState) {
         ...base.meta.estate,
         ...(rawMeta.estate || {}),
         workers: { ...base.meta.estate.workers, ...(rawMeta.estate?.workers || {}) },
+        productionCompanions: { ...base.meta.estate.productionCompanions, ...(rawMeta.estate?.productionCompanions || {}) },
         workerProgress: Object.fromEntries(Object.keys(base.meta.estate.workerProgress).map((workerId) => [
           workerId,
           {

@@ -227,6 +227,16 @@ export const ITEM_DEFS = {
     environment: { corruption: 3 },
     baseText: "오염 압력을 3 줄이고 시야 안의 정예를 표시한다.",
     linkText: "장치 또는 방어 장비와 맞닿으면 해당 장비의 효과가 강화된다."
+  },
+  masterworkBlade: {
+    id: "masterworkBlade",
+    name: "명장의 다층 강철검",
+    glyph: "⚔",
+    color: "#c9a24a",
+    mask: [[1], [1], [1]],
+    tags: ["weapon"],
+    baseText: "공격할 때 피해를 5 추가한다.",
+    linkText: "숫돌과 맞닿으면 추가 피해가 한 번 더 중첩된다."
   }
 };
 
@@ -290,18 +300,42 @@ export const MATERIAL_DEFS = {
   wood: { id: "wood", name: "목재", glyph: "▤", category: "other", common: true, description: "건설과 제련 연료에 쓰는 일반 목재" },
   food: { id: "food", name: "보급 식량", glyph: "◉", category: "other", common: true, description: "원정대와 영지민을 위한 보급품" },
 
-  copperOre: { id: "copperOre", name: "구리광석", symbol: "Cu", glyph: "●", category: "ore", common: true, description: "전도 장치와 청동계 합금의 기초 광석" },
-  ore: { id: "ore", name: "철광석", symbol: "Fe", glyph: "◆", category: "ore", common: true, description: "무기와 방어구 제작의 기본 광석" },
-  aluminumOre: { id: "aluminumOre", name: "알루미늄광석", symbol: "Al", glyph: "◇", category: "ore", common: true, description: "가벼운 장비와 장치 부품에 쓰는 광석" },
-  tinOre: { id: "tinOre", name: "주석광석", symbol: "Sn", glyph: "⬡", category: "ore", common: true, description: "연금 용기와 합금 제작에 쓰는 광석" },
-  titaniumOre: { id: "titaniumOre", name: "티타늄광석", symbol: "Ti", glyph: "▲", category: "ore", common: true, description: "고급 경량 장비에 쓰는 단단한 광석" },
+  ore: { id: "ore", name: "철광석 (적철석)", symbol: "Fe", glyph: "◆", category: "ore", common: true, description: "북부 순상지에서 나는 무기·방어구 제작의 기본 광석" },
   ingot: { id: "ingot", name: "철괴", symbol: "Fe", glyph: "▰", category: "ore", common: true, refined: true, description: "철광석을 영지 대장간에서 제련한 금속괴" },
+  magnetiteJacobsite: { id: "magnetiteJacobsite", name: "망간자철석", symbol: "Fe·Mn", glyph: "◆", category: "ore", description: "북부 순상지에서 철과 함께 나는 망간 함유 자철석" },
+  bauxite: { id: "bauxite", name: "보크사이트", symbol: "Al", glyph: "◇", category: "ore", common: true, description: "남부 라테라이트 지대에서 나는 알루미늄 원광" },
+  pyrolusite: { id: "pyrolusite", name: "연망간석", symbol: "Mn", glyph: "◇", category: "ore", description: "남부 라테라이트 지대에서 보크사이트와 함께 나는 망간 원광" },
+  cassiterite: { id: "cassiterite", name: "주석석", symbol: "Sn", glyph: "⬡", category: "ore", common: true, description: "동부 조산대 맥상 광상에서 나는 주석 원광" },
+  stannite: { id: "stannite", name: "황석석", symbol: "Sn·Cu·Fe", glyph: "⬡", category: "ore", description: "동부 조산대에서 나는, 주석·구리·철을 함께 함유한 복합 원광" },
+  rutile: { id: "rutile", name: "금홍석", symbol: "Ti", glyph: "▲", category: "ore", description: "동부 조산대에서 나는 순도 높은 티타늄 원광" },
+  ilmenite: { id: "ilmenite", name: "티탄철석", symbol: "Ti·Fe", glyph: "▲", category: "ore", description: "동부 조산대에서 나는, 티타늄과 철을 함께 함유한 원광" },
+  sphalerite: { id: "sphalerite", name: "섬아연석", symbol: "Zn", glyph: "⬢", category: "ore", common: true, description: "서부 카르스트 지대에서 나는 아연 원광" },
+  smithsonite: { id: "smithsonite", name: "능아연석", symbol: "Zn", glyph: "⬢", category: "ore", description: "서부 카르스트 지대의 보조 아연 원광" },
+  malachite: { id: "malachite", name: "공작석", symbol: "Cu", glyph: "●", category: "ore", common: true, description: "중부 건조 사막에서 나는 구리 원광" },
+  chalcopyrite: { id: "chalcopyrite", name: "황동석", symbol: "Cu·Fe", glyph: "●", category: "ore", description: "중부 건조 사막에서 나는, 구리와 철을 함께 함유한 원광" },
+  aluminum: { id: "aluminum", name: "알루미늄", symbol: "Al", glyph: "◇", category: "ore", refined: true, description: "보크사이트를 제련한 경량 금속" },
+  manganese: { id: "manganese", name: "망간", symbol: "Mn", glyph: "◇", category: "ore", refined: true, description: "제철·합금의 촉매로 쓰는 희귀 금속. 전용 원광 없이 다른 광석의 부산물로만 얻는다" },
+  tin: { id: "tin", name: "주석", symbol: "Sn", glyph: "⬡", category: "ore", refined: true, description: "주석석을 제련한 금속" },
+  titanium: { id: "titanium", name: "티타늄", symbol: "Ti", glyph: "▲", category: "ore", refined: true, description: "금홍석을 제련한 고강도 경량 금속" },
+  zinc: { id: "zinc", name: "아연", symbol: "Zn", glyph: "⬢", category: "ore", refined: true, description: "섬아연석을 제련한 금속" },
+  copper: { id: "copper", name: "구리", symbol: "Cu", glyph: "●", category: "ore", refined: true, description: "공작석을 제련한 전도성 금속" },
   frostIron: { id: "frostIron", name: "설철", symbol: "Fe*", glyph: "❄", category: "ore", description: "북부 심층광산의 냉기를 머금은 특수 철" },
   mountainIron: { id: "mountainIron", name: "산철", symbol: "Fe*", glyph: "山", category: "ore", description: "동부 산악권의 단조에 적합한 치밀한 철" },
   blackSteel: { id: "blackSteel", name: "흑철 파편", symbol: "Fe*", glyph: "▣", category: "ore", description: "강적의 장비에서 회수하는 고강도 금속" },
   glassSand: { id: "glassSand", name: "유리사", symbol: "Si", glyph: "◇", category: "ore", description: "중부 협곡에서 채굴되는 결정성 모래" },
 
-  herb: { id: "herb", name: "약초", glyph: "♣", category: "special", common: true, description: "회복제와 연금 재료로 사용하는 약재" },
+  herb: { id: "herb", name: "약초", glyph: "♣", category: "special", common: true, description: "회복제와 연금 재료로 사용하는 일반 약재" },
+  rhodiola: { id: "rhodiola", name: "로디올라", glyph: "♣", category: "special", description: "북부 고산·한대 지역의 피로회복·고지 적응 강장 약재" },
+  arnica: { id: "arnica", name: "아르니카", glyph: "♣", category: "special", description: "북부 고산 초원의 타박상·근육통 외용 약재" },
+  cinchonaBark: { id: "cinchonaBark", name: "기나나무 껍질", glyph: "♣", category: "special", description: "남부 열대 우림의 말라리아 치료제 원료 약재" },
+  clove: { id: "clove", name: "정향", glyph: "♣", category: "special", description: "남부 열대 우림의 진통·방부 약재" },
+  cordyceps: { id: "cordyceps", name: "동충하초", glyph: "♣", category: "special", description: "동부 고산 지대의 원기회복·면역강화 약재" },
+  ginseng: { id: "ginseng", name: "인삼", glyph: "♣", category: "special", description: "동부 산악 지대의 원기회복 보약 약재" },
+  chamomile: { id: "chamomile", name: "카모마일", glyph: "♣", category: "special", description: "서부 온대 지역의 수면 유도 진정 약재" },
+  lavender: { id: "lavender", name: "라벤더", glyph: "♣", category: "special", description: "서부 온대 지역의 항불안 아로마 약재" },
+  willowBark: { id: "willowBark", name: "버드나무 껍질", glyph: "♣", category: "special", description: "서부 온대 지역의 해열진통제 원료 약재" },
+  aloeVera: { id: "aloeVera", name: "알로에", glyph: "♣", category: "special", description: "중부 사막 자생의 화상·피부 재생 약재" },
+  myrrh: { id: "myrrh", name: "몰약", glyph: "♣", category: "special", description: "중부 사막 수지의 방부·소염 약재" },
   runeFragment: { id: "runeFragment", name: "룬 조각", glyph: "ᚱ", category: "special", description: "룬 각인과 공용 기술 연구에 쓰는 파편" },
   manaStone: { id: "manaStone", name: "마석", glyph: "✦", category: "special", description: "마나와 정령력을 저장하는 광물성 특수 소재" },
   venomSac: { id: "venomSac", name: "맹독낭", glyph: "♢", category: "special", description: "독성 생물에게서 얻는 고농축 약재" },
@@ -310,11 +344,34 @@ export const MATERIAL_DEFS = {
   watcherEye: { id: "watcherEye", name: "감시자의 수정안", glyph: "◈", category: "special", description: "오염을 감지하는 우두머리의 특수 기관" }
 };
 
+// 약초학자가 소비할 수 있는 약초 계열 원재료 목록 (일반 약초 + 지역별 특산 약초)
+export const HERB_IDS = [
+  "herb", "rhodiola", "arnica", "cinchonaBark", "clove", "cordyceps", "ginseng",
+  "chamomile", "lavender", "willowBark", "aloeVera", "myrrh"
+];
+
+// 원광 1개를 제련했을 때 나오는 정제 원소(들). 복합 광석은 여러 원소를 동시에 낸다.
+export const ORE_SMELTING_DEFS = {
+  ore: { ingot: 1 },
+  magnetiteJacobsite: { ingot: 1, manganese: 0.3 },
+  bauxite: { aluminum: 1 },
+  cassiterite: { tin: 1 },
+  stannite: { tin: 1, copper: 0.5, ingot: 0.5 },
+  rutile: { titanium: 1 },
+  ilmenite: { titanium: 1, ingot: 0.5 },
+  sphalerite: { zinc: 1 },
+  smithsonite: { zinc: 1 },
+  malachite: { copper: 1 },
+  chalcopyrite: { copper: 1, ingot: 0.5 }
+};
+
 export const WORKER_DEFS = {
   steward: { id: "steward", name: "집사장", glyph: "♙", cost: 0, max: 1, description: "영지의 생산 명령을 관리한다." },
   lumberjack: { id: "lumberjack", name: "벌목꾼", glyph: "♣", cost: 3, max: 3, description: "3턴마다 목재를 생산한다." },
   miner: { id: "miner", name: "광부", glyph: "♦", cost: 3, max: 3, description: "4턴마다 영지 광산에서 철광석을 채굴한다." },
-  blacksmith: { id: "blacksmith", name: "대장장이", glyph: "⚒", cost: 5, max: 2, description: "광석을 제련하고 설계도로 장비를 제작한다." }
+  refiner: { id: "refiner", name: "제련공", glyph: "▰", cost: 4, max: 3, description: "철광석과 목재를 제련·선광해 철괴로 만든다." },
+  herbalist: { id: "herbalist", name: "약초학자", glyph: "✚", cost: 4, max: 2, description: "약초를 조제해 원정용 야전 약초함을 만든다." },
+  blacksmith: { id: "blacksmith", name: "대장장이", glyph: "⚒", cost: 5, max: 2, description: "설계도로 장비를 제작한다." }
 };
 
 export const WORKER_PROFICIENCY_TIERS = [
@@ -343,8 +400,44 @@ export const CRAFT_RECIPES = [
   { id: "ember", itemDefId: "ember", name: "꺼지지 않는 불씨", materials: { ingot: 1, sunShard: 1 }, researchId: "ember" },
   { id: "lantern", itemDefId: "lantern", name: "광맥 랜턴", materials: { ingot: 2, sunShard: 1 }, researchId: "lantern" },
   { id: "coil", itemDefId: "coil", name: "전도 코일", materials: { ingot: 3, blackSteel: 1 }, researchId: "coil" },
-  { id: "armor", itemDefId: "armor", name: "층철 갑옷", materials: { ingot: 5, blackSteel: 1 }, researchId: "armor" }
+  { id: "armor", itemDefId: "armor", name: "층철 갑옷", materials: { ingot: 5, blackSteel: 1 }, researchId: "armor" },
+  { id: "masterworkBlade", itemDefId: "masterworkBlade", name: "명장의 다층 강철검", materials: { ingot: 6, blackSteel: 2 }, requiresCompanionId: "masterSmith" }
 ];
+
+export const PRODUCTION_COMPANION_DEFS = {
+  veteranWoodcutter: {
+    id: "veteranWoodcutter", workerId: "lumberjack", name: "노련한 벌목꾼", glyph: "♣", cost: 8,
+    primary: "일감을 보는 눈", weakness: "혼자서는 아름드리 나무를 베지 못한다.",
+    yieldBonus: 0.08, speedBonus: 0.06, materialSaving: 0
+  },
+  deepMiner: {
+    id: "deepMiner", workerId: "miner", name: "심맥 광부", glyph: "♦", cost: 8,
+    primary: "광맥 감지", weakness: "무른 흙에서는 실력을 발휘하지 못한다.",
+    yieldBonus: 0.08, speedBonus: 0.06, materialSaving: 0
+  },
+  masterSmith: {
+    id: "masterSmith", workerId: "blacksmith", name: "명장 대장장이", glyph: "⚒", cost: 12,
+    primary: "명품 담금질", weakness: "재료가 부족하면 손을 놓는다.",
+    yieldBonus: 0.05, speedBonus: 0.05, materialSaving: 0.05,
+    qualityBonus: 10, bonusAffixChance: 0.3, recipeIds: ["masterworkBlade"]
+  },
+  refinerCompanion: {
+    id: "refinerCompanion", workerId: "refiner", name: "제련 명인", glyph: "▰", cost: 9,
+    primary: "불순물 선별", weakness: "광석이 부족하면 손을 놓는다.",
+    yieldBonus: 0.08, speedBonus: 0.06, materialSaving: 0.05
+  },
+  herbalistCompanion: {
+    id: "herbalistCompanion", workerId: "herbalist", name: "노련한 약초학자", glyph: "✚", cost: 8,
+    primary: "약초 감별", weakness: "희귀 약초는 알아보지 못한다.",
+    yieldBonus: 0.1, speedBonus: 0.06, materialSaving: 0.05
+  },
+  alchemist: {
+    id: "alchemist", workerId: "blacksmith", name: "연금술사", glyph: "⚗", cost: 12,
+    primary: "연금 배합", weakness: "무기·방어구 단조에는 서투르다.",
+    yieldBonus: 0, speedBonus: 0, materialSaving: 0.05,
+    qualityBonus: 10, bonusAffixChance: 0.3, alchemyOnly: true
+  }
+};
 
 export const RESEARCH_DEFS = [
   {

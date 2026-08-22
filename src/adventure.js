@@ -7,12 +7,17 @@ export const DUNGEON_VIEW_SIZE = 11;
 
 export const ATTACK_TELEGRAPH_MS = 320;
 export const PARTY_LIMIT = 2;
+// Scales each companion's own maxHp/damage by the player's level growth rate, so their
+// power tracks the player live instead of an independent per-companion level table.
+// Tuned empirically so combat-focused companions (탱커/딜러) narrowly win a 1v1 against a
+// standard-tier enemy; pure-utility/healer companions are intentionally left weaker solo.
+export const COMPANION_POWER_MULTIPLIER = 1.15;
 export const STARTING_ROSTER = ["snow_guard", "venom_tracker", "formation_officer", "oath_knight", "desert_lancer"];
 export const STARTING_PARTY = ["snow_guard", "oath_knight"];
 
 export const STATUS_EFFECT_DEFS = {
   decay: { id: "decay", name: "부패", glyph: "☣", durationMs: 8000, tickMs: 1200, damage: 1, maxStacks: 1, description: "지속 피해와 받는 회복 감소. 중병기 변형은 방어력도 깎는다." },
-  poison: { id: "poison", name: "독", glyph: "♢", durationMs: 10000, tickMs: 2000, damage: 1, maxStacks: 5, description: "약하지만 오래 남으며 최대 5회 중첩된다." },
+  poison: { id: "poison", name: "독", glyph: "♢", durationMs: 10000, tickMs: 2000, damage: 1, maxStacks: 5, description: "약하지만 오래 남으며 최대 5회 중첩된다. 중첩마다 이동·행동 속도가 느려진다." },
   bleed: { id: "bleed", name: "출혈", glyph: "⌁", durationMs: 9000, tickMs: 1000, damage: 1, maxStacks: 5, description: "최대 5회 중첩되며 중첩마다 초당 피해가 증가한다." },
   stun: { id: "stun", name: "기절", glyph: "✹", durationMs: 1200, maxStacks: 1, description: "짧은 시간 이동과 행동을 멈춘다." },
   frost: { id: "frost", name: "빙결", glyph: "❄", durationMs: 5200, maxStacks: 3, description: "중첩마다 이동·행동이 느려지고 3중첩에서 잠시 완전히 언다." },
@@ -130,25 +135,25 @@ export const MONSTER_ECOLOGY_DEFS = {
 };
 
 export const UNIT_DEFS = {
-  snow_guard: { id: "snow_guard", name: "설벽 수호자", regionId: "north", role: "탱커", glyph: "▣", color: "#83b8cd", maxHp: 52, damage: 5, range: 7, speed: 7, attackMs: 1200, armor: 0.28, scores: [1, 4, 1], primary: "방패벽", weakness: "기동과 화력이 낮다." },
-  winter_berserker: { id: "winter_berserker", name: "빙원 광전사", regionId: "north", role: "딜러", glyph: "Ψ", color: "#a8c8d3", maxHp: 39, damage: 9, range: 8, speed: 10, attackMs: 930, armor: 0.1, finisher: 1.35, scores: [4, 1, 1], primary: "상처 투쟁", weakness: "회복 지원 없이는 오래 버티지 못한다." },
-  snow_shaman: { id: "snow_shaman", name: "설령 주술사", regionId: "north", role: "유틸", glyph: "❅", color: "#9dd5df", maxHp: 32, damage: 4, range: 21, speed: 8, attackMs: 1150, armor: 0.08, heal: 3, healMs: 4300, partyArmor: 0.02, scores: [1, 1, 4], primary: "설령 계약", weakness: "직접 화력이 낮다." },
+  snow_guard: { id: "snow_guard", name: "설벽 수호자", regionId: "north", role: "탱커", glyph: "▣", color: "#83b8cd", maxHp: 52, damage: 5, range: 7, speed: 7, attackMs: 1200, armor: 0.28, scores: [1, 4, 1], primary: "방패벽", weakness: "기동과 화력이 낮다.", baseClassId: "crusader" },
+  winter_berserker: { id: "winter_berserker", name: "빙원 광전사", regionId: "north", role: "딜러", glyph: "Ψ", color: "#a8c8d3", maxHp: 39, damage: 9, range: 8, speed: 10, attackMs: 930, armor: 0.1, finisher: 1.35, scores: [4, 1, 1], primary: "상처 투쟁", weakness: "회복 지원 없이는 오래 버티지 못한다.", baseClassId: "barbarian" },
+  snow_shaman: { id: "snow_shaman", name: "설령 주술사", regionId: "north", role: "유틸", glyph: "❅", color: "#9dd5df", maxHp: 32, damage: 4, range: 21, speed: 8, attackMs: 1150, armor: 0.08, heal: 3, healMs: 4300, partyArmor: 0.02, scores: [1, 1, 4], primary: "설령 계약", weakness: "직접 화력이 낮다.", baseClassId: "necromancer" },
 
-  venom_tracker: { id: "venom_tracker", name: "독침 추적자", regionId: "south", role: "딜러", glyph: "♢", color: "#75b883", maxHp: 35, damage: 6, range: 23, speed: 11, attackMs: 910, armor: 0.07, poisonDamage: 1, scores: [4, 1, 1], primary: "누적 독", weakness: "독이 퍼지기 전 순간 화력이 낮다." },
-  vine_keeper: { id: "vine_keeper", name: "덩굴 수호자", regionId: "south", role: "탱·유틸", glyph: "♣", color: "#64a66e", maxHp: 45, damage: 4, range: 15, speed: 6, attackMs: 1250, armor: 0.19, partyArmor: 0.04, scores: [1, 3, 2], primary: "생장 갑옷", weakness: "빠른 적을 따라가지 못한다." },
-  sap_healer: { id: "sap_healer", name: "수액 약제사", regionId: "south", role: "유틸", glyph: "✚", color: "#9ccb77", maxHp: 30, damage: 3, range: 22, speed: 8, attackMs: 1200, armor: 0.05, heal: 5, healMs: 3300, scores: [1, 1, 4], primary: "독과 약", weakness: "노출되면 쉽게 쓰러진다." },
+  venom_tracker: { id: "venom_tracker", name: "독침 추적자", regionId: "south", role: "딜러", glyph: "♢", color: "#75b883", maxHp: 35, damage: 6, range: 23, speed: 11, attackMs: 910, armor: 0.07, poisonDamage: 1, scores: [4, 1, 1], primary: "누적 독", weakness: "독이 퍼지기 전 순간 화력이 낮다.", baseClassId: "tracker" },
+  vine_keeper: { id: "vine_keeper", name: "덩굴 수호자", regionId: "south", role: "탱·유틸", glyph: "♣", color: "#64a66e", maxHp: 45, damage: 4, range: 15, speed: 6, attackMs: 1250, armor: 0.19, partyArmor: 0.04, scores: [1, 3, 2], primary: "생장 갑옷", weakness: "빠른 적을 따라가지 못한다.", baseClassId: "crusader" },
+  sap_healer: { id: "sap_healer", name: "수액 약제사", regionId: "south", role: "유틸", glyph: "✚", color: "#9ccb77", maxHp: 30, damage: 3, range: 22, speed: 8, attackMs: 1200, armor: 0.05, heal: 5, healMs: 3300, scores: [1, 1, 4], primary: "독과 약", weakness: "노출되면 쉽게 쓰러진다.", baseClassId: "archmage" },
 
-  formation_officer: { id: "formation_officer", name: "진법 군관", regionId: "east", role: "유틸", glyph: "陣", color: "#d09572", maxHp: 37, damage: 5, range: 18, speed: 9, attackMs: 1050, armor: 0.12, partyArmor: 0.03, scores: [1, 2, 4], primary: "진형 보조", weakness: "혼자서는 힘을 발휘하기 어렵다." },
-  duel_swordsman: { id: "duel_swordsman", name: "결전검객", regionId: "east", role: "폭딜러", glyph: "刃", color: "#d88767", maxHp: 32, damage: 9, range: 8, speed: 13, attackMs: 950, armor: 0.07, buffCarry: 0.22, scores: [4, 1, 1], primary: "결전 대상", weakness: "버프와 보호가 끊기면 급격히 약해진다." },
-  meridian_fighter: { id: "meridian_fighter", name: "기맥 권사", regionId: "east", role: "딜·탱", glyph: "武", color: "#b98a70", maxHp: 43, damage: 7, range: 7, speed: 12, attackMs: 870, armor: 0.14, lifeSteal: 0.12, scores: [3, 2, 1], primary: "기맥 순환", weakness: "원거리 적에게 접근해야 한다." },
+  formation_officer: { id: "formation_officer", name: "진법 군관", regionId: "east", role: "유틸", glyph: "陣", color: "#d09572", maxHp: 37, damage: 5, range: 18, speed: 9, attackMs: 1050, armor: 0.12, partyArmor: 0.03, scores: [1, 2, 4], primary: "진형 보조", weakness: "혼자서는 힘을 발휘하기 어렵다.", baseClassId: "crusader" },
+  duel_swordsman: { id: "duel_swordsman", name: "결전검객", regionId: "east", role: "폭딜러", glyph: "刃", color: "#d88767", maxHp: 32, damage: 9, range: 8, speed: 13, attackMs: 950, armor: 0.07, buffCarry: 0.22, scores: [4, 1, 1], primary: "결전 대상", weakness: "버프와 보호가 끊기면 급격히 약해진다.", baseClassId: "maehwa" },
+  meridian_fighter: { id: "meridian_fighter", name: "기맥 권사", regionId: "east", role: "딜·탱", glyph: "武", color: "#b98a70", maxHp: 43, damage: 7, range: 7, speed: 12, attackMs: 870, armor: 0.14, lifeSteal: 0.12, scores: [3, 2, 1], primary: "기맥 순환", weakness: "원거리 적에게 접근해야 한다.", baseClassId: "barbarian" },
 
-  oath_knight: { id: "oath_knight", name: "서약 중검기사", regionId: "west", role: "탱커", glyph: "♜", color: "#d0b46f", maxHp: 56, damage: 6, range: 8, speed: 6, attackMs: 1280, armor: 0.3, heal: 2, healMs: 5200, scores: [1, 4, 1], primary: "중검 방벽", weakness: "기동과 공격 주기가 느리다." },
-  mana_weaver: { id: "mana_weaver", name: "마나 술사", regionId: "west", role: "딜·유틸", glyph: "✦", color: "#aa91d0", maxHp: 29, damage: 9, range: 25, speed: 8, attackMs: 1120, armor: 0.04, scores: [3, 1, 2], primary: "마나 폭주", weakness: "매우 약한 방어와 체력을 가진다." },
-  spirit_ranger: { id: "spirit_ranger", name: "정령 순찰자", regionId: "west", role: "유틸", glyph: "♧", color: "#85b99b", maxHp: 34, damage: 5, range: 23, speed: 10, attackMs: 980, armor: 0.08, heal: 3, healMs: 4100, partyArmor: 0.03, scores: [1, 1, 4], primary: "정령 교감", weakness: "정령 지원이 분산되면 효율이 낮다." },
+  oath_knight: { id: "oath_knight", name: "서약 중검기사", regionId: "west", role: "탱커", glyph: "♜", color: "#d0b46f", maxHp: 56, damage: 6, range: 8, speed: 6, attackMs: 1280, armor: 0.3, heal: 2, healMs: 5200, scores: [1, 4, 1], primary: "중검 방벽", weakness: "기동과 공격 주기가 느리다.", baseClassId: "crusader" },
+  mana_weaver: { id: "mana_weaver", name: "마나 술사", regionId: "west", role: "딜·유틸", glyph: "✦", color: "#aa91d0", maxHp: 29, damage: 9, range: 25, speed: 8, attackMs: 1120, armor: 0.04, scores: [3, 1, 2], primary: "마나 폭주", weakness: "매우 약한 방어와 체력을 가진다.", baseClassId: "archmage" },
+  spirit_ranger: { id: "spirit_ranger", name: "정령 순찰자", regionId: "west", role: "유틸", glyph: "♧", color: "#85b99b", maxHp: 34, damage: 5, range: 23, speed: 10, attackMs: 980, armor: 0.08, heal: 3, healMs: 4100, partyArmor: 0.03, scores: [1, 1, 4], primary: "정령 교감", weakness: "정령 지원이 분산되면 효율이 낮다.", baseClassId: "necromancer" },
 
-  desert_lancer: { id: "desert_lancer", name: "사막 창기병", regionId: "central", role: "딜·탱", glyph: "➶", color: "#d2a25d", maxHp: 41, damage: 7, range: 10, speed: 14, attackMs: 900, armor: 0.13, chargeDamage: 0.25, scores: [3, 2, 1], primary: "돌파 기동", weakness: "좁은 전장과 장기전에 약하다." },
-  glass_alchemist: { id: "glass_alchemist", name: "유리사 연금술사", regionId: "central", role: "딜·유틸", glyph: "⚗", color: "#cf9257", maxHp: 31, damage: 5, range: 22, speed: 8, attackMs: 1080, armor: 0.06, poisonDamage: 1, heal: 2, healMs: 5000, scores: [2, 1, 3], primary: "분진 조합", weakness: "준비 없이 돌입한 전투에 약하다." },
-  caravan_guide: { id: "caravan_guide", name: "대상단 길잡이", regionId: "central", role: "유틸", glyph: "◎", color: "#d4bc7a", maxHp: 36, damage: 4, range: 20, speed: 12, attackMs: 1000, armor: 0.09, commandAura: 0.1, heal: 2, healMs: 4700, scores: [1, 1, 4], primary: "보급 지휘", weakness: "전투를 끝낼 결정력이 부족하다." }
+  desert_lancer: { id: "desert_lancer", name: "사막 창기병", regionId: "central", role: "딜·탱", glyph: "➶", color: "#d2a25d", maxHp: 41, damage: 7, range: 10, speed: 14, attackMs: 900, armor: 0.13, chargeDamage: 0.25, scores: [3, 2, 1], primary: "돌파 기동", weakness: "좁은 전장과 장기전에 약하다.", baseClassId: "barbarian" },
+  glass_alchemist: { id: "glass_alchemist", name: "유리사 연금술사", regionId: "central", role: "딜·유틸", glyph: "⚗", color: "#cf9257", maxHp: 31, damage: 5, range: 22, speed: 8, attackMs: 1080, armor: 0.06, poisonDamage: 1, heal: 2, healMs: 5000, scores: [2, 1, 3], primary: "분진 조합", weakness: "준비 없이 돌입한 전투에 약하다.", baseClassId: "archmage" },
+  caravan_guide: { id: "caravan_guide", name: "대상단 길잡이", regionId: "central", role: "유틸", glyph: "◎", color: "#d4bc7a", maxHp: 36, damage: 4, range: 20, speed: 12, attackMs: 1000, armor: 0.09, commandAura: 0.1, heal: 2, healMs: 4700, scores: [1, 1, 4], primary: "보급 지휘", weakness: "전투를 끝낼 결정력이 부족하다.", baseClassId: "tracker" }
 };
 
 const ENEMY_COMBATANTS = {
@@ -423,7 +428,8 @@ function maybeStartIrregularAmbush(run) {
     regionId: run.regionId,
     hazardMitigation: run.hazardMitigation,
     commander: run.commander,
-    awaitingPlayerStart: true
+    awaitingPlayerStart: true,
+    enemyCopies: 2
   });
   return feature;
 }
@@ -458,7 +464,8 @@ export function moveRunPlayer(run, x, y) {
       hazardMitigation: run.hazardMitigation,
       commander: run.commander,
       forceBoss: Boolean(feature.boss),
-      awaitingPlayerStart: true
+      awaitingPlayerStart: true,
+      enemyCopies: feature.boss ? 1 : 2
     });
     return { moved: true, type: "encounter", feature };
   }
@@ -561,16 +568,27 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
   const encounter = ENCOUNTER_DEFS[encounterId] || ENCOUNTER_DEFS.sandHunters;
   const partyLimit = Math.max(1, Number(options.partyLimit || PARTY_LIMIT));
   const selectedParty = [...new Set(partyIds)].filter((unitId) => UNIT_DEFS[unitId]).slice(0, partyLimit);
-  const companions = selectedParty.map((unitId, index) => {
-    const definition = UNIT_DEFS[unitId];
-    const progress = unitProgress[unitId] || { level: 1, xp: 0 };
-    const secondary = SECONDARY_DEFS[progress.secondaryId] || null;
-    return createCombatant(definition, `unit-${definition.id}`, "unit", index, progress, secondary);
-  });
   const playerKit = playerKitDefinition(options.commander?.combatKitId);
   const playerBaseClass = playerBaseClassDefinition(playerKit.baseClassId);
   const playerSkills = normalizedPlayerLoadout(options.commander || {}, playerKit.id);
   const computedPlayerStats = playerCombatStats(options.commander || {}, playerKit.id);
+  const playerHpGrowth = computedPlayerStats.maxHp / playerKit.stats.maxHp;
+  const playerDamageGrowth = computedPlayerStats.damage / playerKit.stats.damage;
+  const companions = selectedParty.map((unitId, index) => {
+    const definition = UNIT_DEFS[unitId];
+    const progress = unitProgress[unitId] || { level: 1, xp: 0 };
+    const secondary = SECONDARY_DEFS[progress.secondaryId] || null;
+    const scaledDefinition = {
+      ...definition,
+      maxHp: Math.max(1, Math.round(definition.maxHp * playerHpGrowth * COMPANION_POWER_MULTIPLIER)),
+      damage: Math.max(1, Math.round(definition.damage * playerDamageGrowth * COMPANION_POWER_MULTIPLIER)),
+      preScaled: true
+    };
+    const companion = createCombatant(scaledDefinition, `unit-${definition.id}`, "unit", index, progress, secondary);
+    companion.baseClassId = definition.baseClassId || null;
+    companion.basePassive = definition.baseClassId ? { ...playerBaseClassDefinition(definition.baseClassId).passive } : null;
+    return companion;
+  });
   const player = createCombatant(
     { ...PLAYER_COMBAT_DEF, ...computedPlayerStats, preScaled: true, name: options.commander?.name || PLAYER_COMBAT_DEF.name },
     "player-controlled",
@@ -582,6 +600,7 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
   player.baseClassId = playerBaseClass.id;
   player.combatKitId = playerKit.id;
   player.basePassiveId = playerBaseClass.passive.id;
+  player.basePassive = { ...playerBaseClass.passive };
   player.passiveId = playerKit.passive.id;
   player.x = 27;
   player.y = 50;
@@ -631,7 +650,7 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     focusTargetId: enemies.find((enemy) => enemy.boss)?.id || null,
     command: { chargeUntil: 0, guardUntil: 0, focusUntil: 0 },
     commandReadyAt: { charge: 0, guard: 0, focus: 0 },
-    basePassiveState: { hitCount: 0, soulStacks: 0, soulExpiresAt: 0, harvestedEnemyIds: [] },
+    passiveState: {},
     consumedCorpseIds: [],
     groundEffects: [],
     log: [options.defense ? `개척자와 자동 전투 동료 ${companions.length}명이 전선에 합류했다.` : `${playerBaseClass.name}의 기본 패시브와 ${playerKit.shortName} 전승을 활성화했다.`],
@@ -733,9 +752,10 @@ function actorDisabled(actor, battle) {
   return Boolean(actor.statuses?.stun || (actor.frozenUntil || 0) > battle.elapsed);
 }
 
-function frostMultiplier(actor) {
-  const stacks = actor.statuses?.frost?.stacks || 0;
-  return Math.max(0.58, 1 - stacks * 0.12);
+function speedDebuffMultiplier(actor) {
+  const frostStacks = actor.statuses?.frost?.stacks || 0;
+  const poisonStacks = actor.statuses?.poison?.stacks || 0;
+  return Math.max(0.5, 1 - frostStacks * 0.12 - poisonStacks * 0.05);
 }
 
 function hasteSpeedMultiplier(actor, battle) {
@@ -802,25 +822,29 @@ function tickGroundEffects(battle) {
   battle.groundEffects = (battle.groundEffects || []).filter((effect) => battle.elapsed < effect.endsAt);
 }
 
-function ensureBasePassiveState(battle) {
-  battle.basePassiveState ||= { hitCount: 0, soulStacks: 0, soulExpiresAt: 0, harvestedEnemyIds: [], lastActionAt: 0 };
-  return battle.basePassiveState;
+function ensureBasePassiveState(battle, unitId) {
+  battle.passiveState ||= {};
+  battle.passiveState[unitId] ||= { hitCount: 0, soulStacks: 0, soulExpiresAt: 0, harvestedEnemyIds: [], lastActionAt: 0 };
+  return battle.passiveState[unitId];
+}
+
+function markUnitActive(battle, unit) {
+  ensureBasePassiveState(battle, unit.id).lastActionAt = battle.elapsed;
 }
 
 function markPlayerActive(battle) {
-  ensureBasePassiveState(battle).lastActionAt = battle.elapsed;
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  if (player) markUnitActive(battle, player);
 }
 
-function refreshBaseClassPassive(battle) {
-  const passive = battle.playerBasePassive;
-  const player = battle.units.find((unit) => unit.id === battle.playerId);
-  if (!passive || !player) return;
-  const state = ensureBasePassiveState(battle);
+function applyBasePassiveEffect(battle, unit, passive) {
+  const state = ensureBasePassiveState(battle, unit.id);
+  const announce = Boolean(unit.controlled);
   if (passive.effect === "soulHarvest") {
     if (state.soulStacks > 0 && battle.elapsed >= state.soulExpiresAt) {
       state.soulStacks = 0;
       state.soulExpiresAt = 0;
-      pushBattleLog(battle, `${passive.name}: 붙잡아 둔 영혼이 흩어졌다.`);
+      if (announce) pushBattleLog(battle, `${passive.name}: 붙잡아 둔 영혼이 흩어졌다.`);
     }
     const newlyDefeated = battle.enemies.filter((enemy) => enemy.hp <= 0 && !state.harvestedEnemyIds.includes(enemy.id));
     if (newlyDefeated.length) {
@@ -828,46 +852,58 @@ function refreshBaseClassPassive(battle) {
       const previous = state.soulStacks || 0;
       state.soulStacks = Math.min(passive.maxStacks || 3, previous + newlyDefeated.length);
       state.soulExpiresAt = battle.elapsed + (passive.durationMs || 12000);
-      if (state.soulStacks > previous) pushBattleLog(battle, `${passive.name}: 영혼 ${state.soulStacks}/${passive.maxStacks}`);
+      if (announce && state.soulStacks > previous) pushBattleLog(battle, `${passive.name}: 영혼 ${state.soulStacks}/${passive.maxStacks}`);
     }
     const summonMultiplier = 1 + (state.soulStacks || 0) * (passive.summonDamagePerStack || 0);
-    for (const unit of battle.units.filter((entry) => entry.summonType)) unit.passiveDamageMultiplier = summonMultiplier;
+    unit.passiveDamageMultiplier = summonMultiplier;
+    if (announce) {
+      for (const summon of battle.units.filter((entry) => entry.summonType)) summon.passiveDamageMultiplier = summonMultiplier;
+    }
   } else if (passive.effect === "rageScaling") {
-    player.rageBaseArmor ??= player.armor;
-    player.rageBaseHpRegen ??= player.hpRegen;
-    const missing = player.hp > 0 ? 1 - player.hp / player.maxHp : 0;
-    const berserk = player.positiveEffects?.berserk?.endsAt > battle.elapsed ? player.positiveEffects.berserk : null;
-    player.passiveDamageMultiplier = 1 + missing * (passive.damagePerMissing || 0.6) + (berserk?.bonus || 0);
-    player.armor = Math.min(0.58, player.rageBaseArmor + missing * (passive.armorPerMissing || 0.15));
-    player.hpRegen = player.rageBaseHpRegen + missing * (passive.hpRegenPerMissing || 1.5);
+    unit.rageBaseArmor ??= unit.armor;
+    unit.rageBaseHpRegen ??= unit.hpRegen;
+    const missing = unit.hp > 0 ? 1 - unit.hp / unit.maxHp : 0;
+    const berserk = unit.positiveEffects?.berserk?.endsAt > battle.elapsed ? unit.positiveEffects.berserk : null;
+    unit.passiveDamageMultiplier = 1 + missing * (passive.damagePerMissing || 0.6) + (berserk?.bonus || 0);
+    unit.armor = Math.min(0.58, unit.rageBaseArmor + missing * (passive.armorPerMissing || 0.15));
+    unit.hpRegen = unit.rageBaseHpRegen + missing * (passive.hpRegenPerMissing || 1.5);
   } else if (passive.effect === "manaFocus") {
-    const manaRatio = player.maxMana > 0 ? player.mana / player.maxMana : 0;
-    player.passiveDamageMultiplier = 1 + manaRatio * (passive.damagePerMana || 0.4);
+    const manaRatio = unit.maxMana > 0 ? unit.mana / unit.maxMana : 1;
+    unit.passiveDamageMultiplier = 1 + manaRatio * (passive.damagePerMana || 0.4);
   } else if (passive.effect === "stealthWhenIdle") {
     const idleFor = battle.elapsed - (state.lastActionAt || 0);
     if (idleFor >= (passive.idleMs || 3000)) {
-      player.positiveEffects ||= {};
-      player.positiveEffects.stealth = { endsAt: battle.elapsed + 500 };
+      unit.positiveEffects ||= {};
+      unit.positiveEffects.stealth = { endsAt: battle.elapsed + 500 };
     }
   } else if (passive.effect === "formAdaptive") {
-    const transformed = Boolean(player.positiveEffects?.wolfForm);
-    player.armor = Math.min(0.58, (player.rageBaseArmor ??= player.armor) + (transformed ? 0 : (passive.formArmorBonus || 0.08)));
-    player.passiveDamageMultiplier = 1 + (transformed ? (passive.formDamageBonus || 0.25) : 0);
+    const transformed = Boolean(unit.positiveEffects?.wolfForm);
+    unit.armor = Math.min(0.58, (unit.rageBaseArmor ??= unit.armor) + (transformed ? 0 : (passive.formArmorBonus || 0.08)));
+    unit.passiveDamageMultiplier = 1 + (transformed ? (passive.formDamageBonus || 0.25) : 0);
   }
 }
 
-function recordPlayerHit(battle, target, damage) {
-  const passive = battle.playerBasePassive;
-  if (target.id !== battle.playerId || target.hp <= 0 || damage <= 0) return;
-  markPlayerActive(battle);
+function refreshBaseClassPassive(battle) {
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  if (player?.hp > 0 && battle.playerBasePassive) applyBasePassiveEffect(battle, player, battle.playerBasePassive);
+  for (const companion of battle.units) {
+    if (companion.id === battle.playerId || companion.hp <= 0 || !companion.basePassive) continue;
+    applyBasePassiveEffect(battle, companion, companion.basePassive);
+  }
+}
+
+function recordUnitHit(battle, target, damage) {
+  if (target.team !== "unit" || target.hp <= 0 || damage <= 0) return;
+  markUnitActive(battle, target);
+  const passive = target.basePassive;
   if (passive?.effect !== "hitCycleHeal") return;
-  const state = ensureBasePassiveState(battle);
+  const state = ensureBasePassiveState(battle, target.id);
   state.hitCount = (state.hitCount || 0) + 1;
   if (state.hitCount < passive.hitsRequired) return;
   state.hitCount = 0;
   const amount = Math.max(1, Math.round(target.maxHp * passive.healRatio));
   const healed = healCombatant(target, amount);
-  pushBattleLog(battle, `${passive.name}: 피격 순환 완성 · 체력 ${healed} 회복`);
+  if (target.controlled) pushBattleLog(battle, `${passive.name}: 피격 순환 완성 · 체력 ${healed} 회복`);
 }
 
 export function tickAutoBattle(battle, deltaMs) {
@@ -883,7 +919,7 @@ export function tickAutoBattle(battle, deltaMs) {
     if (inputLength > 0.08) {
       const normalizedX = inputX / Math.max(1, inputLength);
       const normalizedY = inputY / Math.max(1, inputLength);
-      const travel = player.speed * frostMultiplier(player) * hasteSpeedMultiplier(player, battle) * Math.min(1, inputLength) * (step / 1000);
+      const travel = player.speed * speedDebuffMultiplier(player) * hasteSpeedMultiplier(player, battle) * Math.min(1, inputLength) * (step / 1000);
       player.moveTarget = null;
       player.x = Math.max(5, Math.min(95, player.x + normalizedX * travel));
       player.y = Math.max(8, Math.min(92, player.y + normalizedY * travel));
@@ -892,7 +928,7 @@ export function tickAutoBattle(battle, deltaMs) {
       const dx = player.moveTarget.x - player.x;
       const dy = player.moveTarget.y - player.y;
       const distance = Math.hypot(dx, dy);
-      const travel = player.speed * frostMultiplier(player) * hasteSpeedMultiplier(player, battle) * (step / 1000);
+      const travel = player.speed * speedDebuffMultiplier(player) * hasteSpeedMultiplier(player, battle) * (step / 1000);
       if (distance <= travel || distance < 0.8) {
         player.x = player.moveTarget.x;
         player.y = player.moveTarget.y;
@@ -922,7 +958,7 @@ export function tickAutoBattle(battle, deltaMs) {
   }
   for (const actor of all) {
     if (actor.hp <= 0) continue;
-    actor.cooldown = Math.max(0, actor.cooldown - step * frostMultiplier(actor));
+    actor.cooldown = Math.max(0, actor.cooldown - step * speedDebuffMultiplier(actor));
     actor.lastHit = Math.max(0, actor.lastHit - step);
     if (actor.team === "unit" && actor.heal && Number.isFinite(actor.healMs)) {
       actor.healCooldown -= step;
@@ -961,9 +997,9 @@ export function tickAutoBattle(battle, deltaMs) {
       const dx = target.x - actor.x;
       const dy = target.y - actor.y;
       const length = Math.max(0.001, Math.hypot(dx, dy));
-      actor.x += (dx / length) * actor.speed * frostMultiplier(actor) * (chargeBoost ? 1.7 : 1) * (step / 1000);
+      actor.x += (dx / length) * actor.speed * speedDebuffMultiplier(actor) * (chargeBoost ? 1.7 : 1) * (step / 1000);
       actor.x = Math.max(5, Math.min(95, actor.x));
-      actor.y += (dy / length) * actor.speed * frostMultiplier(actor) * (chargeBoost ? 1.7 : 1) * (step / 1000);
+      actor.y += (dy / length) * actor.speed * speedDebuffMultiplier(actor) * (chargeBoost ? 1.7 : 1) * (step / 1000);
       actor.y = Math.max(8, Math.min(92, actor.y));
       continue;
     }
@@ -982,7 +1018,7 @@ export function tickAutoBattle(battle, deltaMs) {
     const rawDamage = actor.damage * (actor.passiveDamageMultiplier || 1) * chargeDamage * lowHealthBonus * carryBonus;
     const fullDamage = Math.max(1, Math.round(rawDamage * guardReduction * armorReduction));
     const isPlayerTarget = target.id === battle.playerId;
-    const dodgeChance = isPlayerTarget && battle.playerBasePassive?.effect === "dodgeChance" ? battle.playerBasePassive.chance || 0 : 0;
+    const dodgeChance = target.team === "unit" && target.basePassive?.effect === "dodgeChance" ? target.basePassive.chance || 0 : 0;
     const dodged = dodgeChance > 0 && Math.random() < dodgeChance;
     actor.cooldown = actor.attackMs;
     actor.telegraphTargetId = null;
@@ -1014,9 +1050,10 @@ export function tickAutoBattle(battle, deltaMs) {
       }
       if (actor.lifeSteal && actor.hp > 0) actor.hp = Math.min(actor.maxHp, actor.hp + Math.max(1, Math.floor(damage * actor.lifeSteal)));
       target.lastHit = 260;
-      recordPlayerHit(battle, target, damage);
+      recordUnitHit(battle, target, damage);
       if (target.hp <= 0) pushBattleLog(battle, `${actor.name}이 ${target.name}을 쓰러뜨렸다.`);
     }
+    if (actor.team === "unit") markUnitActive(battle, actor);
   }
   refreshBaseClassPassive(battle);
   if (!living(battle.enemies).length) {
@@ -1106,7 +1143,7 @@ function applySummonScaling(battle, summon, player, bossSummon = false, armed = 
   }
   const passive = battle.playerBasePassive;
   summon.passiveDamageMultiplier = passive?.effect === "soulHarvest"
-    ? 1 + (battle.basePassiveState?.soulStacks || 0) * (passive.summonDamagePerStack || 0)
+    ? 1 + (battle.passiveState?.[battle.playerId]?.soulStacks || 0) * (passive.summonDamagePerStack || 0)
     : 1;
 }
 
@@ -1175,7 +1212,7 @@ function applyKitPassive(battle, player) {
     healCombatant(player, 4);
   }
   if (battle.playerKitId === "archeryNecromancer") {
-    const stacks = battle.basePassiveState?.soulStacks || 0;
+    const stacks = battle.passiveState?.[battle.playerId]?.soulStacks || 0;
     player.passiveDamageMultiplier = 1 + stacks * 0.06;
   }
   if (battle.playerKitId === "spiritArchmage") {
