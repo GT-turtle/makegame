@@ -419,16 +419,16 @@ test("두 전승의 액티브 10개(스킬 4개+궁 1개 × 2)가 실제 전투 
   selectPlayerTarget(spiritFront, spiritFront.enemies[0].id);
   assert.equal(issuePlayerAction(spiritFront, "skill1"), true); // spiritMending
   assert.equal(issuePlayerAction(spiritFront, "skill2"), true); // winterAegis
-  assert.equal(issuePlayerAction(spiritFront, "skill3"), true); // sacredWildfire
-  assert.equal(issuePlayerAction(spiritFront, "ultimate"), true); // tempestJudgment
+  assert.equal(issuePlayerAction(spiritFront, "skill3"), true); // thunderLance
+  assert.equal(issuePlayerAction(spiritFront, "ultimate"), true); // spiritConflagration
 
-  spiritCommander.skillLoadouts.spiritCrusader = ["thunderLance"];
+  spiritCommander.skillLoadouts.spiritCrusader = ["spiritBulwark"];
   const spiritBack = createAutoBattle("duneRaiders", "spirit-back", "field", STARTING_PARTY, {}, { commander: spiritCommander });
   const spiritBackPlayer = spiritBack.units.find((unit) => unit.controlled);
   spiritBackPlayer.x = spiritBack.enemies[0].x - 8;
   spiritBackPlayer.y = spiritBack.enemies[0].y;
   selectPlayerTarget(spiritBack, spiritBack.enemies[0].id);
-  assert.equal(issuePlayerAction(spiritBack, "skill1"), true); // thunderLance
+  assert.equal(issuePlayerAction(spiritBack, "skill1"), true); // spiritBulwark
 
   const heavyCommander = createDefaultCommander();
   heavyCommander.combatKitId = "heavyNecromancer";
@@ -455,6 +455,26 @@ test("두 전승의 액티브 10개(스킬 4개+궁 1개 × 2)가 실제 전투 
   assert.equal(heavyBack.units.filter((unit) => unit.summonType === "storedBoss").length, 1);
   assert.equal(issuePlayerAction(heavyBack, "skill3"), true); // armedResurrection (default-filled)
   assert.equal(heavyBack.consumedCorpseIds.length, 1);
+});
+
+test("정령크루는 피격당하면 확률적으로 상대에게 화상이나 빙결을 되돌린다", () => {
+  const commander = createDefaultCommander();
+  const battle = createAutoBattle("duneRaiders", "spiritcru-proc", "field", [], {}, { commander });
+  const player = battle.units.find((unit) => unit.controlled);
+  const enemy = battle.enemies[0];
+  enemy.x = player.x;
+  enemy.y = player.y;
+  enemy.damage = 1;
+  enemy.attackMs = 16;
+  enemy.cooldown = 0;
+  const originalRandom = Math.random;
+  Math.random = () => 0; // always proc, always pick "burn"
+  try {
+    tickAutoBattle(battle, 20);
+  } finally {
+    Math.random = originalRandom;
+  }
+  assert.equal(Boolean(enemy.statuses?.burn), true);
 });
 
 test("크루세이더·네크로맨서 기본 직업 스킬 4개+궁 1개가 문서 스펙대로 실행된다", () => {
@@ -632,6 +652,7 @@ test("중갑크루 전승은 스킬 4개+궁 1개가 실행되고 복수치가 �
   backPlayer.y = back.enemies[0].y;
   assert.equal(issuePlayerAction(back, "skill1"), true); // heavyBulwark
   assert.equal(back.enemies.some((enemy) => enemy.forcedTargetId === backPlayer.id), true);
+  assert.ok(back.vengeanceGainBoostUntil > back.elapsed);
 });
 
 test("궁사네크 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {

@@ -19,7 +19,7 @@ export const PLAYER_BASE_CLASS_DEFS = {
     },
     passive: {
       id: "guardianCycle",
-      name: "수호의 순환",
+      name: "신의 사랑을 받는 몸",
       glyph: "✧",
       effect: "hitCycleHeal",
       hitsRequired: 5,
@@ -300,19 +300,19 @@ export const PLAYER_KIT_DEFS = {
     description: "성스러운 방벽에 정령을 깃들여 방어와 공격을 동시에 변화시킨다.",
     passive: {
       id: "spiritBastion",
-      name: "정령 성벽",
+      name: "정령의 사랑을 받는 몸",
       glyph: "♧",
-      description: "기술을 사용할 때마다 잠시 받는 피해가 감소한다. 방어 기술은 동료에게도 적용된다."
+      description: "피격당할 때 확률적으로 상대에게 화상 또는 빙결을 되돌린다."
     },
     stats: { maxHp: 58, damage: 8, range: 12, speed: 17, attackMs: 650, armor: 0.22, color: "#83b89a", glyph: "♜" },
-    defaultLoadout: ["spiritMending", "winterAegis", "sacredWildfire"],
+    defaultLoadout: ["spiritMending", "winterAegis", "thunderLance"],
     skills: [
-      { id: "spiritMending", name: "정령의 치유", glyph: "✚", cooldownMs: 6200, effect: "spiritMending", description: "가장 다친 아군을 크게 회복하고 지속 회복을 부여하며 해로운 효과 하나를 해제한다." },
-      { id: "winterAegis", name: "서리 수호진", glyph: "❄", cooldownMs: 8200, effect: "winterAegis", description: "아군 전체의 방어를 높이고 공격한 적에게 빙결 중첩을 되돌린다." },
-      { id: "sacredWildfire", name: "성화 폭발", glyph: "♨", cooldownMs: 7600, effect: "sacredWildfire", description: "주변을 폭발시킨 뒤 짧고 강한 화상을 갱신하는 불 장판을 남긴다." },
-      { id: "thunderLance", name: "뇌정의 창", glyph: "ϟ", cooldownMs: 5400, effect: "thunderLance", description: "단일 적을 꿰뚫고 짧게 기절시킨다." }
+      { id: "spiritMending", name: "정령의 가호", glyph: "✚", cooldownMs: 6200, effect: "spiritMending", description: "가장 다친 아군을 크게 회복하고 지속 회복을 부여하며 해로운 효과 하나를 해제한다." },
+      { id: "winterAegis", name: "정령의 축복", glyph: "❄", cooldownMs: 8200, effect: "winterAegis", description: "아군 전체의 방어를 높이고 공격한 적에게 빙결 중첩을 되돌린다." },
+      { id: "thunderLance", name: "뇌정의 창", glyph: "ϟ", cooldownMs: 5400, effect: "thunderLance", description: "단일 적을 꿰뚫고 짧게 기절시킨다." },
+      { id: "spiritBulwark", name: "정령의 외침", glyph: "☗", cooldownMs: 8600, effect: "spiritBulwark", description: "주변 적의 시선을 자신에게 모으고 스스로의 방어력을 높인다." }
     ],
-    ultimate: { id: "tempestJudgment", name: "폭풍의 심판", glyph: "✦", cooldownMs: 13800, effect: "tempestJudgment", description: "바람으로 적을 모은 뒤 넓은 약공격과 중심의 강공격을 함께 가한다." }
+    ultimate: { id: "spiritConflagration", name: "정령의 겁화", glyph: "♨", cooldownMs: 14000, effect: "spiritConflagration", description: "주변을 크게 폭발시킨 뒤 화상을 계속 갱신하는 불 장판을 남긴다." }
   },
   heavyNecromancer: {
     id: "heavyNecromancer",
@@ -352,19 +352,19 @@ export const PLAYER_KIT_DEFS = {
     description: "피격을 복수의 힘으로 바꾸어 상대를 출혈시키는 중갑 돌격형.",
     passive: {
       id: "vengefulPlate",
-      name: "복수의 갑주",
+      name: "신은 극복할 수 있는 시련만 준다",
       glyph: "▰",
       description: "피격당한 피해의 절반을 복수치로 쌓는다. 스킬을 쓰면 복수치를 소모해 추가 효과를 낸다."
     },
     stats: { maxHp: 64, damage: 8, range: 11, speed: 15, attackMs: 700, armor: 0.28, color: "#b08a6a", glyph: "♜" },
     defaultLoadout: ["heavyBlessing", "heavyWard", "heavyLance"],
     skills: [
-      { id: "heavyBlessing", name: "우직한 치유", glyph: "✚", cooldownMs: 5400, effect: "heavyBlessing", description: "가장 다친 아군을 회복한다. 복수치가 있으면 회복량이 늘어난다." },
-      { id: "heavyWard", name: "철벽 강화", glyph: "❖", cooldownMs: 7600, effect: "heavyWard", description: "아군 전체의 방어를 높이고, 공격한 적에게 출혈을 되돌린다." },
-      { id: "heavyLance", name: "복수의 창", glyph: "▲", cooldownMs: 4800, effect: "heavyLance", description: "단일 적을 꿰뚫어 기절시키고 출혈을 남긴다. 복수치를 소모해 피해가 늘어난다." },
-      { id: "heavyBulwark", name: "도발의 함성", glyph: "☗", cooldownMs: 8600, effect: "heavyBulwark", description: "주변 적의 시선을 자신에게 모으고, 복수치를 소모해 스스로를 회복한다." }
+      { id: "heavyBlessing", name: "속죄", glyph: "✚", cooldownMs: 5400, effect: "heavyBlessing", description: "가장 다친 아군을 회복한다. 복수치가 있으면 회복량이 늘어난다." },
+      { id: "heavyWard", name: "인내", glyph: "❖", cooldownMs: 7600, effect: "heavyWard", description: "아군 전체의 방어를 높이고, 공격한 적에게 출혈을 되돌린다." },
+      { id: "heavyLance", name: "고통의 성창", glyph: "▲", cooldownMs: 4800, effect: "heavyLance", description: "단일 적을 꿰뚫어 기절시키고 출혈을 남긴다. 복수치를 소모해 피해가 늘어난다." },
+      { id: "heavyBulwark", name: "도발의 함성", glyph: "☗", cooldownMs: 8600, effect: "heavyBulwark", description: "주변 적의 시선을 자신에게 모으고, 잠시 복수치 축적 속도가 크게 늘어난다." }
     ],
-    ultimate: { id: "heavyJudgment", name: "심판의 출혈", glyph: "✦", cooldownMs: 13000, effect: "heavyJudgment", description: "쌓아 둔 복수치를 모두 터뜨려 목표 주변에 강한 피해와 긴 출혈을 남긴다." }
+    ultimate: { id: "heavyJudgment", name: "너흰 아직 준비가 안됬다", glyph: "✦", cooldownMs: 13000, effect: "heavyJudgment", description: "쌓아 둔 복수치를 모두 터뜨려 목표 주변에 강한 피해와 긴 출혈을 남긴다." }
   },
   archeryNecromancer: {
     id: "archeryNecromancer",

@@ -1046,7 +1046,10 @@ export function tickAutoBattle(battle, deltaMs) {
         applyCombatStatus(battle, actor, "bleed", target, { stacks: 1 });
       }
       if (isPlayerTarget && battle.playerKitId === "heavyCrusader" && damage > 0) {
-        battle.vengeanceStored = Math.min(240, (battle.vengeanceStored || 0) + damage * 0.5);
+        battle.vengeanceStored = Math.min(240, (battle.vengeanceStored || 0) + damage * (battle.vengeanceGainBoostUntil > battle.elapsed ? 1 : 0.5));
+      }
+      if (isPlayerTarget && battle.playerKitId === "spiritCrusader" && damage > 0 && Math.random() < 0.25) {
+        applyCombatStatus(battle, actor, Math.random() < 0.5 ? "burn" : "frost", target, { stacks: 1 });
       }
       if (actor.lifeSteal && actor.hp > 0) actor.hp = Math.min(actor.maxHp, actor.hp + Math.max(1, Math.floor(damage * actor.lifeSteal)));
       target.lastHit = 260;
@@ -1199,10 +1202,6 @@ function summonStoredBoss(battle, player) {
 }
 
 function applyKitPassive(battle, player) {
-  if (battle.playerKitId === "spiritCrusader") {
-    player.defenseUntil = Math.max(player.defenseUntil || 0, battle.elapsed + 1800);
-    player.defenseMultiplier = 0.68;
-  }
   if (battle.playerKitId === "heavyNecromancer") {
     for (const summon of battle.units.filter((unit) => unit.summonType && unit.hp > 0)) healCombatant(summon, 3);
   }
@@ -1253,26 +1252,25 @@ function resolvePlayerSkill(battle, player, skill) {
       unit.positiveEffects.frostRetaliation = { endsAt: battle.elapsed + 5200 };
     }
     pushBattleLog(battle, `${skill.name}: 아군 ${living(battle.units).length}명 보호 · 피격 시 빙결`);
-  } else if (skill.effect === "sacredWildfire") {
-    const result = damageArea(battle, player, player, 22, 0.8);
-    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "burn", player);
-    battle.groundEffects.push({ x: player.x, y: player.y, radius: 21, team: "unit", sourceId: player.id, statusId: "burn", statusOptions: {}, pulseMs: 650, nextPulseAt: battle.elapsed + 650, endsAt: battle.elapsed + 4400 });
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격 · 불 장판 4초`);
   } else if (skill.effect === "thunderLance") {
     if (!target || distanceBetween(player, target) > 50) return false;
     const damage = damageCombatant(player, target, 1.7);
     if (target.hp > 0) applyCombatStatus(battle, target, "stun", player, { durationMs: 900 });
     pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 기절`);
-  } else if (skill.effect === "tempestJudgment") {
-    if (!target || distanceBetween(player, target) > 60) return false;
-    const pulled = living(battle.enemies).filter((enemy) => distanceBetween(enemy, target) <= 34);
-    for (const enemy of pulled) {
-      enemy.x += (target.x - enemy.x) * 0.62;
-      enemy.y += (target.y - enemy.y) * 0.62;
+  } else if (skill.effect === "spiritBulwark") {
+    const taunted = living(battle.enemies).filter((enemy) => distanceBetween(player, enemy) <= 30);
+    for (const enemy of taunted) {
+      enemy.forcedTargetId = player.id;
+      enemy.forcedTargetUntil = battle.elapsed + 4200;
     }
-    const outer = damageArea(battle, player, target, 30, 0.85);
-    const inner = damageArea(battle, player, target, 10, 1.65);
-    pushBattleLog(battle, `${skill.name}: ${pulled.length}명 끌어모음 · 중심 ${inner.targets.length}명 강타`);
+    player.defenseUntil = battle.elapsed + 4200;
+    player.defenseMultiplier = 0.55;
+    pushBattleLog(battle, `${skill.name}: 적 ${taunted.length}명의 시선을 끌고 방어를 높였다.`);
+  } else if (skill.effect === "spiritConflagration") {
+    const result = damageArea(battle, player, player, 26, 1.1);
+    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "burn", player);
+    battle.groundEffects.push({ x: player.x, y: player.y, radius: 25, team: "unit", sourceId: player.id, statusId: "burn", statusOptions: {}, pulseMs: 600, nextPulseAt: battle.elapsed + 600, endsAt: battle.elapsed + 5600 });
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격 · 불 장판 5.6초`);
   } else if (skill.effect === "armoredDecay") {
     if (!target || distanceBetween(player, target) > 48) return false;
     const damage = damageCombatant(player, target, 0.45);
@@ -1509,11 +1507,8 @@ function resolvePlayerSkill(battle, player, skill) {
     }
     player.defenseUntil = battle.elapsed + 4200;
     player.defenseMultiplier = 0.55;
-    const vengeance = battle.vengeanceStored || 0;
-    const consumed = Math.round(vengeance * 0.6);
-    battle.vengeanceStored = vengeance - consumed;
-    const healed = healCombatant(player, consumed);
-    pushBattleLog(battle, `${skill.name}: 적 ${taunted.length}명의 시선을 끌고 ${healed} 회복`);
+    battle.vengeanceGainBoostUntil = battle.elapsed + 4200;
+    pushBattleLog(battle, `${skill.name}: 적 ${taunted.length}명의 시선을 끌고 복수치 축적 속도가 크게 늘었다.`);
   } else if (skill.effect === "heavyJudgment") {
     if (!target || distanceBetween(player, target) > 55) return false;
     const vengeance = battle.vengeanceStored || 0;
