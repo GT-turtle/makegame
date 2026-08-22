@@ -99,19 +99,19 @@ export const PLAYER_BASE_CLASS_DEFS = {
     },
     passive: {
       id: "huntersShadow",
-      name: "은신 감각",
+      name: "찾아봐라",
       glyph: "➹",
       effect: "stealthWhenIdle",
       idleMs: 3000,
       description: "적과 3초 이상 접촉이 없으면 은신한다. 은신 중 공격은 치명적이다."
     },
     skills: [
-      { id: "aimedShot", name: "조준 사격", glyph: "➶", cooldownMs: 3800, effect: "aimedShot", description: "단일 적을 원거리에서 저격한다." },
-      { id: "scatterShot", name: "산탄 사격", glyph: "❋", cooldownMs: 6400, effect: "scatterShot", description: "부채꼴 범위의 적에게 원거리 피해를 입힌다." },
-      { id: "shadowStrike", name: "그림자 강타", glyph: "☾", cooldownMs: 5200, effect: "shadowStrike", description: "체력이 낮은 적에게 추가 피해를 입힌다." },
-      { id: "vanish", name: "은신 잠입", glyph: "✧", cooldownMs: 9000, effect: "vanish", description: "즉시 은신 상태가 되어 다음 공격을 강화한다." }
+      { id: "aimedShot", name: "헤드샷", glyph: "➶", cooldownMs: 3800, effect: "aimedShot", description: "단일 적을 원거리에서 저격한다." },
+      { id: "scatterShot", name: "폭발화살", glyph: "❋", cooldownMs: 6400, effect: "scatterShot", description: "부채꼴 범위의 적에게 원거리 피해를 입힌다." },
+      { id: "shadowStrike", name: "후퇴", glyph: "☾", cooldownMs: 5200, effect: "shadowStrike", description: "근처 적을 공격하고 반대 방향으로 물러난다." },
+      { id: "vanish", name: "은신", glyph: "✧", cooldownMs: 9000, effect: "vanish", description: "즉시 은신 상태가 되어 다음 공격을 강화한다." }
     ],
-    ultimate: { id: "arrowStorm", name: "일제 사격", glyph: "➹", cooldownMs: 13000, effect: "arrowStorm", description: "넓은 범위에 화살을 퍼부어 큰 피해를 입힌다." }
+    ultimate: { id: "arrowStorm", name: "화살의 비", glyph: "➹", cooldownMs: 13000, effect: "arrowStorm", description: "넓은 범위에 화살을 퍼부어 큰 피해를 입힌다." }
   },
   maehwa: {
     id: "maehwa",
@@ -510,21 +510,21 @@ export const PLAYER_KIT_DEFS = {
     description: "화살에 정령의 힘을 담아 다양한 상태이상을 퍼뜨린다.",
     passive: {
       id: "spiritedShadow",
-      name: "정령의 은신",
+      name: "찾기 힘들껄",
       glyph: "➹",
       effect: "stealthWhenIdle",
-      idleMs: 3000,
-      description: "적과 3초 이상 접촉이 없으면 은신한다. 은신 중 공격은 치명적이다."
+      idleMs: 1800,
+      description: "적과 1.8초 이상 접촉이 없으면 은신한다. 은신 중 공격은 치명적이다."
     },
     stats: { maxHp: 36, damage: 9, range: 23, speed: 15, attackMs: 800, armor: 0.06, color: "#6aa0a8", glyph: "➹" },
-    defaultLoadout: ["elementalArrow", "scatterShot", "shadowStrike"],
+    defaultLoadout: ["aimedShot", "scatterShot", "shadowStrike"],
     skills: [
-      { id: "elementalArrow", name: "정령 화살", glyph: "♧", cooldownMs: 3800, effect: "elementalArrow", description: "단일 적을 저격하고 무작위 상태이상을 부여한다." },
-      { id: "scatterShot", name: "산탄 사격", glyph: "❋", cooldownMs: 6400, effect: "scatterShot", description: "부채꼴 범위의 적에게 원거리 피해를 입힌다." },
-      { id: "shadowStrike", name: "그림자 강타", glyph: "☾", cooldownMs: 5200, effect: "shadowStrike", description: "체력이 낮은 적에게 추가 피해를 입힌다." },
-      { id: "vanish", name: "은신 잠입", glyph: "✧", cooldownMs: 9000, effect: "vanish", description: "즉시 은신 상태가 되어 다음 공격을 강화한다." }
+      { id: "aimedShot", name: "짜릿한 헤드샷", glyph: "♧", cooldownMs: 3800, effect: "aimedShot", description: "단일 적을 원거리에서 저격하고 번개로 기절시킨다." },
+      { id: "scatterShot", name: "화끈한 폭발화살", glyph: "❋", cooldownMs: 6400, effect: "scatterShot", description: "부채꼴 범위의 적에게 원거리 피해를 입히고 화상을 남긴다." },
+      { id: "shadowStrike", name: "차가운 후퇴", glyph: "☾", cooldownMs: 5200, effect: "shadowStrike", description: "근처 적을 공격하고 물러나며 주변 적을 빙결시킨다." },
+      { id: "vanish", name: "빠른 은신", glyph: "✧", cooldownMs: 9000, effect: "vanish", description: "즉시 은신 상태가 되어 다음 공격을 강화하고 이동 속도가 오른다." }
     ],
-    ultimate: { id: "elementalVolley", name: "정령 일제 사격", glyph: "➹", cooldownMs: 13000, effect: "elementalVolley", description: "넓은 범위에 정령 화살을 퍼부어 상태이상을 함께 남긴다." }
+    ultimate: { id: "arrowStorm", name: "정령 일제 사격", glyph: "➹", cooldownMs: 13000, effect: "arrowStorm", description: "넓은 범위에 정령 화살을 퍼부어 큰 피해를 입히고 상태이상을 함께 남긴다." }
   },
   heavyTracker: {
     id: "heavyTracker",
@@ -538,19 +538,19 @@ export const PLAYER_KIT_DEFS = {
     description: "은신 대신 포격 모드로 자리를 지키며 압도적인 화력을 내는 시즈탱크형.",
     passive: {
       id: "fixedBattery",
-      name: "고정 포대",
+      name: "찾을 필요 없어",
       glyph: "▰",
-      description: "포격 모드인 동안 기술을 사용할 때마다 방어력이 잠시 더 오른다."
+      description: "저격 태세인 동안 기술을 사용할 때마다 방어력이 잠시 더 오르고, 기본 공격이 상대를 밀쳐낸다."
     },
     stats: { maxHp: 48, damage: 10, range: 21, speed: 12, attackMs: 900, armor: 0.19, color: "#a08a5a", glyph: "➹" },
-    defaultLoadout: ["aimedShot", "suppressingShot", "siegeStance"],
+    defaultLoadout: ["aimedShot", "scatterShot", "shadowStrike"],
     skills: [
-      { id: "aimedShot", name: "조준 사격", glyph: "➶", cooldownMs: 3800, effect: "aimedShot", description: "단일 적을 원거리에서 저격한다." },
-      { id: "suppressingShot", name: "제압 사격", glyph: "☗", cooldownMs: 5800, effect: "suppressingShot", description: "단일 적에게 피해를 입히고 잠시 묶어 둔다." },
-      { id: "siegeStance", name: "포격 태세", glyph: "❖", cooldownMs: 9000, effect: "siegeStance", description: "포격 모드로 전환한다. 이동·공격 속도가 느려지지만 방어력이 크게 오르고 산탄 사격·관통 사격의 위력이 강해진다." },
-      { id: "scatterShot", name: "산탄 사격", glyph: "❋", cooldownMs: 6400, effect: "scatterShot", description: "부채꼴 범위의 적에게 원거리 피해를 입힌다. 포격 모드에서는 범위와 위력이 늘어난다." }
+      { id: "aimedShot", name: "관통샷", glyph: "➶", cooldownMs: 3800, effect: "aimedShot", description: "단일 적을 원거리에서 저격하고 뒤에 있는 적까지 꿰뚫는다." },
+      { id: "scatterShot", name: "충격화살", glyph: "❋", cooldownMs: 6400, effect: "scatterShot", description: "부채꼴 범위의 적에게 원거리 피해를 입히고 기절시킨다. 저격 태세에서는 범위와 위력이 늘어난다." },
+      { id: "shadowStrike", name: "방어사격", glyph: "☗", cooldownMs: 5200, effect: "shadowStrike", description: "근처 적을 공격한다. 물러나지 않는 대신 주변 적을 모두 밀쳐낸다." },
+      { id: "vanish", name: "저격", glyph: "❖", cooldownMs: 9000, effect: "vanish", description: "즉시 저격 태세로 전환한다. 이동·공격 속도가 느려지지만 방어력이 크게 오르고 관통샷·충격화살의 위력이 강해진다." }
     ],
-    ultimate: { id: "piercingShot", name: "관통 사격", glyph: "➹", cooldownMs: 13500, effect: "piercingShot", description: "강력한 화살로 목표를 꿰뚫어 큰 피해를 입히고 묶어 둔다. 포격 모드에서는 위력이 더 강해진다." }
+    ultimate: { id: "piercingShot", name: "관통 사격", glyph: "➹", cooldownMs: 13500, effect: "piercingShot", description: "강력한 화살로 목표를 꿰뚫어 큰 피해를 입히고 묶어 둔다. 저격 태세에서는 위력이 더 강해진다." }
   }
 };
 

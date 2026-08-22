@@ -750,7 +750,7 @@ test("신성아크 전승은 스킬 4개+궁 1개가 모두 실행되고 아군�
   assert.equal(issuePlayerAction(back, "skill1"), true); // manaShield
 });
 
-test("정령추적 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
+test("정령추적 전승은 스킬 4개+궁 1개가 모두 실행되고 속성 상태이상을 남긴다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "spiritTracker";
   const front = createAutoBattle("duneRaiders", "spirittracker-front", "field", STARTING_PARTY, {}, { commander });
@@ -758,17 +758,21 @@ test("정령추적 전승은 스킬 4개+궁 1개가 모두 실행된다", () =>
   player.x = front.enemies[0].x - 5;
   player.y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
-  assert.equal(issuePlayerAction(front, "skill1"), true); // elementalArrow
-  assert.equal(issuePlayerAction(front, "skill2"), true); // scatterShot
-  assert.equal(issuePlayerAction(front, "skill3"), true); // shadowStrike
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // elementalVolley
+  assert.equal(issuePlayerAction(front, "skill1"), true); // aimedShot(짜릿한 헤드샷) + 기절
+  assert.equal(Boolean(front.enemies[0].statuses?.stun), true);
+  assert.equal(issuePlayerAction(front, "skill2"), true); // scatterShot(화끈한 폭발화살) + 화상
+  assert.equal(Boolean(front.enemies[0].statuses?.burn), true);
+  assert.equal(issuePlayerAction(front, "skill3"), true); // shadowStrike(차가운 후퇴) + 빙결
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // arrowStorm(정령 일제 사격) + 상태이상
 
   commander.skillLoadouts.spiritTracker = ["vanish"];
   const back = createAutoBattle("duneRaiders", "spirittracker-back", "field", STARTING_PARTY, {}, { commander });
-  assert.equal(issuePlayerAction(back, "skill1"), true); // vanish
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // vanish(빠른 은신) + 이속 증가
+  assert.equal(Boolean(backPlayer.positiveEffects?.haste), true);
 });
 
-test("대궁병(중갑추적)은 포격 태세로 시즈탱크처럼 이동·공속이 느려지고 화력이 강해진다", () => {
+test("대궁병(중갑추적)은 관통·기절·넉백을 갖추고 저격 태세에서 화력이 강해진다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "heavyTracker";
   const front = createAutoBattle("duneRaiders", "heavytracker-front", "field", STARTING_PARTY, {}, { commander });
@@ -776,21 +780,23 @@ test("대궁병(중갑추적)은 포격 태세로 시즈탱크처럼 이동·공
   player.x = front.enemies[0].x - 5;
   player.y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
-  assert.equal(issuePlayerAction(front, "skill1"), true); // aimedShot
-  assert.equal(issuePlayerAction(front, "skill2"), true); // suppressingShot
-  assert.equal(front.enemies[0].rootedUntil > 0, true);
-  assert.equal(issuePlayerAction(front, "skill3"), true); // siegeStance
-  assert.equal(Boolean(player.positiveEffects?.siegeMode), true);
-  assert.ok(player.positiveEffects.haste.speedMultiplier < 1);
-  assert.ok(player.positiveEffects.haste.attackSpeedMultiplier < 1);
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // piercingShot, empowered while sieged
+  assert.equal(issuePlayerAction(front, "skill1"), true); // aimedShot(관통샷)
+  assert.equal(issuePlayerAction(front, "skill2"), true); // scatterShot(충격화살) + 기절
+  assert.equal(Boolean(front.enemies[0].statuses?.stun), true);
+  const enemy = front.enemies[0];
+  const beforeX = enemy.x;
+  const beforeY = enemy.y;
+  assert.equal(issuePlayerAction(front, "skill3"), true); // shadowStrike(방어사격) + 넉백(후퇴 대신)
+  assert.ok(enemy.x !== beforeX || enemy.y !== beforeY);
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // piercingShot
 
-  commander.skillLoadouts.heavyTracker = ["scatterShot"];
+  commander.skillLoadouts.heavyTracker = ["vanish"];
   const back = createAutoBattle("duneRaiders", "heavytracker-back", "field", STARTING_PARTY, {}, { commander });
   const backPlayer = back.units.find((unit) => unit.controlled);
-  backPlayer.x = back.enemies[0].x - 5;
-  backPlayer.y = back.enemies[0].y;
-  assert.equal(issuePlayerAction(back, "skill1"), true); // scatterShot, not sieged yet
+  assert.equal(issuePlayerAction(back, "skill1"), true); // vanish(저격) -> 은신 대신 저격 태세
+  assert.equal(Boolean(backPlayer.positiveEffects?.siegeMode), true);
+  assert.ok(backPlayer.positiveEffects.haste.speedMultiplier < 1);
+  assert.ok(backPlayer.positiveEffects.haste.attackSpeedMultiplier < 1);
 });
 
 test("친화도·직업 전용 능력치와 출혈·화상·크루세이더 해제가 구분된다", () => {

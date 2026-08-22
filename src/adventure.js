@@ -680,6 +680,22 @@ function dashToTarget(player, target, standoff = 6) {
   player.y = Math.max(8, Math.min(92, player.y + (dy / distance) * travel));
 }
 
+function retreatFromTarget(player, target, distance = 8) {
+  const dx = player.x - target.x;
+  const dy = player.y - target.y;
+  const length = Math.max(0.001, Math.hypot(dx, dy));
+  player.x = Math.max(5, Math.min(95, player.x + (dx / length) * distance));
+  player.y = Math.max(8, Math.min(92, player.y + (dy / length) * distance));
+}
+
+function knockback(source, target, distance = 5) {
+  const dx = target.x - source.x;
+  const dy = target.y - source.y;
+  const length = Math.max(0.001, Math.hypot(dx, dy));
+  target.x = Math.max(5, Math.min(95, target.x + (dx / length) * distance));
+  target.y = Math.max(8, Math.min(92, target.y + (dy / length) * distance));
+}
+
 function pushBattleLog(battle, text) {
   battle.log.unshift(text);
   battle.log = battle.log.slice(0, 5);
@@ -1408,25 +1424,63 @@ function resolvePlayerSkill(battle, player, skill) {
   } else if (skill.effect === "aimedShot") {
     if (!target || distanceBetween(player, target) > 60) return false;
     const damage = damageCombatant(player, target, 1.5);
+    if (target.hp > 0 && battle.playerKitId === "spiritTracker") applyCombatStatus(battle, target, "stun", player, { durationMs: 1200 });
+    if (target.hp > 0 && battle.playerKitId === "heavyTracker") {
+      const behind = living(battle.enemies).find((enemy) => enemy.id !== target.id && distanceBetween(target, enemy) <= 10);
+      if (behind) damageCombatant(player, behind, 1.0);
+    }
     pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
   } else if (skill.effect === "scatterShot") {
     if (!target || distanceBetween(player, target) > 55) return false;
     const sieged = Boolean(player.positiveEffects?.siegeMode);
     const result = damageArea(battle, player, target, sieged ? 30 : 22, sieged ? 1.3 : 0.75);
+    if (battle.playerKitId === "spiritTracker") {
+      for (const enemy of result.targets) if (enemy.hp > 0) applyCombatStatus(battle, enemy, "burn", player);
+    }
+    if (battle.playerKitId === "heavyTracker") {
+      for (const enemy of result.targets) if (enemy.hp > 0) applyCombatStatus(battle, enemy, "stun", player, { durationMs: 900 });
+    }
     pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격${sieged ? " · 포격 강화" : ""}`);
   } else if (skill.effect === "shadowStrike") {
-    if (!target || distanceBetween(player, target) > 50) return false;
-    const lowHp = target.hp / target.maxHp <= 0.35;
-    const damage = damageCombatant(player, target, lowHp ? 2.4 : 1.3);
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${lowHp ? " · 약점 강타" : ""}`);
+    if (!target || distanceBetween(player, target) > 16) return false;
+    const damage = damageCombatant(player, target, 1.4);
+    if (battle.playerKitId === "heavyTracker") {
+      const nearby = living(battle.enemies).filter((enemy) => distanceBetween(player, enemy) <= 14);
+      for (const enemy of nearby) knockback(player, enemy, 6);
+      pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 주변 넉백`);
+    } else {
+      retreatFromTarget(player, target, 8);
+      if (battle.playerKitId === "spiritTracker" && target.hp > 0) {
+        const nearby = living(battle.enemies).filter((enemy) => distanceBetween(target, enemy) <= 14);
+        for (const enemy of nearby) applyCombatStatus(battle, enemy, "frost", player, { stacks: 1 });
+      }
+      pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 후퇴`);
+    }
   } else if (skill.effect === "vanish") {
     player.positiveEffects ||= {};
-    player.positiveEffects.stealth = { endsAt: battle.elapsed + 4000 };
-    pushBattleLog(battle, `${skill.name}: 즉시 은신했다.`);
+    if (battle.playerKitId === "heavyTracker") {
+      player.positiveEffects.siegeMode = { endsAt: battle.elapsed + 7000 };
+      player.positiveEffects.haste = { speedMultiplier: 0.08, attackSpeedMultiplier: 0.55, endsAt: battle.elapsed + 7000 };
+      player.defenseUntil = battle.elapsed + 7000;
+      player.defenseMultiplier = 0.55;
+      pushBattleLog(battle, `${skill.name}: 저격 태세 돌입 · 방어 강화, 이동·공속 저하`);
+    } else {
+      player.positiveEffects.stealth = { endsAt: battle.elapsed + 4000 };
+      if (battle.playerKitId === "spiritTracker") {
+        player.positiveEffects.haste = { speedMultiplier: 1.25, attackSpeedMultiplier: 1, endsAt: battle.elapsed + 4000 };
+      }
+      pushBattleLog(battle, `${skill.name}: 즉시 은신했다.`);
+    }
   } else if (skill.effect === "arrowStorm") {
     if (!target || distanceBetween(player, target) > 60) return false;
     const result = damageArea(battle, player, target, 30, 1.3);
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 화살 세례`);
+    if (battle.playerKitId === "spiritTracker") {
+      for (const enemy of result.targets) {
+        const statusId = ["burn", "frost", "poison"][Math.floor(Math.random() * 3)];
+        applyCombatStatus(battle, enemy, statusId, player);
+      }
+    }
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 화살 세례${battle.playerKitId === "spiritTracker" ? " · 상태이상" : ""}`);
   } else if (skill.effect === "swiftStrike") {
     if (!target) return false;
     dashToTarget(player, target, 5);
@@ -1601,34 +1655,6 @@ function resolvePlayerSkill(battle, player, skill) {
     const result = damageArea(battle, player, target, 26, 1.1);
     for (const unit of living(battle.units)) healCombatant(unit, 10 * (player.healingPower || 1));
     pushBattleLog(battle, `${skill.name}: ${result.targets.length}명 타격 · 아군 전체 회복`);
-  } else if (skill.effect === "elementalArrow") {
-    if (!target || distanceBetween(player, target) > 55) return false;
-    const damage = damageCombatant(player, target, 1.4);
-    if (target.hp > 0) {
-      const statusId = ["burn", "frost", "poison"][Math.floor(Math.random() * 3)];
-      applyCombatStatus(battle, target, statusId, player);
-    }
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 상태이상`);
-  } else if (skill.effect === "elementalVolley") {
-    if (!target || distanceBetween(player, target) > 60) return false;
-    const result = damageArea(battle, player, target, 30, 1.2);
-    for (const enemy of result.targets) {
-      const statusId = ["burn", "frost", "poison"][Math.floor(Math.random() * 3)];
-      applyCombatStatus(battle, enemy, statusId, player);
-    }
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 정령 화살비`);
-  } else if (skill.effect === "suppressingShot") {
-    if (!target || distanceBetween(player, target) > 55) return false;
-    const damage = damageCombatant(player, target, 1.3);
-    if (target.hp > 0) target.rootedUntil = battle.elapsed + 1500;
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 속박`);
-  } else if (skill.effect === "siegeStance") {
-    player.positiveEffects ||= {};
-    player.positiveEffects.siegeMode = { endsAt: battle.elapsed + 7000 };
-    player.positiveEffects.haste = { speedMultiplier: 0.08, attackSpeedMultiplier: 0.55, endsAt: battle.elapsed + 7000 };
-    player.defenseUntil = battle.elapsed + 7000;
-    player.defenseMultiplier = 0.55;
-    pushBattleLog(battle, `${skill.name}: 포격 모드 돌입 · 방어 강화, 이동·공속 저하`);
   } else if (skill.effect === "piercingShot") {
     if (!target || distanceBetween(player, target) > 55) return false;
     const sieged = Boolean(player.positiveEffects?.siegeMode);
@@ -1671,6 +1697,7 @@ export function issuePlayerAction(battle, action) {
     target.lastHit = 260;
     if (stealthy) delete player.positiveEffects.stealth;
     if (target.hp > 0 && battle.playerKitId === "spiritBarbarian") applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
+    if (target.hp > 0 && battle.playerKitId === "heavyTracker" && player.positiveEffects?.siegeMode?.endsAt > battle.elapsed) knockback(player, target, 5);
     const lifeSteal = player.positiveEffects?.berserk?.endsAt > battle.elapsed ? player.positiveEffects.berserk.lifeSteal || 0 : 0;
     if (lifeSteal > 0) player.hp = Math.min(player.maxHp, player.hp + Math.max(1, Math.round(damage * lifeSteal)));
     battle.playerReadyAt.attack = battle.elapsed + player.attackMs / hasteAttackDivisor(player, battle);
