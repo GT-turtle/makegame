@@ -45,7 +45,7 @@ export const PLAYER_BASE_CLASS_DEFS = {
     },
     passive: {
       id: "soulHarvest",
-      name: "영혼 수확",
+      name: "내 아군이 너보단 잘 싸운다",
       glyph: "◉",
       effect: "soulHarvest",
       maxStacks: 3,
@@ -54,12 +54,12 @@ export const PLAYER_BASE_CLASS_DEFS = {
       description: "적이 쓰러질 때 영혼을 최대 3개 수확한다. 영혼마다 소환수 공격력이 8% 증가하며 마지막 처치 12초 뒤 사라진다."
     },
     skills: [
-      { id: "spiritDecay", name: "쇠약의 저주", glyph: "☣", cooldownMs: 6200, effect: "spiritDecay", description: "주변 적 전체에게 부패를 부여해 지속 피해를 입힌다." },
-      { id: "spiritBolt", name: "영혼의 화살", glyph: "☄", cooldownMs: 4200, effect: "spiritBolt", description: "단일 적에게 영혼의 화살을 날린다." },
-      { id: "spiritRaise", name: "망자 부활", glyph: "⚰", cooldownMs: 9000, effect: "spiritRaise", description: "이번 전투에서 쓰러진 적 최대 3마리를 자신의 능력치만큼 버프해 아군으로 되살린다. 전투당 1회만 쓸 수 있다." },
-      { id: "spiritWard", name: "영혼 보호막", glyph: "◈", cooldownMs: 7000, effect: "spiritWard", description: "자신의 방어력을 높이고 소량 회복한다." }
+      { id: "spiritDecay", name: "부패", glyph: "☣", cooldownMs: 6200, effect: "spiritDecay", description: "주변 적 전체에게 부패를 부여해 지속 피해를 입힌다." },
+      { id: "spiritBolt", name: "뼈 화살", glyph: "☄", cooldownMs: 4200, effect: "spiritBolt", description: "단일 적에게 뼈 화살을 날린다." },
+      { id: "spiritRaise", name: "강령", glyph: "⚰", cooldownMs: 9000, effect: "spiritRaise", description: "이번 전투에서 쓰러진 적 최대 3마리를 자신의 능력치만큼 버프해 아군으로 되살린다. 전투당 1회만 쓸 수 있다." },
+      { id: "spiritWard", name: "뼈 갑옷", glyph: "◈", cooldownMs: 7000, effect: "spiritWard", description: "자신의 방어력을 높이고 소량 회복한다." }
     ],
-    ultimate: { id: "spiritApex", name: "사령 강령", glyph: "☠", cooldownMs: 15000, effect: "storedApex", description: "저장해 둔 우두머리의 사념을 소환한다." }
+    ultimate: { id: "spiritApex", name: "일어나라", glyph: "☠", cooldownMs: 15000, effect: "storedApex", description: "저장해 둔 우두머리의 사념을 소환한다." }
   },
   barbarian: {
     id: "barbarian",
@@ -326,19 +326,19 @@ export const PLAYER_KIT_DEFS = {
     description: "전장의 시체와 봉인 우두머리를 종별 중병기로 무장시켜 전선을 다시 구성한다.",
     passive: {
       id: "armoredDead",
-      name: "철갑 사령",
+      name: "내 아군이 너보단 단단하다",
       glyph: "▰",
-      description: "부활·봉인 소환수는 종별 중병기와 추가 방어를 얻고, 기술을 사용할 때마다 조금 회복한다."
+      description: "수확한 영혼 하나당 자신의 방어력이 오른다."
     },
     stats: { maxHp: 46, damage: 9, range: 13, speed: 16, attackMs: 720, armor: 0.15, color: "#9d89b5", glyph: "☠" },
-    defaultLoadout: ["armoredDecay", "armedResurrection", "boneArmor"],
+    defaultLoadout: ["spiritDecay", "spiritRaise", "spiritWard"],
     skills: [
-      { id: "armoredDecay", name: "갑주 부패", glyph: "☣", cooldownMs: 5200, effect: "armoredDecay", description: "단일 적에게 부패를 부여하고 방어력을 함께 깎는다." },
-      { id: "armedResurrection", name: "무장 부활", glyph: "⚔", cooldownMs: 6800, effect: "armedResurrection", description: "이번 전투에서 쓰러진 일반 적을 무장 망자로 되살린다. 최대 3기." },
-      { id: "boneArmor", name: "뼈 갑옷", glyph: "▣", cooldownMs: 7600, effect: "boneArmor", description: "생존한 아군 전원에게 회전하는 뼈 방패와 방어력 증가를 부여한다." },
-      { id: "bloodRend", name: "혈맥 절단", glyph: "⌁", cooldownMs: 4600, effect: "bloodRend", description: "단일 적을 공격하고 긴 출혈을 중첩시킨다." }
+      { id: "spiritDecay", name: "부패", glyph: "☣", cooldownMs: 6200, effect: "spiritDecay", description: "주변 적 전체에게 부패를 부여해 지속 피해를 입힌다. 소환수의 공격력만큼 피해가 늘어난다." },
+      { id: "spiritBolt", name: "뼈 화살", glyph: "☄", cooldownMs: 4200, effect: "spiritBolt", description: "단일 적에게 뼈 화살을 날린다. 가장 강한 소환수의 방어력 일부를 잠시 빌려온다." },
+      { id: "spiritRaise", name: "강령", glyph: "⚰", cooldownMs: 9000, effect: "spiritRaise", description: "이번 전투에서 쓰러진 적 최대 3마리를 무장시켜 아군으로 되살린다. 공격력·방어력 모두 크게 버프된다. 전투당 1회만 쓸 수 있다." },
+      { id: "spiritWard", name: "뼈 갑옷", glyph: "◈", cooldownMs: 7000, effect: "spiritWard", description: "자신의 방어력을 높이고 소량 회복하며, 생존한 소환수 전원의 공격력·방어력도 함께 올린다." }
     ],
-    ultimate: { id: "storedApex", name: "봉인 우두머리", glyph: "☠", cooldownMs: 15000, effect: "storedApex", description: "마지막으로 저장한 우두머리 한 마리를 중갑·중병기로 강화해 소환한다." }
+    ultimate: { id: "storedApex", name: "봉인 우두머리", glyph: "☠", cooldownMs: 15000, effect: "storedApex", description: "저장해 둔 우두머리의 사념을 소환하고, 공방을 더 강화하며 특수 패턴을 해금한다." }
   },
   heavyCrusader: {
     id: "heavyCrusader",
@@ -378,19 +378,19 @@ export const PLAYER_KIT_DEFS = {
     description: "소환보다 자신을 강화해 영혼의 조준으로 직접 싸우는 형태.",
     passive: {
       id: "spiritedAim",
-      name: "사령의 조준",
+      name: "내 아군보다 내가 더 잘 싸운다",
       glyph: "➹",
-      description: "수확한 영혼 하나당 자신의 공격력이 오른다."
+      description: "수확한 영혼 하나당 자신의 공격력이 오르고, 영혼이 있는 동안 은신 상태를 유지한다."
     },
     stats: { maxHp: 40, damage: 10, range: 20, speed: 15, attackMs: 700, armor: 0.09, color: "#8aa06a", glyph: "☠" },
-    defaultLoadout: ["spiritDecay", "huntersMark", "spiritRaise"],
+    defaultLoadout: ["spiritDecay", "spiritBolt", "spiritRaise"],
     skills: [
-      { id: "spiritDecay", name: "쇠약의 저주", glyph: "☣", cooldownMs: 6200, effect: "spiritDecay", description: "주변 적 전체에게 부패를 부여해 지속 피해를 입힌다." },
-      { id: "huntersMark", name: "사령 조준", glyph: "➶", cooldownMs: 4200, effect: "huntersMark", description: "단일 적을 저격한다. 체력이 낮은 적에게는 추가 피해를 준다." },
-      { id: "spiritRaise", name: "망자 부활", glyph: "⚰", cooldownMs: 9000, effect: "spiritRaise", description: "이번 전투에서 쓰러진 적 최대 3마리를 자신의 능력치만큼 버프해 아군으로 되살린다. 전투당 1회만 쓸 수 있다." },
-      { id: "spiritWard", name: "영혼 보호막", glyph: "◈", cooldownMs: 7000, effect: "spiritWard", description: "자신의 방어력을 높이고 소량 회복한다." }
+      { id: "spiritDecay", name: "부패", glyph: "☣", cooldownMs: 6200, effect: "spiritDecay", description: "주변 적 전체에게 부패를 부여해 지속 피해를 입히고 방어력을 깎는다." },
+      { id: "spiritBolt", name: "뼈 화살", glyph: "☄", cooldownMs: 4200, effect: "spiritBolt", description: "단일 적에게 뼈 화살을 날린다. 일정 확률로 치명타가 터진다." },
+      { id: "spiritRaise", name: "강령", glyph: "⚰", cooldownMs: 9000, effect: "spiritRaise", description: "이번 전투에서 쓰러진 적 최대 3마리를 아군으로 되살린다. 공격력이 폭발적으로 늘어난다. 전투당 1회만 쓸 수 있다." },
+      { id: "spiritWard", name: "뼈 갑옷", glyph: "◈", cooldownMs: 7000, effect: "spiritWard", description: "자신의 방어력을 높이고 소량 회복하며, 잠시 자신의 공격력도 함께 오른다." }
     ],
-    ultimate: { id: "spiritArrowStorm", name: "사령의 화살비", glyph: "☄", cooldownMs: 13000, effect: "spiritArrowStorm", description: "넓은 범위에 영혼의 화살을 퍼부어 큰 피해를 입힌다." }
+    ultimate: { id: "spiritApex", name: "일어나라", glyph: "☠", cooldownMs: 15000, effect: "storedApex", description: "저장해 둔 우두머리의 사념을 소환하고, 스스로 광폭화 상태에 빠져 흡혈하며 싸운다." }
   },
   archeryMaehwa: {
     id: "archeryMaehwa",

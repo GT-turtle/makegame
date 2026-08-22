@@ -331,16 +331,16 @@ test("직업은 패시브 1개·스킬 4개·궁 1개를 가지며 전승은 패
   assert.equal(battle.playerBasePassive.id, "soulHarvest");
   assert.equal(battle.playerPassive.id, "armoredDead");
   battle.enemies[0].hp = 0;
-  assert.equal(issuePlayerAction(battle, "skill2"), true);
+  assert.equal(issuePlayerAction(battle, "skill2"), true); // spiritRaise (default loadout order 2)
   assert.equal(battle.units.filter((unit) => unit.summonType === "raisedDead").length, 1);
 
   const engine = new GameEngine(new MemoryStorage());
   assert.equal(engine.selectCommanderKit("heavyNecromancer"), true);
   assert.equal(engine.state.adventure.commander.combatKitId, "heavyNecromancer");
-  assert.equal(engine.toggleCommanderSkill("armedResurrection"), true);
+  assert.equal(engine.toggleCommanderSkill("spiritRaise"), true); // already in default loadout -> toggles off
   assert.equal(engine.state.adventure.commander.skillLoadouts.heavyNecromancer.length, 2);
-  assert.equal(engine.toggleCommanderSkill("bloodRend"), true);
-  assert.ok(engine.state.adventure.commander.skillLoadouts.heavyNecromancer.includes("bloodRend"));
+  assert.equal(engine.toggleCommanderSkill("spiritBolt"), true); // not in loadout -> toggles on
+  assert.ok(engine.state.adventure.commander.skillLoadouts.heavyNecromancer.includes("spiritBolt"));
   assert.equal(engine.toggleCommanderSkill("storedApex"), false);
 });
 
@@ -437,23 +437,23 @@ test("두 전승의 액티브 10개(스킬 4개+궁 1개 × 2)가 실제 전투 
   heavyPlayer.x = heavyFront.enemies[0].x - 5;
   heavyPlayer.y = heavyFront.enemies[0].y;
   selectPlayerTarget(heavyFront, heavyFront.enemies[0].id);
-  assert.equal(issuePlayerAction(heavyFront, "skill1"), true); // armoredDecay
+  assert.equal(issuePlayerAction(heavyFront, "skill1"), true); // spiritDecay
   heavyFront.enemies[0].hp = 0;
-  assert.equal(issuePlayerAction(heavyFront, "skill2"), true); // armedResurrection
-  assert.equal(issuePlayerAction(heavyFront, "skill3"), true); // boneArmor
+  assert.equal(issuePlayerAction(heavyFront, "skill2"), true); // spiritRaise
+  assert.equal(issuePlayerAction(heavyFront, "skill3"), true); // spiritWard
 
   heavyCommander.storedBoss = { defId: "testBear", name: "시험 큰곰", species: "bear", glyph: "B", color: "#999", maxHp: 80, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.12 };
-  heavyCommander.skillLoadouts.heavyNecromancer = ["bloodRend"];
+  heavyCommander.skillLoadouts.heavyNecromancer = ["spiritBolt"];
   const heavyBack = createAutoBattle("duneRaiders", "heavy-back", "field", STARTING_PARTY, {}, { commander: heavyCommander });
   heavyBack.enemies[0].hp = 0;
   const heavyBackPlayer = heavyBack.units.find((unit) => unit.controlled);
   heavyBackPlayer.x = heavyBack.enemies[1].x - 8;
   heavyBackPlayer.y = heavyBack.enemies[1].y;
   selectPlayerTarget(heavyBack, heavyBack.enemies[1].id);
-  assert.equal(issuePlayerAction(heavyBack, "skill1"), true); // bloodRend
+  assert.equal(issuePlayerAction(heavyBack, "skill1"), true); // spiritBolt (non-default, forced into loadout)
   assert.equal(issuePlayerAction(heavyBack, "ultimate"), true); // storedApex
   assert.equal(heavyBack.units.filter((unit) => unit.summonType === "storedBoss").length, 1);
-  assert.equal(issuePlayerAction(heavyBack, "skill3"), true); // armedResurrection (default-filled)
+  assert.equal(issuePlayerAction(heavyBack, "skill3"), true); // spiritRaise (default-filled)
   assert.equal(heavyBack.consumedCorpseIds.length, 1);
 });
 
@@ -658,20 +658,24 @@ test("중갑크루 전승은 스킬 4개+궁 1개가 실행되고 복수치가 �
 test("궁사네크 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "archeryNecromancer";
+  commander.storedBoss = { defId: "testBear", name: "시험 큰곰", species: "bear", glyph: "B", color: "#999", maxHp: 80, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.12 };
   const front = createAutoBattle("duneRaiders", "archerynecro-front", "field", STARTING_PARTY, {}, { commander });
   const player = front.units.find((unit) => unit.controlled);
   player.x = front.enemies[0].x - 5;
   player.y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
   assert.equal(issuePlayerAction(front, "skill1"), true); // spiritDecay
-  assert.equal(issuePlayerAction(front, "skill2"), true); // huntersMark
+  assert.equal(issuePlayerAction(front, "skill2"), true); // spiritBolt
   front.enemies[1].hp = 0;
   assert.equal(issuePlayerAction(front, "skill3"), true); // spiritRaise
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // spiritArrowStorm
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // storedApex + berserk
+  assert.equal(Boolean(player.positiveEffects?.berserk), true);
 
   commander.skillLoadouts.archeryNecromancer = ["spiritWard"];
   const back = createAutoBattle("duneRaiders", "archerynecro-back", "field", STARTING_PARTY, {}, { commander });
   assert.equal(issuePlayerAction(back, "skill1"), true); // spiritWard
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  assert.equal(Boolean(backPlayer.positiveEffects?.spiritSurge), true);
 });
 
 test("암살자(궁사매화) 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {

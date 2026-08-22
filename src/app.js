@@ -1403,8 +1403,7 @@ function battleEntity(entity, battle) {
     .map((status) => `<u class="negative" title="${escapeHtml(STATUS_EFFECT_DEFS[status.id].name)}">${STATUS_EFFECT_DEFS[status.id].glyph}${status.stacks > 1 ? status.stacks : ""}</u>`);
   const positive = [
     entity.positiveEffects?.regeneration?.endsAt > battle.elapsed ? '<u class="positive" title="지속 회복">✚</u>' : "",
-    entity.positiveEffects?.frostRetaliation?.endsAt > battle.elapsed ? '<u class="positive" title="피격 시 빙결">❄</u>' : "",
-    entity.positiveEffects?.boneArmor?.endsAt > battle.elapsed ? '<u class="positive bone" title="뼈 갑옷">▣</u>' : ""
+    entity.positiveEffects?.frostRetaliation?.endsAt > battle.elapsed ? '<u class="positive" title="피격 시 빙결">❄</u>' : ""
   ].filter(Boolean);
   const weaponGlyph = ({ greatsword: "⚔", warhammer: "◆", ironTeeth: "⌁", ironClaws: "Ψ" })[entity.weaponOverlay] || "";
   const telegraphing = entity.team === "enemy" && entity.hp > 0 && Boolean(entity.telegraphTargetId);

@@ -1124,10 +1124,6 @@ function summonWeapon(species) {
   return ({ goblin: "greatsword", orc: "warhammer", wolf: "ironTeeth", bear: "ironClaws" })[species] || "greatsword";
 }
 
-function summonWeaponName(species) {
-  return ({ goblin: "끌리는 중검", orc: "전투 망치", wolf: "철제 이빨", bear: "철제 발톱" })[species] || "중병기";
-}
-
 function applySummonScaling(battle, summon, player, bossSummon = false, armed = true) {
   const power = Math.max(1, player.summonPower || 1);
   const baseHp = summon.baseMaxHp || summon.maxHp;
@@ -1203,7 +1199,9 @@ function summonStoredBoss(battle, player) {
 
 function applyKitPassive(battle, player) {
   if (battle.playerKitId === "heavyNecromancer") {
-    for (const summon of battle.units.filter((unit) => unit.summonType && unit.hp > 0)) healCombatant(summon, 3);
+    const stacks = battle.passiveState?.[battle.playerId]?.soulStacks || 0;
+    player.necroBaseArmor ??= player.armor;
+    player.armor = Math.min(0.58, player.necroBaseArmor + stacks * 0.03);
   }
   if (battle.playerKitId === "spiritBarbarian" && player.positiveEffects?.wolfForm?.endsAt > battle.elapsed) {
     player.defenseUntil = Math.max(player.defenseUntil || 0, battle.elapsed + 1200);
@@ -1212,7 +1210,12 @@ function applyKitPassive(battle, player) {
   }
   if (battle.playerKitId === "archeryNecromancer") {
     const stacks = battle.passiveState?.[battle.playerId]?.soulStacks || 0;
-    player.passiveDamageMultiplier = 1 + stacks * 0.06;
+    const surge = player.positiveEffects?.spiritSurge?.endsAt > battle.elapsed ? 0.3 : 0;
+    player.passiveDamageMultiplier = 1 + stacks * 0.06 + surge;
+    if (stacks > 0) {
+      player.positiveEffects ||= {};
+      player.positiveEffects.stealth = { endsAt: battle.elapsed + 500 };
+    }
   }
   if (battle.playerKitId === "spiritArchmage") {
     player.statusPotency = Math.max(player.statusPotency || 1, 1.25);
@@ -1271,33 +1274,22 @@ function resolvePlayerSkill(battle, player, skill) {
     for (const enemy of result.targets) applyCombatStatus(battle, enemy, "burn", player);
     battle.groundEffects.push({ x: player.x, y: player.y, radius: 25, team: "unit", sourceId: player.id, statusId: "burn", statusOptions: {}, pulseMs: 600, nextPulseAt: battle.elapsed + 600, endsAt: battle.elapsed + 5600 });
     pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명 타격 · 불 장판 5.6초`);
-  } else if (skill.effect === "armoredDecay") {
-    if (!target || distanceBetween(player, target) > 48) return false;
-    const damage = damageCombatant(player, target, 0.45);
-    if (target.hp > 0) applyCombatStatus(battle, target, "decay", player, { armorShred: 0.12 });
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 부패와 방어 감소`);
-  } else if (skill.effect === "armedResurrection") {
-    const summons = raiseAvailableCorpses(battle, player);
-    if (!summons.length) return false;
-    const weapons = [...new Set(summons.map((summon) => summonWeaponName(summon.species)))].join("·");
-    pushBattleLog(battle, `${skill.name}: 무장 망자 ${summons.length}기 부활 · ${weapons}`);
-  } else if (skill.effect === "boneArmor") {
-    for (const unit of living(battle.units)) {
-      unit.defenseUntil = battle.elapsed + 6000;
-      unit.defenseMultiplier = 0.58;
-      unit.positiveEffects ||= {};
-      unit.positiveEffects.boneArmor = { endsAt: battle.elapsed + 6000 };
-    }
-    pushBattleLog(battle, `${skill.name}: 아군 ${living(battle.units).length}명에게 회전 뼈 방패 부여`);
-  } else if (skill.effect === "bloodRend") {
-    if (!target || distanceBetween(player, target) > 20) return false;
-    const damage = damageCombatant(player, target, 1.4);
-    if (target.hp > 0) applyCombatStatus(battle, target, "bleed", player, { stacks: 2 });
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 출혈 2중첩`);
   } else if (skill.effect === "storedApex") {
     const summon = summonStoredBoss(battle, player);
     if (!summon) return false;
-    pushBattleLog(battle, `${skill.name}: ${summon.name} 소환 · 일반 전투 패턴만 사용`);
+    let extra = " · 일반 전투 패턴만 사용";
+    if (battle.playerKitId === "heavyNecromancer") {
+      summon.maxHp = Math.round(summon.maxHp * 1.3);
+      summon.hp = summon.maxHp;
+      summon.damage = Math.round(summon.damage * 1.3);
+      summon.normalPatternsOnly = false;
+      extra = " · 공방 강화 · 특수 패턴 해금";
+    } else if (battle.playerKitId === "archeryNecromancer") {
+      player.positiveEffects ||= {};
+      player.positiveEffects.berserk = { bonus: 0.3, lifeSteal: 0.15, endsAt: battle.elapsed + 8000 };
+      extra = " · 광폭화";
+    }
+    pushBattleLog(battle, `${skill.name}: ${summon.name} 소환${extra}`);
   } else if (skill.effect === "holyBlessing") {
     const ally = living(battle.units).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
     if (!ally) return false;
@@ -1328,29 +1320,62 @@ function resolvePlayerSkill(battle, player, skill) {
     const result = damageArea(battle, player, target, 26, 1.1);
     pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 신성 파도`);
   } else if (skill.effect === "spiritDecay") {
-    const result = damageArea(battle, player, player, 22, 0.55);
-    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "decay", player);
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 부패`);
+    const heavy = battle.playerKitId === "heavyNecromancer";
+    const archer = battle.playerKitId === "archeryNecromancer";
+    const summonAtk = heavy ? battle.units.filter((unit) => unit.summonType && unit.hp > 0).reduce((sum, unit) => sum + unit.damage, 0) : 0;
+    const result = damageArea(battle, player, player, 22, 0.55 + summonAtk * 0.01);
+    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "decay", player, archer ? { armorShred: 0.12 } : {});
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 부패${archer ? " · 방어 감소" : ""}`);
   } else if (skill.effect === "spiritBolt") {
     if (!target || distanceBetween(player, target) > 50) return false;
-    const damage = damageCombatant(player, target, 1.3);
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해`);
+    const heavy = battle.playerKitId === "heavyNecromancer";
+    const archer = battle.playerKitId === "archeryNecromancer";
+    const crit = archer && Math.random() < 0.5;
+    const damage = damageCombatant(player, target, crit ? 1.9 : 1.3);
+    if (heavy) {
+      const summons = battle.units.filter((unit) => unit.summonType && unit.hp > 0);
+      const bestArmor = summons.reduce((max, unit) => Math.max(max, unit.armor || 0), 0);
+      if (bestArmor > 0) {
+        player.defenseUntil = battle.elapsed + 4000;
+        player.defenseMultiplier = Math.min(player.defenseMultiplier ?? 1, 1 - bestArmor * 0.4);
+      }
+    }
+    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${crit ? " · 치명타" : ""}`);
   } else if (skill.effect === "spiritRaise") {
     if (battle.spiritRaiseUsed) return false;
-    const summons = raiseAvailableCorpses(battle, player, { limit: 3, armed: false });
+    const heavy = battle.playerKitId === "heavyNecromancer";
+    const archer = battle.playerKitId === "archeryNecromancer";
+    const summons = raiseAvailableCorpses(battle, player, { limit: 3, armed: heavy });
     if (!summons.length) return false;
+    const hpBonus = heavy ? 0.5 : 0.3;
+    const dmgBonus = heavy || archer ? 0.5 : 0.3;
     for (const summon of summons) {
-      summon.maxHp = Math.round(summon.maxHp + player.maxHp * 0.3);
+      summon.maxHp = Math.round(summon.maxHp + player.maxHp * hpBonus);
       summon.hp = summon.maxHp;
-      summon.damage = Math.round(summon.damage + player.damage * 0.3);
+      summon.damage = Math.round(summon.damage + player.damage * dmgBonus);
     }
     battle.spiritRaiseUsed = true;
-    pushBattleLog(battle, `${skill.name}: 망자 ${summons.length}기 부활 · 전투당 1회`);
+    const flavor = heavy ? " · 무장 강화" : archer ? " · 공격력 폭증" : "";
+    pushBattleLog(battle, `${skill.name}: 망자 ${summons.length}기 부활 · 전투당 1회${flavor}`);
   } else if (skill.effect === "spiritWard") {
     player.defenseUntil = battle.elapsed + 5400;
     player.defenseMultiplier = 0.6;
     healCombatant(player, 8);
-    pushBattleLog(battle, `${skill.name}: 자신 방어 강화 · 소량 회복`);
+    let extra = "";
+    if (battle.playerKitId === "heavyNecromancer") {
+      const summons = battle.units.filter((unit) => unit.summonType && unit.hp > 0);
+      for (const summon of summons) {
+        summon.defenseUntil = battle.elapsed + 5400;
+        summon.defenseMultiplier = Math.min(summon.defenseMultiplier ?? 1, 0.7);
+        summon.passiveDamageMultiplier = Math.max(summon.passiveDamageMultiplier || 1, 1.25);
+      }
+      extra = summons.length ? ` · 소환수 ${summons.length}기 강화` : "";
+    } else if (battle.playerKitId === "archeryNecromancer") {
+      player.positiveEffects ||= {};
+      player.positiveEffects.spiritSurge = { endsAt: battle.elapsed + 5400 };
+      extra = " · 공격력 상승";
+    }
+    pushBattleLog(battle, `${skill.name}: 자신 방어 강화 · 소량 회복${extra}`);
   } else if (skill.effect === "battleRoar") {
     const missing = player.hp > 0 ? 1 - player.hp / player.maxHp : 0;
     const factor = 1.25 + missing * 0.35;
@@ -1516,15 +1541,6 @@ function resolvePlayerSkill(battle, player, skill) {
     for (const enemy of result.targets) applyCombatStatus(battle, enemy, "bleed", player, { stacks: 3 });
     battle.vengeanceStored = 0;
     pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 복수의 출혈`);
-  } else if (skill.effect === "huntersMark") {
-    if (!target || distanceBetween(player, target) > 55) return false;
-    const lowHp = target.hp / target.maxHp <= 0.35;
-    const damage = damageCombatant(player, target, lowHp ? 2.2 : 1.4);
-    pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${lowHp ? " · 약점 저격" : ""}`);
-  } else if (skill.effect === "spiritArrowStorm") {
-    if (!target || distanceBetween(player, target) > 60) return false;
-    const result = damageArea(battle, player, target, 30, 1.3);
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 영혼의 화살비`);
   } else if (skill.effect === "shadowExecution") {
     if (!target || distanceBetween(player, target) > 22) return false;
     const lowHp = target.hp / target.maxHp <= 0.4;

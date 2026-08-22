@@ -2447,8 +2447,6 @@ button:disabled {
 .battle-status-row { display: flex; justify-content: center; gap: 1px; min-height: 11px; }
 .battle-status-row u { min-width: 11px; height: 11px; display: grid; place-items: center; padding: 0 1px; border-radius: 3px; background: #391a18; color: #f0a29a; font: 900 6px/1 system-ui; text-decoration: none; }
 .battle-status-row u.positive { background: #17331e; color: #a7dbae; }
-.battle-status-row u.bone { animation: bone-shield-spin 1.8s linear infinite; }
-@keyframes bone-shield-spin { to { transform: rotate(360deg); } }
 .battle-entity.hit i { filter: brightness(2.2); transform: scale(1.08); }
 .battle-entity.down { opacity: 0.18; filter: grayscale(1); }
 .battle-entity.focused i { outline: 2px solid #f3d77d; outline-offset: 3px; }
