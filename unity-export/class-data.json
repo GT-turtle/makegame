@@ -492,20 +492,20 @@
           "description": "주변 적에게 냉기 피해를 입히고 빙결시킨다."
         },
         {
-          "id": "manaShield",
-          "name": "마나 쉴드",
-          "glyph": "◈",
-          "cooldownMs": 9000,
-          "effect": "manaShield",
-          "description": "마나를 소모해 피해를 흡수하는 보호막을 두른다."
+          "id": "gravityWell",
+          "name": "중력장",
+          "glyph": "◉",
+          "cooldownMs": 7400,
+          "effect": "gravityWell",
+          "description": "주변 적을 한 점으로 끌어당기며 피해를 입힌다."
         },
         {
-          "id": "manaFocusSkill",
-          "name": "명상",
-          "glyph": "✧",
-          "cooldownMs": 7000,
-          "effect": "manaFocusSkill",
-          "description": "마나를 회복하고 스스로를 조금 치유한다."
+          "id": "arcaneRicochet",
+          "name": "마력 도탄",
+          "glyph": "↯",
+          "cooldownMs": 5000,
+          "effect": "arcaneRicochet",
+          "description": "가까운 적들을 연달아 튕기며 피해를 입힌다."
         }
       ],
       "ultimate": {
@@ -992,7 +992,7 @@
       "defaultLoadout": [
         "fireBolt",
         "frostNova",
-        "manaShield"
+        "gravityWell"
       ],
       "skills": [
         {
@@ -1012,20 +1012,20 @@
           "description": "주변 적에게 냉기 피해를 입히고 빙결시킨다."
         },
         {
-          "id": "manaShield",
-          "name": "마나 쉴드",
-          "glyph": "◈",
-          "cooldownMs": 9000,
-          "effect": "manaShield",
-          "description": "마나를 소모해 피해를 흡수하는 보호막을 두른다."
+          "id": "gravityWell",
+          "name": "중력장",
+          "glyph": "◉",
+          "cooldownMs": 7400,
+          "effect": "gravityWell",
+          "description": "주변 적을 한 점으로 끌어당기며 피해를 입힌다."
         },
         {
-          "id": "manaFocusSkill",
-          "name": "명상",
-          "glyph": "✧",
-          "cooldownMs": 7000,
-          "effect": "manaFocusSkill",
-          "description": "마나를 회복하고 스스로를 조금 치유한다."
+          "id": "arcaneRicochet",
+          "name": "마력 도탄",
+          "glyph": "↯",
+          "cooldownMs": 5000,
+          "effect": "arcaneRicochet",
+          "description": "가까운 적들을 연달아 튕기며 피해를 입힌다."
         }
       ],
       "ultimate": {

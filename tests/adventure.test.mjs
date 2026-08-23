@@ -622,16 +622,27 @@ test("아크메이지 스킬 4개+궁 1개가 실제 전투 효과로 모두 실
   const player = front.units.find((unit) => unit.controlled);
   player.x = front.enemies[0].x - 5;
   player.y = front.enemies[0].y;
+  front.enemies[1].x = front.enemies[0].x + 15;
+  front.enemies[1].y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
   assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt
   assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova
-  assert.equal(issuePlayerAction(front, "skill3"), true); // manaShield
-  assert.equal(Boolean(player.positiveEffects?.shield), true);
+  const beforeX = front.enemies[1].x;
+  assert.equal(issuePlayerAction(front, "skill3"), true); // gravityWell
+  assert.ok(front.enemies[1].x < beforeX); // 끌려와서 target 쪽으로 이동
   assert.equal(issuePlayerAction(front, "ultimate"), true); // lightningCage
 
-  commander.skillLoadouts.archmage = ["manaFocusSkill"];
+  commander.skillLoadouts.archmage = ["arcaneRicochet"];
   const back = createAutoBattle("duneRaiders", "archmage-back", "field", STARTING_PARTY, {}, { commander });
-  assert.equal(issuePlayerAction(back, "skill1"), true); // manaFocusSkill
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  back.enemies[1].x = back.enemies[0].x;
+  back.enemies[1].y = back.enemies[0].y;
+  selectPlayerTarget(back, back.enemies[0].id);
+  const secondEnemyHpBefore = back.enemies[1].hp;
+  assert.equal(issuePlayerAction(back, "skill1"), true); // arcaneRicochet
+  assert.ok(back.enemies[1].hp < secondEnemyHpBefore); // 연쇄로 두 번째 적까지 피해
 });
 
 test("중갑크루 전승은 스킬 4개+궁 1개가 실행되고 복수치가 쌓이고 소모된다", () => {

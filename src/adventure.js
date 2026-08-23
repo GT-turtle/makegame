@@ -1619,6 +1619,37 @@ function resolvePlayerSkill(battle, player, skill) {
     const result = damageArea(battle, player, target, wide ? 22 : 12, wide ? 1.0 : 1.6);
     for (const enemy of result.targets) applyCombatStatus(battle, enemy, "stun", player, { durationMs: 1000 });
     pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 벼락 · 기절`);
+  } else if (skill.effect === "gravityWell") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    const pulled = living(battle.enemies).filter((enemy) => distanceBetween(target, enemy) <= 26);
+    for (const enemy of pulled) {
+      const dx = target.x - enemy.x;
+      const dy = target.y - enemy.y;
+      const dist = Math.max(0.001, Math.hypot(dx, dy));
+      const pull = Math.min(dist, 10);
+      enemy.x = Math.max(5, Math.min(95, enemy.x + (dx / dist) * pull));
+      enemy.y = Math.max(8, Math.min(92, enemy.y + (dy / dist) * pull));
+    }
+    let totalDamage = 0;
+    for (const enemy of pulled) totalDamage += damageCombatant(player, enemy, 0.9);
+    pushBattleLog(battle, `${skill.name}: 적 ${pulled.length}명을 끌어당겨 ${totalDamage} 피해`);
+  } else if (skill.effect === "arcaneRicochet") {
+    if (!target || distanceBetween(player, target) > 55) return false;
+    let current = target;
+    let totalDamage = damageCombatant(player, current, 1.3);
+    let hits = 1;
+    const alreadyHit = new Set([current.id]);
+    for (let bounce = 0; bounce < 2; bounce += 1) {
+      const next = living(battle.enemies)
+        .filter((enemy) => !alreadyHit.has(enemy.id) && distanceBetween(current, enemy) <= 20)
+        .sort((a, b) => distanceBetween(current, a) - distanceBetween(current, b))[0];
+      if (!next) break;
+      totalDamage += damageCombatant(player, next, 1.0);
+      alreadyHit.add(next.id);
+      current = next;
+      hits += 1;
+    }
+    pushBattleLog(battle, `${skill.name}: 적 ${hits}명에게 연쇄 ${totalDamage} 피해`);
   } else if (skill.effect === "heavyBlessing") {
     const ally = living(battle.units).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
     if (!ally) return false;

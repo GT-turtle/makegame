@@ -158,8 +158,8 @@ export const PLAYER_BASE_CLASS_DEFS = {
     skills: [
       { id: "fireBolt", name: "불 화살", glyph: "♨", cooldownMs: 4400, effect: "fireBolt", description: "단일 적에게 화염 피해를 입히고 화상을 남긴다." },
       { id: "frostNova", name: "얼음 비", glyph: "❄", cooldownMs: 6800, effect: "frostNova", description: "주변 적에게 냉기 피해를 입히고 빙결시킨다." },
-      { id: "manaShield", name: "마나 쉴드", glyph: "◈", cooldownMs: 9000, effect: "manaShield", description: "마나를 소모해 피해를 흡수하는 보호막을 두른다." },
-      { id: "manaFocusSkill", name: "명상", glyph: "✧", cooldownMs: 7000, effect: "manaFocusSkill", description: "마나를 회복하고 스스로를 조금 치유한다." }
+      { id: "gravityWell", name: "중력장", glyph: "◉", cooldownMs: 7400, effect: "gravityWell", description: "주변 적을 한 점으로 끌어당기며 피해를 입힌다." },
+      { id: "arcaneRicochet", name: "마력 도탄", glyph: "↯", cooldownMs: 5000, effect: "arcaneRicochet", description: "가까운 적들을 연달아 튕기며 피해를 입힌다." }
     ],
     ultimate: { id: "lightningCage", name: "낙뢰", glyph: "ϟ", cooldownMs: 13500, effect: "lightningCage", description: "좁은 범위에 벼락을 내리쳐 큰 피해를 입히고 기절시킨다." }
   }
@@ -284,7 +284,7 @@ export const PLAYER_KIT_DEFS = {
     description: "아직 보조 계통을 배우지 않은 순수 아크메이지.",
     passive: { id: "none", name: "없음", glyph: "—", description: "전승을 익히면 추가 패시브를 얻는다." },
     stats: { maxHp: 30, damage: 10, range: 24, speed: 13, attackMs: 900, armor: 0.03, color: "#6a7fc5", glyph: "✦" },
-    defaultLoadout: ["fireBolt", "frostNova", "manaShield"],
+    defaultLoadout: ["fireBolt", "frostNova", "gravityWell"],
     skills: PLAYER_BASE_CLASS_DEFS.archmage.skills,
     ultimate: PLAYER_BASE_CLASS_DEFS.archmage.ultimate
   },
