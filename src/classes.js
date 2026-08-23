@@ -465,17 +465,17 @@ export const PLAYER_KIT_DEFS = {
       id: "elementalContract",
       name: "자연 친화",
       glyph: "♧",
-      description: "마나가 낮을수록 마나 회복 속도가 오르고, 상태이상의 위력과 지속시간도 늘어난다."
+      description: "정령을 소환해 전투 내내 함께하며(정령은 피격 불가), 마나가 낮을수록 마나 회복 속도가 오르고, 자신이 거는 상태이상의 중첩 상한이 2배로 늘어난다."
     },
     stats: { maxHp: 32, damage: 9, range: 24, speed: 13, attackMs: 900, armor: 0.05, color: "#6ab08f", glyph: "✦" },
-    defaultLoadout: ["fireBolt", "frostNova", "spiritBond"],
+    defaultLoadout: ["fireBolt", "frostNova", "gravityWell"],
     skills: [
       { id: "fireBolt", name: "폭염창", glyph: "♨", cooldownMs: 4400, effect: "fireBolt", description: "단일 적에게 화염 피해를 입히고 화상을 남기며, 주변까지 폭발이 번진다." },
       { id: "frostNova", name: "빙결 폭발", glyph: "❄", cooldownMs: 6800, effect: "frostNova", description: "주변 적에게 냉기 피해를 입히고 빙결시킨다. 이미 얼어붙은 적에게는 추가 피해가 들어간다." },
-      { id: "spiritBond", name: "정령 결속", glyph: "♧", cooldownMs: 8600, effect: "spiritBond", description: "마나를 소모해 작은 정령을 소환한다." },
-      { id: "manaFocusSkill", name: "메모라이즈", glyph: "✧", cooldownMs: 7000, effect: "manaFocusSkill", description: "마나를 회복하고 스스로를 조금 치유하며, 다음 스킬들의 재사용 대기시간을 크게 당긴다." }
+      { id: "gravityWell", name: "원소 소용돌이", glyph: "◉", cooldownMs: 7400, effect: "gravityWell", description: "주변 적을 한 점으로 끌어당기며 피해를 입히고, 잠시 자신의 상태이상 위력이 폭증한다." },
+      { id: "lightningRicochet", name: "과부화", glyph: "↯", cooldownMs: 5000, effect: "lightningRicochet", description: "가까운 적들을 번개로 연달아 튕기며 피해를 입히고 감전시킨다. 상대에게 걸린 상태이상 중첩 수만큼 피해가 늘어난다." }
     ],
-    ultimate: { id: "lightningCage", name: "삼원소 심판", glyph: "✦", cooldownMs: 14000, effect: "lightningCage", description: "넓은 범위에 벼락을 내리쳐 피해를 입히고 기절시킨다. 좁고 강한 기본형과 달리 넓고 약하게 퍼진다." }
+    ultimate: { id: "triElementJudgment", name: "삼원소 심판", glyph: "✦", cooldownMs: 14000, effect: "triElementJudgment", description: "좁은 범위에 빙결·감전·화상을 차례로 내리쳐 세 속성 피해를 연속으로 입힌다." }
   },
   holyArchmage: {
     id: "holyArchmage",
@@ -494,12 +494,12 @@ export const PLAYER_KIT_DEFS = {
       description: "마나 비율에 비례해 아군 전체의 공격력이 오르고, 보유한 마나가 많을수록 자신의 회복력도 오른다."
     },
     stats: { maxHp: 34, damage: 8, range: 22, speed: 14, attackMs: 880, armor: 0.06, color: "#c0a866", glyph: "✦" },
-    defaultLoadout: ["fireBolt", "frostNova", "manaShield"],
+    defaultLoadout: ["fireBolt", "frostNova", "gravityWell"],
     skills: [
       { id: "fireBolt", name: "성스러운 화살", glyph: "✧", cooldownMs: 4400, effect: "fireBolt", description: "목표 주변에 신성 피해를 입히고 스스로를 조금 회복한다." },
       { id: "frostNova", name: "정화의 파동", glyph: "☼", cooldownMs: 6800, effect: "frostNova", description: "주변 적에게 신성 피해를 입히고 지속 피해를 남긴다." },
-      { id: "manaShield", name: "성역", glyph: "◈", cooldownMs: 9000, effect: "manaShield", description: "마나를 소모해 피해를 흡수하는 보호막을 두르고, 스스로 지속 회복한다." },
-      { id: "manaFocusSkill", name: "치유의 주문", glyph: "✚", cooldownMs: 7000, effect: "manaFocusSkill", description: "마나를 회복하고, 가장 다친 아군을 회복시키며 상태이상을 해제한다." }
+      { id: "gravityWell", name: "성역", glyph: "◉", cooldownMs: 7400, effect: "gravityWell", description: "주변 적을 한 점으로 끌어모아 속박하고 지속 피해를 남긴다." },
+      { id: "lightningRicochet", name: "성광 연쇄", glyph: "↯", cooldownMs: 5000, effect: "lightningRicochet", description: "가까운 아군에게 신성한 빛이 연달아 튕기며 체력을 회복시키고 보호막을 두른다." }
     ],
     ultimate: { id: "heavenlyJudgment", name: "천벌", glyph: "✦", cooldownMs: 14000, effect: "heavenlyJudgment", description: "목표 주변에 신성 파도를 일으켜 연속으로 피해를 입히고 아군 전체를 회복·축복한다." }
   },

@@ -747,7 +747,7 @@ test("마검사(마법매화) 전승은 스킬 4개+궁 1개가 모두 실행되
   assert.equal(Boolean(back.enemies[0].statuses?.frost), true); // 냉기 둔화 부여
 });
 
-test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 상태이상·소환·재사용 단축이 강화된다", () => {
+test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 상태이상 상한 2배·정령 피격불가·상태이상 폭주 피해가 적용된다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "spiritArchmage";
   const front = createAutoBattle("duneRaiders", "spiritarchmage-front", "field", STARTING_PARTY, {}, { commander });
@@ -757,22 +757,69 @@ test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 상태�
   front.enemies[1].x = front.enemies[0].x;
   front.enemies[1].y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
+
+  // 패시브(자연 친화): 플레이어가 거는 상태이상의 중첩 상한이 2배(독 기본 상한 5 → 10)로 늘어난다
+  for (let i = 0; i < 7; i += 1) applyCombatStatus(front, front.enemies[0], "poison", player, { stacks: 1 });
+  assert.equal(front.enemies[0].statuses.poison.stacks, 7);
+  assert.ok(front.enemies[0].statuses.poison.stacks > 5); // 기본 상한(5)을 넘어선다
+
   assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt(폭염창) + 주변 폭발
   assert.equal(Boolean(front.enemies[1].statuses?.burn), true);
+
+  const wisp = front.units.find((unit) => unit.summonType === "spiritWisp");
+  assert.ok(wisp); // 패시브가 정령을 자동 소환한다(더 이상 액티브 스킬이 아니다)
+  assert.equal(wisp.invulnerable, true);
+
   assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova(빙결 폭발)
   assert.equal(Boolean(front.enemies[0].statuses?.frost), true);
-  assert.equal(issuePlayerAction(front, "skill3"), true); // spiritBond(정령 결속)
-  assert.equal(front.units.some((unit) => unit.summonType === "spiritWisp"), true);
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // lightningCage(삼원소 심판, 넓게)
 
-  commander.skillLoadouts.spiritArchmage = ["manaFocusSkill"];
+  assert.equal(issuePlayerAction(front, "skill3"), true); // gravityWell(원소 소용돌이)
+  assert.equal(Boolean(player.positiveEffects?.elementalSurge), true); // 상태이상 위력 폭증
+
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // triElementJudgment(삼원소 심판)
+  assert.equal(Boolean(front.enemies[0].statuses?.frost), true);
+  assert.equal(Boolean(front.enemies[0].statuses?.stun), true);
+  assert.equal(Boolean(front.enemies[0].statuses?.burn), true); // 빙결·감전·화상이 한 번에 모두 적용된다
+
+  // 정령은 적에게 인접해도 체력이 줄지 않는다(피격불가) - 별도 전투로 격리 검증
+  const wispBattle = createAutoBattle("duneRaiders", "spiritarchmage-wisp", "field", STARTING_PARTY, {}, { commander });
+  const wispPlayer = wispBattle.units.find((unit) => unit.controlled);
+  wispPlayer.x = wispBattle.enemies[0].x - 5;
+  wispPlayer.y = wispBattle.enemies[0].y;
+  selectPlayerTarget(wispBattle, wispBattle.enemies[0].id);
+  assert.equal(issuePlayerAction(wispBattle, "skill1"), true); // fireBolt - 패시브가 정령을 소환한다
+  const wisp2 = wispBattle.units.find((unit) => unit.summonType === "spiritWisp");
+  assert.ok(wisp2);
+  const attacker = wispBattle.enemies[0];
+  attacker.x = wisp2.x;
+  attacker.y = wisp2.y;
+  attacker.cooldown = 0;
+  for (let i = 0; i < 5; i += 1) tickAutoBattle(wispBattle, 200);
+  assert.equal(wisp2.hp, wisp2.maxHp);
+
+  // held-out 4번째 스킬(과부화/lightningRicochet): 상태이상 중첩만큼 추가 피해가 들어간다
+  commander.skillLoadouts.spiritArchmage = ["lightningRicochet"];
   const back = createAutoBattle("duneRaiders", "spiritarchmage-back", "field", STARTING_PARTY, {}, { commander });
-  back.playerReadyAt.skill2 = back.elapsed + 5000;
-  assert.equal(issuePlayerAction(back, "skill1"), true); // manaFocusSkill(메모라이즈) + 재사용 대기시간 단축
-  assert.ok(back.playerReadyAt.skill2 < back.elapsed + 5000);
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  selectPlayerTarget(back, back.enemies[0].id);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // lightningRicochet(과부화)
+  assert.equal(Boolean(back.enemies[0].statuses?.stun), true);
+  const baselineDamage = back.enemies[0].maxHp - back.enemies[0].hp;
+
+  const back2 = createAutoBattle("duneRaiders", "spiritarchmage-back2", "field", STARTING_PARTY, {}, { commander });
+  const back2Player = back2.units.find((unit) => unit.controlled);
+  back2Player.x = back2.enemies[0].x - 5;
+  back2Player.y = back2.enemies[0].y;
+  selectPlayerTarget(back2, back2.enemies[0].id);
+  for (let i = 0; i < 4; i += 1) applyCombatStatus(back2, back2.enemies[0], "poison", back2Player, { stacks: 1 });
+  assert.equal(issuePlayerAction(back2, "skill1"), true); // lightningRicochet(과부화), 상태이상 4중첩 상태
+  const overloadDamage = back2.enemies[0].maxHp - back2.enemies[0].hp;
+  assert.ok(overloadDamage > baselineDamage); // 상태이상 중첩이 있을 때 추가 피해가 더 들어간다
 });
 
-test("신성아크 전승은 스킬 4개+궁 1개가 모두 실행되고 아군을 회복·축복한다", () => {
+test("신성아크 전승은 스킬 4개+궁 1개가 모두 실행되고 성역 속박·성광 연쇄 아군 회복이 적용된다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "holyArchmage";
   const front = createAutoBattle("duneRaiders", "holyarchmage-front", "field", STARTING_PARTY, {}, { commander });
@@ -781,19 +828,34 @@ test("신성아크 전승은 스킬 4개+궁 1개가 모두 실행되고 아군�
   player.y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
   for (const unit of front.units) unit.hp = Math.round(unit.maxHp * 0.5);
+
   assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt(성스러운 화살) - 범위 신성 피해 + 자힐
   assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova(정화의 파동) - 빙결 대신 지속 피해
   assert.equal(Boolean(front.enemies[0].statuses?.decay), true);
   assert.equal(Boolean(front.enemies[0].statuses?.frost), false);
-  assert.equal(issuePlayerAction(front, "skill3"), true); // manaShield(성역) + 지속 회복
-  assert.equal(Boolean(player.positiveEffects?.regeneration), true);
+
+  delete front.enemies[0].statuses.decay;
+  const hpBeforeGravityWell = front.enemies[0].hp;
+  assert.equal(issuePlayerAction(front, "skill3"), true); // gravityWell(성역) - 즉발 피해 대신 속박 + 지속 피해
+  assert.equal(front.enemies[0].hp, hpBeforeGravityWell); // 즉시 피해는 없다
+  assert.equal(front.enemies[0].rootedUntil > front.elapsed, true); // 속박
+  assert.equal(Boolean(front.enemies[0].statuses?.decay), true); // 지속 피해
+
   assert.equal(issuePlayerAction(front, "ultimate"), true); // heavenlyJudgment(천벌)
   assert.equal(Boolean(player.positiveEffects?.shield), true);
 
-  commander.skillLoadouts.holyArchmage = ["manaFocusSkill"];
+  // held-out 4번째 스킬(성광 연쇄/lightningRicochet): 적 대신 아군을 회복·보호한다
+  commander.skillLoadouts.holyArchmage = ["lightningRicochet"];
   const back = createAutoBattle("duneRaiders", "holyarchmage-back", "field", STARTING_PARTY, {}, { commander });
-  for (const unit of back.units) unit.hp = Math.round(unit.maxHp * 0.5);
-  assert.equal(issuePlayerAction(back, "skill1"), true); // manaFocusSkill(치유의 주문) - 아군 치유 + 상태이상 해제
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  selectPlayerTarget(back, back.enemies[0].id);
+  for (const unit of back.units) unit.hp = Math.round(unit.maxHp * 0.3);
+  const enemyHpBefore = back.enemies[0].hp;
+  assert.equal(issuePlayerAction(back, "skill1"), true); // lightningRicochet(성광 연쇄)
+  assert.equal(back.enemies[0].hp, enemyHpBefore); // 적에게는 피해가 가지 않는다
+  assert.equal(Boolean(backPlayer.positiveEffects?.shield), true); // 연쇄가 자신부터 아군을 회복·보호막
 });
 
 test("정령추적 전승은 스킬 4개+궁 1개가 모두 실행되고 속성 상태이상을 남긴다", () => {

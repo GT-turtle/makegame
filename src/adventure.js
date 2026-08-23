@@ -706,6 +706,10 @@ function effectiveArmor(actor) {
   return Math.max(0, Math.min(0.58, (actor.armor || 0) - decayShred));
 }
 
+function statusStackTotal(target) {
+  return Object.values(target.statuses || {}).reduce((sum, status) => sum + (status.stacks || 0), 0);
+}
+
 function effectDuration(target, definition, source, options) {
   const potency = Math.max(0.5, Number(options.potency || source?.statusPotency || 1));
   const resistance = Math.max(0, Math.min(0.6, Number(target.statusResistance || 0)));
@@ -720,9 +724,10 @@ export function applyCombatStatus(battle, target, statusId, source = null, optio
   target.statuses ||= {};
   const previous = target.statuses[statusId];
   const requestedStacks = Math.max(1, Number(options.stacks || 1));
+  const stackCapMultiplier = source?.id === battle.playerId && battle.playerKitId === "spiritArchmage" ? 2 : 1;
   const stacks = statusId === "burn"
     ? 1
-    : Math.min(definition.maxStacks || 1, (previous?.stacks || 0) + requestedStacks);
+    : Math.min((definition.maxStacks || 1) * stackCapMultiplier, (previous?.stacks || 0) + requestedStacks);
   const potency = Math.max(0.5, Number(options.potency || source?.statusPotency || 1));
   const tickDamage = Math.max(previous?.tickDamage || 0, Math.max(1, Math.round((options.damage || definition.damage || 0) * potency)));
   target.statuses[statusId] = {
@@ -973,6 +978,7 @@ export function tickAutoBattle(battle, deltaMs) {
     const damage = Math.max(0, 2 - Math.floor((battle.hazardMitigation || 0) / 2));
     if (damage > 0) {
       for (const unit of living(battle.units)) {
+        if (unit.invulnerable) continue;
         unit.hp = Math.max(0, unit.hp - damage);
         unit.lastHit = 260;
       }
@@ -1002,7 +1008,7 @@ export function tickAutoBattle(battle, deltaMs) {
       actor.telegraphTargetId = null;
       continue;
     }
-    const targets = living(actor.team === "unit" ? battle.enemies : battle.units);
+    const targets = living(actor.team === "unit" ? battle.enemies : battle.units).filter((entry) => !entry.invulnerable);
     if (!targets.length) {
       actor.telegraphTargetId = null;
       continue;
@@ -1134,6 +1140,7 @@ export function selectPlayerTarget(battle, targetId) {
 }
 
 function damageCombatant(attacker, target, multiplier = 1) {
+  if (target.invulnerable) return 0;
   const damage = Math.max(1, Math.round(attacker.damage * (attacker.passiveDamageMultiplier || 1) * multiplier * (1 - effectiveArmor(target))));
   target.hp = Math.max(0, target.hp - damage);
   target.lastHit = 320;
@@ -1241,9 +1248,29 @@ function applyKitPassive(battle, player) {
   }
   if (battle.playerKitId === "spiritArchmage") {
     player.statusPotency = Math.max(player.statusPotency || 1, 1.25);
+    if (player.positiveEffects?.elementalSurge?.endsAt > battle.elapsed) {
+      player.statusPotency = Math.max(player.statusPotency, 1.5);
+    }
     const manaRatio = player.maxMana > 0 ? player.mana / player.maxMana : 0;
     player.manaRegenBase ??= player.manaRegen;
     player.manaRegen = player.manaRegenBase * (1 + (1 - manaRatio) * 0.8);
+    if (!battle.units.some((unit) => unit.summonType === "spiritWisp" && unit.hp > 0)) {
+      const wisp = createCombatant(
+        { id: "spiritWisp", name: "정령 결속", glyph: "♧", color: "#8fd0b0", maxHp: 20, damage: 4, range: 18, speed: 14, attackMs: 900, armor: 0 },
+        `summon-wisp-${Math.round(battle.elapsed)}`,
+        "unit",
+        5,
+        { level: player.level }
+      );
+      wisp.summonType = "spiritWisp";
+      wisp.role = "정령";
+      wisp.x = Math.max(7, Math.min(93, player.x + 4));
+      wisp.y = Math.max(10, Math.min(90, player.y - 4));
+      applySummonScaling(battle, wisp, player, false, false);
+      wisp.invulnerable = true;
+      battle.units.push(wisp);
+      pushBattleLog(battle, "자연 친화: 정령이 나타나 함께 싸운다.");
+    }
   }
   if (battle.playerKitId === "holyArchmage") {
     const manaRatio = player.maxMana > 0 ? player.mana / player.maxMana : 0;
@@ -1583,42 +1610,6 @@ function resolvePlayerSkill(battle, player, skill) {
       }
       pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 냉기 피해 · 빙결`);
     }
-  } else if (skill.effect === "manaShield") {
-    const cost = Math.min(player.mana || 0, Math.max(20, Math.round((player.maxMana || 0) * 0.4)));
-    if (cost <= 0) return false;
-    player.mana -= cost;
-    player.positiveEffects ||= {};
-    player.positiveEffects.shield = { amount: Math.round(cost * 1.2), endsAt: battle.elapsed + 8000 };
-    if (battle.playerKitId === "holyArchmage") {
-      player.positiveEffects.regeneration = { amount: Math.max(1, Math.round(player.maxHp * 0.03)), nextTickAt: battle.elapsed + 1000, endsAt: battle.elapsed + 8000 };
-    }
-    pushBattleLog(battle, `${skill.name}: 마나 ${cost} 소모 · 보호막 ${Math.round(cost * 1.2)}${battle.playerKitId === "holyArchmage" ? " · 지속 회복" : ""}`);
-  } else if (skill.effect === "manaFocusSkill") {
-    player.mana = Math.min(player.maxMana || 0, (player.mana || 0) + Math.round((player.maxMana || 0) * 0.35));
-    const healed = healCombatant(player, Math.round(player.maxHp * 0.08));
-    if (battle.playerKitId === "spiritArchmage") {
-      for (const key of ["skill1", "skill2", "skill3", "ultimate"]) {
-        if (battle.playerReadyAt[key]) battle.playerReadyAt[key] = Math.max(battle.elapsed, battle.playerReadyAt[key] - 3000);
-      }
-      pushBattleLog(battle, `${skill.name}: 마나 회복 · 자신 ${healed} 회복 · 재사용 대기시간 단축`);
-    } else if (battle.playerKitId === "holyArchmage") {
-      const ally = living(battle.units).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
-      if (ally) {
-        const dispelled = dispelHarmfulStatus(ally);
-        const allyHealed = healCombatant(ally, 14 * (player.healingPower || 1));
-        pushBattleLog(battle, `${skill.name}: 마나 회복 · ${ally.name} ${allyHealed} 회복${dispelled ? " · 상태이상 해제" : ""}`);
-      } else {
-        pushBattleLog(battle, `${skill.name}: 마나 회복 · 자신 ${healed} 회복`);
-      }
-    } else {
-      pushBattleLog(battle, `${skill.name}: 마나 회복 · 자신 ${healed} 회복`);
-    }
-  } else if (skill.effect === "lightningCage") {
-    if (!target || distanceBetween(player, target) > 50) return false;
-    const wide = battle.playerKitId === "spiritArchmage";
-    const result = damageArea(battle, player, target, wide ? 22 : 12, wide ? 1.0 : 1.6);
-    for (const enemy of result.targets) applyCombatStatus(battle, enemy, "stun", player, { durationMs: 1000 });
-    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 벼락 · 기절`);
   } else if (skill.effect === "gravityWell") {
     if (!target || distanceBetween(player, target) > 55) return false;
     const pulled = living(battle.enemies).filter((enemy) => distanceBetween(target, enemy) <= 26);
@@ -1630,28 +1621,89 @@ function resolvePlayerSkill(battle, player, skill) {
       enemy.x = Math.max(5, Math.min(95, enemy.x + (dx / dist) * pull));
       enemy.y = Math.max(8, Math.min(92, enemy.y + (dy / dist) * pull));
     }
-    let totalDamage = 0;
-    for (const enemy of pulled) totalDamage += damageCombatant(player, enemy, 0.9);
-    pushBattleLog(battle, `${skill.name}: 적 ${pulled.length}명을 끌어당겨 ${totalDamage} 피해`);
-  } else if (skill.effect === "lightningRicochet") {
-    if (!target || distanceBetween(player, target) > 55) return false;
-    let current = target;
-    let totalDamage = damageCombatant(player, current, 1.3);
-    let hits = 1;
-    const alreadyHit = new Set([current.id]);
-    if (current.hp > 0) applyCombatStatus(battle, current, "stun", player, { durationMs: 700 });
-    for (let bounce = 0; bounce < 2; bounce += 1) {
-      const next = living(battle.enemies)
-        .filter((enemy) => !alreadyHit.has(enemy.id) && distanceBetween(current, enemy) <= 20)
-        .sort((a, b) => distanceBetween(current, a) - distanceBetween(current, b))[0];
-      if (!next) break;
-      totalDamage += damageCombatant(player, next, 1.0);
-      alreadyHit.add(next.id);
-      current = next;
-      hits += 1;
-      if (current.hp > 0) applyCombatStatus(battle, current, "stun", player, { durationMs: 700 });
+    if (battle.playerKitId === "holyArchmage") {
+      for (const enemy of pulled) {
+        enemy.rootedUntil = battle.elapsed + 2600;
+        applyCombatStatus(battle, enemy, "decay", player);
+      }
+      pushBattleLog(battle, `${skill.name}: 적 ${pulled.length}명을 속박하고 지속 피해를 남겼다.`);
+    } else {
+      let totalDamage = 0;
+      for (const enemy of pulled) totalDamage += damageCombatant(player, enemy, 0.9);
+      if (battle.playerKitId === "spiritArchmage" && pulled.length) {
+        player.positiveEffects ||= {};
+        player.positiveEffects.elementalSurge = { endsAt: battle.elapsed + 4000 };
+      }
+      pushBattleLog(battle, `${skill.name}: 적 ${pulled.length}명을 끌어당겨 ${totalDamage} 피해${battle.playerKitId === "spiritArchmage" ? " · 원소 폭주" : ""}`);
     }
-    pushBattleLog(battle, `${skill.name}: 적 ${hits}명에게 번개 연쇄 ${totalDamage} 피해 · 감전`);
+  } else if (skill.effect === "lightningRicochet") {
+    if (battle.playerKitId === "holyArchmage") {
+      const healAmount = Math.max(1, Math.round(player.maxHp * 0.05 * (player.healingPower || 1)));
+      const shieldAmount = Math.max(1, Math.round(player.maxHp * 0.06));
+      const chainHeal = (unit) => {
+        const healed = healCombatant(unit, healAmount);
+        unit.positiveEffects ||= {};
+        unit.positiveEffects.shield = { amount: (unit.positiveEffects.shield?.amount || 0) + shieldAmount, endsAt: battle.elapsed + 6000 };
+        return healed;
+      };
+      let current = living(battle.units).sort((a, b) => distanceBetween(player, a) - distanceBetween(player, b))[0];
+      if (!current) return false;
+      let totalHealed = chainHeal(current);
+      let hits = 1;
+      const alreadyHit = new Set([current.id]);
+      for (let bounce = 0; bounce < 2; bounce += 1) {
+        const next = living(battle.units)
+          .filter((unit) => !alreadyHit.has(unit.id) && distanceBetween(current, unit) <= 20)
+          .sort((a, b) => distanceBetween(current, a) - distanceBetween(current, b))[0];
+        if (!next) break;
+        totalHealed += chainHeal(next);
+        alreadyHit.add(next.id);
+        current = next;
+        hits += 1;
+      }
+      pushBattleLog(battle, `${skill.name}: 아군 ${hits}명에게 신성한 빛 연쇄 · 회복 ${totalHealed} · 보호막 부여`);
+    } else {
+      if (!target || distanceBetween(player, target) > 55) return false;
+      const overload = battle.playerKitId === "spiritArchmage";
+      const overloadBonus = (enemy) => {
+        if (!overload || enemy.hp <= 0) return 0;
+        const stacks = statusStackTotal(enemy);
+        if (stacks <= 0) return 0;
+        const bonus = Math.max(1, Math.round(player.damage * (player.passiveDamageMultiplier || 1) * stacks * 0.2 * (1 - effectiveArmor(enemy))));
+        enemy.hp = Math.max(0, enemy.hp - bonus);
+        return bonus;
+      };
+      let current = target;
+      let totalDamage = damageCombatant(player, current, 1.3);
+      totalDamage += overloadBonus(current);
+      let hits = 1;
+      const alreadyHit = new Set([current.id]);
+      if (current.hp > 0) applyCombatStatus(battle, current, "stun", player, { durationMs: 700 });
+      for (let bounce = 0; bounce < 2; bounce += 1) {
+        const next = living(battle.enemies)
+          .filter((enemy) => !alreadyHit.has(enemy.id) && distanceBetween(current, enemy) <= 20)
+          .sort((a, b) => distanceBetween(current, a) - distanceBetween(current, b))[0];
+        if (!next) break;
+        totalDamage += damageCombatant(player, next, 1.0);
+        totalDamage += overloadBonus(next);
+        alreadyHit.add(next.id);
+        current = next;
+        hits += 1;
+        if (current.hp > 0) applyCombatStatus(battle, current, "stun", player, { durationMs: 700 });
+      }
+      pushBattleLog(battle, `${skill.name}: 적 ${hits}명에게 번개 연쇄 ${totalDamage} 피해 · 감전${overload ? " · 상태이상 폭주 피해" : ""}`);
+    }
+  } else if (skill.effect === "triElementJudgment") {
+    if (!target || distanceBetween(player, target) > 50) return false;
+    const radius = 12;
+    const frostResult = damageArea(battle, player, target, radius, 0.85);
+    for (const enemy of frostResult.targets) applyCombatStatus(battle, enemy, "frost", player, { stacks: 1 });
+    const lightningResult = damageArea(battle, player, target, radius, 0.85);
+    for (const enemy of lightningResult.targets) applyCombatStatus(battle, enemy, "stun", player, { durationMs: 1000 });
+    const fireResult = damageArea(battle, player, target, radius, 0.85);
+    for (const enemy of fireResult.targets) applyCombatStatus(battle, enemy, "burn", player);
+    const totalDamage = frostResult.totalDamage + lightningResult.totalDamage + fireResult.totalDamage;
+    pushBattleLog(battle, `${skill.name}: 빙결 → 감전 → 화상을 연속으로 내리쳐 ${totalDamage} 피해`);
   } else if (skill.effect === "manaBurst") {
     if (!target || distanceBetween(player, target) > 50) return false;
     const result = damageArea(battle, player, target, 16, 1.7);
@@ -1700,25 +1752,6 @@ function resolvePlayerSkill(battle, player, skill) {
     for (const enemy of result.targets) applyCombatStatus(battle, enemy, "bleed", player, { stacks: 3 });
     battle.vengeanceStored = 0;
     pushBattleLog(battle, `${skill.name}: ${result.targets.length}명에게 복수의 출혈`);
-  } else if (skill.effect === "spiritBond") {
-    const cost = 25;
-    if ((player.mana || 0) < cost) return false;
-    if (battle.units.some((unit) => unit.summonType === "spiritWisp" && unit.hp > 0)) return false;
-    player.mana -= cost;
-    const wisp = createCombatant(
-      { id: "spiritWisp", name: "정령 결속", glyph: "♧", color: "#8fd0b0", maxHp: 20, damage: 4, range: 18, speed: 14, attackMs: 900, armor: 0 },
-      `summon-wisp-${Math.round(battle.elapsed)}`,
-      "unit",
-      5,
-      { level: player.level }
-    );
-    wisp.summonType = "spiritWisp";
-    wisp.role = "정령";
-    wisp.x = Math.max(7, Math.min(93, player.x + 4));
-    wisp.y = Math.max(10, Math.min(90, player.y - 4));
-    applySummonScaling(battle, wisp, player, false, false);
-    battle.units.push(wisp);
-    pushBattleLog(battle, `${skill.name}: 정령을 소환했다.`);
   } else if (skill.effect === "elementalConvergence") {
     if (!target || distanceBetween(player, target) > 55) return false;
     const result = damageArea(battle, player, target, 24, 1.2);
