@@ -159,9 +159,9 @@ export const PLAYER_BASE_CLASS_DEFS = {
       { id: "fireBolt", name: "불 화살", glyph: "♨", cooldownMs: 4400, effect: "fireBolt", description: "단일 적에게 화염 피해를 입히고 화상을 남긴다." },
       { id: "frostNova", name: "얼음 비", glyph: "❄", cooldownMs: 6800, effect: "frostNova", description: "주변 적에게 냉기 피해를 입히고 빙결시킨다." },
       { id: "gravityWell", name: "중력장", glyph: "◉", cooldownMs: 7400, effect: "gravityWell", description: "주변 적을 한 점으로 끌어당기며 피해를 입힌다." },
-      { id: "arcaneRicochet", name: "마력 도탄", glyph: "↯", cooldownMs: 5000, effect: "arcaneRicochet", description: "가까운 적들을 연달아 튕기며 피해를 입힌다." }
+      { id: "lightningRicochet", name: "번개 도탄", glyph: "↯", cooldownMs: 5000, effect: "lightningRicochet", description: "가까운 적들을 번개로 연달아 튕기며 피해를 입히고 감전시킨다." }
     ],
-    ultimate: { id: "lightningCage", name: "낙뢰", glyph: "ϟ", cooldownMs: 13500, effect: "lightningCage", description: "좁은 범위에 벼락을 내리쳐 큰 피해를 입히고 기절시킨다." }
+    ultimate: { id: "manaBurst", name: "마력 폭발", glyph: "✦", cooldownMs: 13500, effect: "manaBurst", description: "넓은 범위에 무속성 마력을 터뜨려 순수하게 큰 피해를 입힌다." }
   }
 };
 

@@ -1633,12 +1633,13 @@ function resolvePlayerSkill(battle, player, skill) {
     let totalDamage = 0;
     for (const enemy of pulled) totalDamage += damageCombatant(player, enemy, 0.9);
     pushBattleLog(battle, `${skill.name}: 적 ${pulled.length}명을 끌어당겨 ${totalDamage} 피해`);
-  } else if (skill.effect === "arcaneRicochet") {
+  } else if (skill.effect === "lightningRicochet") {
     if (!target || distanceBetween(player, target) > 55) return false;
     let current = target;
     let totalDamage = damageCombatant(player, current, 1.3);
     let hits = 1;
     const alreadyHit = new Set([current.id]);
+    if (current.hp > 0) applyCombatStatus(battle, current, "stun", player, { durationMs: 700 });
     for (let bounce = 0; bounce < 2; bounce += 1) {
       const next = living(battle.enemies)
         .filter((enemy) => !alreadyHit.has(enemy.id) && distanceBetween(current, enemy) <= 20)
@@ -1648,8 +1649,13 @@ function resolvePlayerSkill(battle, player, skill) {
       alreadyHit.add(next.id);
       current = next;
       hits += 1;
+      if (current.hp > 0) applyCombatStatus(battle, current, "stun", player, { durationMs: 700 });
     }
-    pushBattleLog(battle, `${skill.name}: 적 ${hits}명에게 연쇄 ${totalDamage} 피해`);
+    pushBattleLog(battle, `${skill.name}: 적 ${hits}명에게 번개 연쇄 ${totalDamage} 피해 · 감전`);
+  } else if (skill.effect === "manaBurst") {
+    if (!target || distanceBetween(player, target) > 50) return false;
+    const result = damageArea(battle, player, target, 16, 1.7);
+    pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 순수 마력 피해`);
   } else if (skill.effect === "heavyBlessing") {
     const ally = living(battle.units).sort((a, b) => (a.hp / a.maxHp) - (b.hp / b.maxHp))[0];
     if (!ally) return false;

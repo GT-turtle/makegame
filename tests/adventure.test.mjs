@@ -630,9 +630,10 @@ test("아크메이지 스킬 4개+궁 1개가 실제 전투 효과로 모두 실
   const beforeX = front.enemies[1].x;
   assert.equal(issuePlayerAction(front, "skill3"), true); // gravityWell
   assert.ok(front.enemies[1].x < beforeX); // 끌려와서 target 쪽으로 이동
-  assert.equal(issuePlayerAction(front, "ultimate"), true); // lightningCage
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // manaBurst
+  assert.equal(Boolean(front.enemies[0].statuses?.stun), false); // 무속성 - 상태이상 없음
 
-  commander.skillLoadouts.archmage = ["arcaneRicochet"];
+  commander.skillLoadouts.archmage = ["lightningRicochet"];
   const back = createAutoBattle("duneRaiders", "archmage-back", "field", STARTING_PARTY, {}, { commander });
   const backPlayer = back.units.find((unit) => unit.controlled);
   backPlayer.x = back.enemies[0].x - 5;
@@ -641,8 +642,10 @@ test("아크메이지 스킬 4개+궁 1개가 실제 전투 효과로 모두 실
   back.enemies[1].y = back.enemies[0].y;
   selectPlayerTarget(back, back.enemies[0].id);
   const secondEnemyHpBefore = back.enemies[1].hp;
-  assert.equal(issuePlayerAction(back, "skill1"), true); // arcaneRicochet
+  assert.equal(issuePlayerAction(back, "skill1"), true); // lightningRicochet
   assert.ok(back.enemies[1].hp < secondEnemyHpBefore); // 연쇄로 두 번째 적까지 피해
+  assert.equal(Boolean(back.enemies[0].statuses?.stun), true); // 감전(기절) 부여
+  assert.equal(Boolean(back.enemies[1].statuses?.stun), true);
 });
 
 test("중갑크루 전승은 스킬 4개+궁 1개가 실행되고 복수치가 쌓이고 소모된다", () => {
