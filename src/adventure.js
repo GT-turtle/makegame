@@ -156,7 +156,7 @@ export const UNIT_DEFS = {
   caravan_guide: { id: "caravan_guide", name: "대상단 길잡이", regionId: "central", role: "유틸", glyph: "◎", color: "#d4bc7a", maxHp: 36, damage: 4, range: 20, speed: 12, attackMs: 1000, armor: 0.09, commandAura: 0.1, heal: 2, healMs: 4700, scores: [1, 1, 4], primary: "보급 지휘", weakness: "전투를 끝낼 결정력이 부족하다.", baseClassId: "tracker" }
 };
 
-const ENEMY_COMBATANTS = {
+export const ENEMY_COMBATANTS = {
   northGoblin: { name: "북부 홉고블린", species: "goblin", variant: "대형종", glyph: "G", maxHp: 29, damage: 7, range: 8, speed: 7, attackMs: 1380, armor: 0.08, color: "#789db0" },
   northOrc: { name: "서리갑주 오크", species: "orc", variant: "빙철 갑주", glyph: "O", maxHp: 34, damage: 7, range: 8, speed: 6, attackMs: 1460, armor: 0.16, color: "#7292a3", statusOnHit: { id: "frost", stacks: 1 }, statusEvery: 2 },
   northWolf: { name: "설원 늑대", species: "wolf", variant: "빙결 송곳니", glyph: "Λ", maxHp: 21, damage: 5, range: 7, speed: 13, attackMs: 1020, color: "#8cb9cd", statusOnHit: { id: "frost", stacks: 1 }, statusEvery: 3 },

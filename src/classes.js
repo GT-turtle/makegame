@@ -13,6 +13,8 @@ export const PLAYER_BASE_CLASS_DEFS = {
     name: "크루세이더",
     glyph: "♜",
     disciplineId: "holy",
+    // 직업별 출신 지역 (직업 컨셉.txt "직업별 출신 지역" — 서사/배경 설정, 게임플레이상 직업·출신 조합은 자유)
+    originRegionId: "west",
     statProfile: {
       base: { strength: 10, agility: 5, intelligence: 7, defense: 12, divineAffinity: 14, natureAffinity: 5, hpRegen: 0.28, maxMana: 72, manaRegen: 1.1, statusResistance: 0.3 },
       growth: { strength: 1.2, agility: 0.45, intelligence: 0.65, defense: 1.05, divineAffinity: 1.25, natureAffinity: 0.45, hpRegen: 0.025, maxMana: 3.2, manaRegen: 0.035 }
@@ -39,6 +41,7 @@ export const PLAYER_BASE_CLASS_DEFS = {
     name: "네크로맨서",
     glyph: "☠",
     disciplineId: "spirit",
+    originRegionId: "west",
     statProfile: {
       base: { strength: 6, agility: 6, intelligence: 14, defense: 7, divineAffinity: 0, natureAffinity: 12, hpRegen: 0.16, maxMana: 96, manaRegen: 1.6 },
       growth: { strength: 0.55, agility: 0.6, intelligence: 1.35, defense: 0.7, divineAffinity: 0, natureAffinity: 1.05, hpRegen: 0.015, maxMana: 4.6, manaRegen: 0.055 }
@@ -66,6 +69,7 @@ export const PLAYER_BASE_CLASS_DEFS = {
     name: "바바리안",
     glyph: "Ϟ",
     disciplineId: "heavy",
+    originRegionId: "north",
     statProfile: {
       base: { strength: 16, agility: 7, intelligence: 2, defense: 9, divineAffinity: 0, natureAffinity: 0, hpRegen: 0.35, maxMana: 20, manaRegen: 0.3 },
       growth: { strength: 1.5, agility: 0.5, intelligence: 0.2, defense: 0.8, hpRegen: 0.03, maxMana: 1, manaRegen: 0.02 }
@@ -93,6 +97,7 @@ export const PLAYER_BASE_CLASS_DEFS = {
     name: "추적자",
     glyph: "➹",
     disciplineId: "archery",
+    originRegionId: "south",
     statProfile: {
       base: { strength: 6, agility: 16, intelligence: 6, defense: 5, divineAffinity: 0, natureAffinity: 6, hpRegen: 0.14, maxMana: 30, manaRegen: 0.8 },
       growth: { strength: 0.4, agility: 1.4, intelligence: 0.5, defense: 0.35, natureAffinity: 0.5, hpRegen: 0.01, maxMana: 1.2, manaRegen: 0.03 }
@@ -118,6 +123,7 @@ export const PLAYER_BASE_CLASS_DEFS = {
     name: "매화",
     glyph: "❀",
     disciplineId: "sword",
+    originRegionId: "east",
     statProfile: {
       base: { strength: 9, agility: 15, intelligence: 5, defense: 6, divineAffinity: 0, natureAffinity: 3, hpRegen: 0.18, maxMana: 26, manaRegen: 0.6 },
       growth: { strength: 0.7, agility: 1.3, intelligence: 0.4, defense: 0.4, hpRegen: 0.015, maxMana: 1, manaRegen: 0.025 }
@@ -143,6 +149,7 @@ export const PLAYER_BASE_CLASS_DEFS = {
     name: "아크메이지",
     glyph: "✦",
     disciplineId: "magic",
+    originRegionId: "north",
     statProfile: {
       base: { strength: 3, agility: 6, intelligence: 17, defense: 4, divineAffinity: 0, natureAffinity: 4, hpRegen: 0.12, maxMana: 130, manaRegen: 2.0 },
       growth: { strength: 0.2, agility: 0.4, intelligence: 1.5, defense: 0.3, hpRegen: 0.008, maxMana: 6, manaRegen: 0.08 }

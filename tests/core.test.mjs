@@ -428,5 +428,5 @@ test("구형 층제 원정 저장은 영구 성장만 보존하고 안전하게 
   const migrated = new GameEngine(storage);
   assert.equal(migrated.state.expedition, null);
   assert.equal(migrated.state.meta.scrap, 19);
-  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도/);
+  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력/);
 });

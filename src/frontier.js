@@ -151,10 +151,24 @@ export function createInitialFrontierState() {
       lastEvent: ""
     }])),
     squads: [
-      { id: "vanguard", name: "제1원정대", unlocked: true, memberIds: ["snow_guard", "venom_tracker", "formation_officer", "oath_knight", "desert_lancer"], mission: null },
-      { id: "wardens", name: "제2원정대", unlocked: false, memberIds: [], mission: null },
-      { id: "rangers", name: "제3원정대", unlocked: false, memberIds: [], mission: null }
+      {
+        id: "vanguard", name: "제1원정대", unlocked: true, memberIds: ["snow_guard", "venom_tracker", "formation_officer", "oath_knight", "desert_lancer"], mission: null,
+        troops: { infantry: 0, archer: 0, cavalry: 0 }, woundedTroops: { infantry: 0, archer: 0, cavalry: 0, recoverAt: null }
+      },
+      {
+        id: "wardens", name: "제2원정대", unlocked: false, memberIds: [], mission: null,
+        troops: { infantry: 0, archer: 0, cavalry: 0 }, woundedTroops: { infantry: 0, archer: 0, cavalry: 0, recoverAt: null }
+      },
+      {
+        id: "rangers", name: "제3원정대", unlocked: false, memberIds: [], mission: null,
+        troops: { infantry: 0, archer: 0, cavalry: 0 }, woundedTroops: { infantry: 0, archer: 0, cavalry: 0, recoverAt: null }
+      }
     ],
+    // 세부 점령지 개발이 진행 중이 아니어도 병력을 보충받는 "본대" 분대. vanguard는 대상에서 제외된다.
+    homeSquadId: "wardens",
+    // 대장 없는 익명 병력이 원정·토벌에 실패했을 때 중상(회복 대기)당하는 동료를 추적한다: { [unitId]: 회복되는 개척 주기 }
+    woundedUnits: {},
+    populationGrowth: { remainder: 0 },
     factions: Object.fromEntries(Object.values(FRONTIER_FACTION_DEFS).map((faction) => [faction.id, {
       met: false,
       trust: 0,
@@ -274,4 +288,150 @@ export function riskLabel(value) {
   if (value <= 35) return "주의";
   if (value <= 60) return "위험";
   return "극위험";
+}
+
+// ==========================
+// 분대 병력 시스템 (직업 컨셉.txt "분대 병력 시스템")
+// ==========================
+export const TROOP_TYPE_DEFS = {
+  infantry: { id: "infantry", name: "보병", glyph: "▦", basePower: 3 },
+  archer: { id: "archer", name: "궁병", glyph: "➹", basePower: 3 },
+  cavalry: { id: "cavalry", name: "기병", glyph: "♞", basePower: 3 }
+};
+
+export const TROOP_RECOVERY_CYCLES = 3;
+export const LEADER_RECOVERY_CYCLES = 2;
+
+// 병력 상한: 대장(동료)의 "로지스틱 전용 레벨"(고철 훈련으로 성장, 실전투에는 영향 없음)에 비례해서 커진다.
+// 공식: 10 + 레벨 x 4 — 레벨 1이면 14명, 레벨 5면 30명, 레벨 10이면 50명까지 완만하게 늘어난다.
+export function troopCapForLeaderLevel(level = 1) {
+  return 10 + Math.max(1, Math.floor(level)) * 4;
+}
+
+// 부상병까지 포함한 분대의 전체 병력 수 (모병 상한 판정에 사용).
+export function squadTroopTotal(squad) {
+  const troops = squad?.troops || {};
+  const wounded = squad?.woundedTroops || {};
+  return Object.keys(TROOP_TYPE_DEFS).reduce((sum, type) => sum + (troops[type] || 0) + (wounded[type] || 0), 0);
+}
+
+export function troopRecruitCost(troopType, count = 1) {
+  const perUnit = {
+    infantry: { population: 1, scrap: 2 },
+    archer: { population: 1, scrap: 3 },
+    cavalry: { population: 1, scrap: 4 }
+  }[troopType] || { population: 1, scrap: 2 };
+  const amount = Math.max(0, Math.floor(count));
+  return { population: perUnit.population * amount, scrap: perUnit.scrap * amount };
+}
+
+// 병종 대 몬스터 종족 상성표 (몬스터 컨셉.txt 기본 몬스터 종 구성 + adventure.js ENEMY_COMBATANTS의 species를 그대로 사용).
+// 기병은 느리고 육중한 종(곰·오크)에 강하고, 궁병은 원거리·기민한 종(고블린·늑대)에 강하다. 보병은 전 종족에 무난하다.
+export const TROOP_SPECIES_MATCHUP = {
+  goblin: { infantry: 1, archer: 1.25, cavalry: 0.85 },
+  orc: { infantry: 1, archer: 0.85, cavalry: 1.2 },
+  wolf: { infantry: 1, archer: 1.2, cavalry: 0.85 },
+  bear: { infantry: 1, archer: 0.8, cavalry: 1.3 }
+};
+
+// ==========================
+// 행상인 (직업 컨셉.txt "행상인")
+// ==========================
+export const MERCHANT_ROTATION_INTERVAL = 5;
+export const MERCHANT_STOCK_SIZE = 4;
+export const MERCHANT_PRICE_BOUNDS = { min: 2, max: 9 };
+
+const MERCHANT_REGIONAL_SITE_IDS = ["mine", "deepMine", "herb", "rareHerb", "manaWell", "runeCircle", "glassPit"];
+const ALL_FRONTIER_REGION_IDS = [...new Set(Object.values(FRONTIER_ZONE_DEFS).map((zone) => zone.regionId))];
+
+export function regionMaterialCatalog(regionId) {
+  const ids = new Set();
+  for (const siteId of MERCHANT_REGIONAL_SITE_IDS) {
+    const materialId = siteMaterialId(DISCOVERY_SITE_DEFS[siteId], regionId);
+    if (materialId) ids.add(materialId);
+  }
+  return [...ids];
+}
+
+export function controlledRegionIds(frontier) {
+  const regions = new Set();
+  for (const zoneId of Object.keys(frontier.zones)) {
+    if (occupiedZone(frontier, zoneId)) regions.add(FRONTIER_ZONE_DEFS[zoneId].regionId);
+  }
+  return regions;
+}
+
+// 행상인은 플레이어가 아직 정복하지 않은 지역의 재료를 취급한다 (정복 없이도 지역 자원 격차를 메꿀 수 있도록).
+// 모든 지역을 이미 점령했다면 전 지역 재료를 취급한다.
+export function merchantCandidateMaterials(frontier) {
+  const controlled = controlledRegionIds(frontier);
+  const uncontrolled = ALL_FRONTIER_REGION_IDS.filter((regionId) => !controlled.has(regionId));
+  const pool = uncontrolled.length ? uncontrolled : ALL_FRONTIER_REGION_IDS;
+  const materials = new Set();
+  for (const regionId of pool) for (const materialId of regionMaterialCatalog(regionId)) materials.add(materialId);
+  return [...materials];
+}
+
+export function rollMerchantStock(frontier) {
+  const candidates = merchantCandidateMaterials(frontier);
+  if (!candidates.length) return [];
+  const ranked = [...candidates].sort((a, b) => (
+    deterministicFrontierRoll(frontier, `merchant|stock|${a}`) - deterministicFrontierRoll(frontier, `merchant|stock|${b}`)
+  ));
+  return ranked.slice(0, MERCHANT_STOCK_SIZE);
+}
+
+export function basePriceForMaterial(materialId) {
+  let hash = 0;
+  for (let index = 0; index < materialId.length; index += 1) hash = (hash * 31 + materialId.charCodeAt(index)) >>> 0;
+  return MERCHANT_PRICE_BOUNDS.min + (hash % (MERCHANT_PRICE_BOUNDS.max - MERCHANT_PRICE_BOUNDS.min - 1));
+}
+
+export function createInitialMerchantState(frontier) {
+  const stock = rollMerchantStock(frontier);
+  return {
+    stock,
+    prices: Object.fromEntries(stock.map((materialId) => [materialId, basePriceForMaterial(materialId)])),
+    cycleRotation: 0
+  };
+}
+
+// 매 개척 주기마다 호출: 재고를 주기적으로 교체하고 가격을 좁은 범위 안에서 랜덤워크시킨다.
+export function stepMerchantCycle(frontier, merchant) {
+  merchant.cycleRotation = (merchant.cycleRotation || 0) + 1;
+  if (merchant.cycleRotation >= MERCHANT_ROTATION_INTERVAL) {
+    merchant.cycleRotation = 0;
+    merchant.stock = rollMerchantStock(frontier);
+  }
+  for (const materialId of merchant.stock) {
+    if (!(materialId in merchant.prices)) merchant.prices[materialId] = basePriceForMaterial(materialId);
+    const roll = deterministicFrontierRoll(frontier, `merchant|price|${materialId}`);
+    const delta = Math.round((roll - 0.5) * 3);
+    merchant.prices[materialId] = Math.max(MERCHANT_PRICE_BOUNDS.min, Math.min(MERCHANT_PRICE_BOUNDS.max, merchant.prices[materialId] + delta));
+  }
+  return merchant;
+}
+
+// ==========================
+// 지역 부락 친목도 (직업 컨셉.txt "지역 부락 친목도")
+// ==========================
+export const VILLAGE_MILESTONE_THRESHOLDS = [30, 60, 90];
+export const VILLAGE_TRADE_PRICE = 2;
+export const VILLAGE_FRIENDSHIP_GAIN = 4;
+
+const VILLAGE_TIER1_SITE_IDS = ["mine", "herb"];
+const VILLAGE_TIER2_SITE_IDS = ["deepMine", "rareHerb", "manaWell", "runeCircle", "glassPit", "caravan"];
+const VILLAGE_TIER3_SITE_IDS = ["ruin"];
+
+// 친목도가 오를수록 그 지역 부락에서 취급하는 재료 종류가 늘어난다.
+export function villageTradeableMaterials(regionId, friendship = 0) {
+  const list = new Set(["wood", "food"]);
+  const add = (siteId) => {
+    const materialId = siteMaterialId(DISCOVERY_SITE_DEFS[siteId], regionId);
+    if (materialId) list.add(materialId);
+  };
+  if (friendship >= 30) VILLAGE_TIER1_SITE_IDS.forEach(add);
+  if (friendship >= 60) VILLAGE_TIER2_SITE_IDS.forEach(add);
+  if (friendship >= 90) VILLAGE_TIER3_SITE_IDS.forEach(add);
+  return [...list];
 }

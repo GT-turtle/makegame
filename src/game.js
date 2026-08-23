@@ -13,6 +13,8 @@ import {
   createUid,
   distance,
   environmentMitigation,
+  happinessMultiplier,
+  happinessRecruitCostMultiplier,
   hasAdjacentTag,
   isVisible,
   keyOf,
@@ -29,6 +31,8 @@ import {
   useHerbKit
 } from "./core.js";
 import {
+  ENCOUNTER_DEFS,
+  ENEMY_COMBATANTS,
   PARTY_LIMIT,
   SECONDARY_DEFS,
   UNIT_DEFS,
@@ -52,7 +56,14 @@ import {
   DISCOVERY_SITE_DEFS,
   FRONTIER_FACTION_DEFS,
   FRONTIER_ZONE_DEFS,
+  LEADER_RECOVERY_CYCLES,
   LIVING_AREA_DEFS,
+  TROOP_RECOVERY_CYCLES,
+  TROOP_SPECIES_MATCHUP,
+  TROOP_TYPE_DEFS,
+  VILLAGE_FRIENDSHIP_GAIN,
+  VILLAGE_MILESTONE_THRESHOLDS,
+  VILLAGE_TRADE_PRICE,
   ZONE_TIER_DEFS,
   availableFrontierPopulation,
   availableLivingAreaPopulation,
@@ -65,6 +76,12 @@ import {
   riskLabel,
   routeRisk,
   siteMaterialId,
+  squadTroopTotal,
+  stepMerchantCycle,
+  totalFrontierPopulation,
+  troopCapForLeaderLevel,
+  troopRecruitCost,
+  villageTradeableMaterials,
   zoneRequirementsMet
 } from "./frontier.js";
 import {
@@ -80,6 +97,93 @@ const SAVE_KEY = "packforge-expedition-save-v1";
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
+
+// 지역의 조우 구성(WORLD_REGION_DEFS.enemyPool -> ENCOUNTER_DEFS -> ENEMY_COMBATANTS.species)으로부터
+// 그 지역에 출현하는 몬스터 종족 비율을 어림한다. 분대 병력 상성 계산에 사용한다.
+function regionSpeciesMix(regionId) {
+  const region = WORLD_REGION_DEFS[regionId];
+  if (!region) return {};
+  const counts = {};
+  let total = 0;
+  for (const encounterId of region.enemyPool || []) {
+    for (const enemyDefId of ENCOUNTER_DEFS[encounterId]?.enemies || []) {
+      const species = ENEMY_COMBATANTS[enemyDefId]?.species;
+      if (!species) continue;
+      counts[species] = (counts[species] || 0) + 1;
+      total += 1;
+    }
+  }
+  if (!total) return {};
+  return Object.fromEntries(Object.entries(counts).map(([species, count]) => [species, count / total]));
+}
+
+function troopMatchupMultiplier(regionId, troopType) {
+  const mix = regionSpeciesMix(regionId);
+  const entries = Object.entries(mix);
+  if (!entries.length) return 1;
+  return entries.reduce((sum, [species, ratio]) => sum + ratio * (TROOP_SPECIES_MATCHUP[species]?.[troopType] ?? 1), 0);
+}
+
+// 대장의 역할(탱커/딜러/유틸, UNIT_DEFS[..].role)에 따라 특정 병종에 붙는 시너지 배율.
+// 탱커형은 보병을, 딜러형은 궁병·기병을 강화하고, 유틸형은 commandAura/partyArmor 특성처럼 전 병종에 균등 보너스를 준다.
+function leaderRoleSynergy(leaderId, troopType) {
+  const leader = leaderId ? UNIT_DEFS[leaderId] : null;
+  if (!leader) return 1;
+  const role = leader.role || "";
+  let multiplier = 1;
+  if (role.includes("탱") && troopType === "infantry") multiplier += 0.25;
+  if (role.includes("딜") && (troopType === "archer" || troopType === "cavalry")) multiplier += 0.2;
+  if (role.includes("유틸") || leader.commandAura || leader.partyArmor) multiplier += 0.1;
+  return multiplier;
+}
+
+// 세부 점령지 종류별로 자동 보급되는 병종 (모병의 두 번째 경로에서 사용).
+const SITE_TROOP_TYPE = {
+  mine: "infantry", deepMine: "cavalry", herb: "archer", rareHerb: "archer",
+  lumber: "infantry", manaWell: "archer", runeCircle: "archer", glassPit: "cavalry",
+  caravan: "cavalry", ruin: "infantry"
+};
+
+// 병력/인구 소모원 선택: home_estate를 우선 사용하고, 부족하면 필요량을 감당할 수 있는
+// 생활권 중 가용 인구가 가장 적은(여유가 가장 빠듯한) 곳부터 채운다.
+function pickPopulationSourceLivingArea(frontier, needed) {
+  if (availableLivingAreaPopulation(frontier, "home_estate") >= needed) return "home_estate";
+  const candidates = Object.keys(frontier.livingAreas)
+    .filter((id) => id !== "home_estate" && frontier.livingAreas[id].status === "inhabited")
+    .map((id) => ({ id, available: availableLivingAreaPopulation(frontier, id) }))
+    .filter((entry) => entry.available >= needed)
+    .sort((a, b) => a.available - b.available);
+  return candidates[0]?.id || null;
+}
+
+// 지역 부락 친목도 임계치(30/60/90) 보상: 장인 파견(무료 생산 동료), 설계도, 비법서(고급 레시피).
+const VILLAGE_MILESTONE_REWARDS = {
+  north: {
+    30: { type: "companion", companionId: "deepMiner" },
+    60: { type: "blueprint", recipeId: "armor" },
+    90: { type: "grimoire", recipeId: "knightAegis" }
+  },
+  south: {
+    30: { type: "companion", companionId: "herbalistCompanion" },
+    60: { type: "blueprint", recipeId: "venom" },
+    90: { type: "grimoire", recipeId: "sporeMask" }
+  },
+  east: {
+    30: { type: "companion", companionId: "refinerCompanion" },
+    60: { type: "blueprint", recipeId: "ember" },
+    90: { type: "grimoire", recipeId: "mechanicRig" }
+  },
+  west: {
+    30: { type: "companion", companionId: "alchemist" },
+    60: { type: "blueprint", recipeId: "wardenLens" },
+    90: { type: "grimoire", recipeId: "martialWraps" }
+  },
+  central: {
+    30: { type: "companion", companionId: "masterSmith" },
+    60: { type: "blueprint", recipeId: "lantern" },
+    90: { type: "grimoire", recipeId: "coil" }
+  }
+};
 
 export class GameEngine {
   constructor(storage = globalThis.localStorage) {
@@ -334,12 +438,20 @@ export class GameEngine {
   frontierUnitBusy(unitId, ignoreSquadId = null, ignoreDefense = false) {
     const frontier = this.state.frontier;
     if (!frontier) return false;
+    if (this.frontierUnitWounded(unitId)) return true;
     for (const squad of frontier.squads) {
       if (squad.id === "vanguard" || squad.id === ignoreSquadId) continue;
       if (squad.memberIds.includes(unitId)) return true;
     }
     if (Object.values(frontier.zones).some((zone) => zone.sites.some((site) => site.escortUnitId === unitId))) return true;
     return !ignoreDefense && this.defenseDeploymentBusy(unitId);
+  }
+
+  // 분대 병력 시스템: 대장(동료)이 원정 실패로 중상당하면 회복될 때까지 재배치할 수 없다 (영구 사망은 없다).
+  frontierUnitWounded(unitId) {
+    const frontier = this.state.frontier;
+    const recoverAt = frontier?.woundedUnits?.[unitId];
+    return recoverAt != null && frontier.cycle < recoverAt;
   }
 
   assignUnitToFrontierSquad(unitId, squadId) {
@@ -365,9 +477,37 @@ export class GameEngine {
     const definition = FRONTIER_ZONE_DEFS[zoneId];
     if (!frontier || !squad || squad.id === "vanguard" || !squad.unlocked || squad.mission || !squad.memberIds.length || !definition) return false;
     if (!occupiedZone(frontier, zoneId) || !["survey", "suppress"].includes(type)) return false;
+    if (this.frontierUnitWounded(squad.memberIds[0])) return false;
     const duration = { safe: 1, watch: 2, danger: 3 }[definition.tier];
     squad.mission = { type, zoneId, remaining: duration };
     this.addFrontierEvent(`${squad.name}을 ${definition.name} ${type === "survey" ? "탐사" : "토벌"}에 파견했다. ${duration}주기 후 귀환.`);
+    this.emit();
+    return true;
+  }
+
+  // 분대 병력 시스템: 영지 인구(고정)와 고철을 소모해 대장의 로지스틱 레벨에 비례한 상한 안에서 병력을 모병한다.
+  recruitTroops(squadId, troopType, count = 1) {
+    const frontier = this.state.frontier;
+    const adventure = this.state.adventure;
+    const squad = frontier?.squads.find((entry) => entry.id === squadId);
+    const amount = Math.floor(count);
+    if (!frontier || !adventure || !squad || squad.id === "vanguard" || !squad.unlocked) return false;
+    if (!TROOP_TYPE_DEFS[troopType] || amount <= 0) return false;
+    const leaderId = squad.memberIds[0] || null;
+    const leaderLevel = leaderId ? (adventure.unitProgress[leaderId]?.level || 1) : 1;
+    const cap = troopCapForLeaderLevel(leaderLevel);
+    if (squadTroopTotal(squad) + amount > cap) return false;
+    const cost = troopRecruitCost(troopType, amount);
+    const livingAreaId = pickPopulationSourceLivingArea(frontier, cost.population);
+    if (!livingAreaId) return false;
+    const happiness = this.state.meta.estate?.happiness ?? 70;
+    const scrapCost = Math.max(1, Math.round(cost.scrap * happinessRecruitCostMultiplier(happiness)));
+    if (this.state.meta.scrap < scrapCost) return false;
+    this.state.meta.scrap -= scrapCost;
+    frontier.livingAreas[livingAreaId].residents -= cost.population;
+    frontier.population.total = totalFrontierPopulation(frontier);
+    squad.troops[troopType] = (squad.troops[troopType] || 0) + amount;
+    this.addFrontierEvent(`${squad.name}: ${TROOP_TYPE_DEFS[troopType].name} ${amount}명 모병 (고철 ${scrapCost}, 인구 ${cost.population}).`, "good");
     this.emit();
     return true;
   }
@@ -471,6 +611,82 @@ export class GameEngine {
     return true;
   }
 
+  // 행상인: 정복하지 않은 지역의 재료를 사고파는 범지역 유동 교역 채널. 가격은 주기마다 변동한다.
+  tradeWithMerchant(materialId, amount = 1, direction = "buy") {
+    const merchant = this.state.meta.merchant;
+    const count = Math.floor(amount);
+    if (!merchant || count <= 0 || !["buy", "sell"].includes(direction)) return false;
+    if (!merchant.stock.includes(materialId)) return false;
+    const price = merchant.prices[materialId];
+    if (!price) return false;
+    if (direction === "buy") {
+      const cost = price * count;
+      if (this.state.meta.scrap < cost) return false;
+      this.state.meta.scrap -= cost;
+      addMaterial(this.state.meta.materials, materialId, count);
+      this.addLog(`행상인에게서 ${MATERIAL_DEFS[materialId]?.name || materialId} ${count} 구매 (고철 ${cost}).`, "item");
+    } else {
+      if ((this.state.meta.materials[materialId] || 0) < count) return false;
+      this.state.meta.materials[materialId] -= count;
+      this.state.meta.scrap += price * count;
+      this.addLog(`행상인에게 ${MATERIAL_DEFS[materialId]?.name || materialId} ${count} 판매 (고철 +${price * count}).`, "item");
+    }
+    this.emit();
+    return true;
+  }
+
+  // 지역 부락 친목도: 부락에서 재료를 구매하며 친목도를 올린다. 친목도 구간(30/60/90)에 따라 취급 재료가 늘어난다.
+  tradeWithVillage(regionId, materialId, amount = 1) {
+    const adventure = this.state.adventure;
+    const count = Math.floor(amount);
+    if (!adventure || !WORLD_REGION_DEFS[regionId] || count <= 0) return false;
+    if (!adventure.unlockedRegionIds.includes(regionId)) return false;
+    const friendship = this.state.meta.villageFriendship[regionId] ?? 0;
+    if (!villageTradeableMaterials(regionId, friendship).includes(materialId)) return false;
+    const cost = VILLAGE_TRADE_PRICE * count;
+    if (this.state.meta.scrap < cost) return false;
+    this.state.meta.scrap -= cost;
+    addMaterial(this.state.meta.materials, materialId, count);
+    this.state.meta.villageFriendship[regionId] = Math.min(100, friendship + VILLAGE_FRIENDSHIP_GAIN);
+    this.addLog(`${WORLD_REGION_DEFS[regionId].villageName}과 교역: ${MATERIAL_DEFS[materialId]?.name || materialId} ${count} 구매 (친목도 +${VILLAGE_FRIENDSHIP_GAIN}).`, "good");
+    const rewardText = this.checkVillageMilestones(regionId);
+    if (rewardText) this.addLog(rewardText, "good");
+    this.emit();
+    return true;
+  }
+
+  checkVillageMilestones(regionId) {
+    const friendship = this.state.meta.villageFriendship[regionId] || 0;
+    const claimed = this.state.meta.villageMilestones[regionId] ||= [];
+    const rewards = [];
+    for (const threshold of VILLAGE_MILESTONE_THRESHOLDS) {
+      if (friendship >= threshold && !claimed.includes(threshold)) {
+        claimed.push(threshold);
+        const text = this.grantVillageMilestoneReward(regionId, threshold);
+        if (text) rewards.push(text);
+      }
+    }
+    return rewards.length ? rewards.join(" · ") : null;
+  }
+
+  grantVillageMilestoneReward(regionId, threshold) {
+    const reward = VILLAGE_MILESTONE_REWARDS[regionId]?.[threshold];
+    const villageName = WORLD_REGION_DEFS[regionId]?.villageName || regionId;
+    if (!reward) return null;
+    if (reward.type === "companion") {
+      const granted = this.recruitProductionCompanion(reward.companionId, { free: true });
+      return granted
+        ? `${villageName} 장인 파견: ${PRODUCTION_COMPANION_DEFS[reward.companionId]?.name || reward.companionId} 합류.`
+        : `${villageName} 장인 파견 가능 (작업 슬롯이 가득 차 대기 중).`;
+    }
+    if (reward.type === "blueprint" || reward.type === "grimoire") {
+      if (!this.state.meta.blueprints.includes(reward.recipeId)) this.state.meta.blueprints.push(reward.recipeId);
+      const recipeName = CRAFT_RECIPES.find((entry) => entry.id === reward.recipeId)?.name || reward.recipeId;
+      return `${villageName} ${reward.type === "grimoire" ? "비법서" : "설계도"} 습득: ${recipeName}.`;
+    }
+    return null;
+  }
+
   sendFrontierSpy(factionId, unitId, operation = "recon") {
     const adventure = this.state.adventure;
     const frontier = this.state.frontier;
@@ -528,23 +744,63 @@ export class GameEngine {
     frontier.cycle += 1;
     this.refreshFrontierSquads();
 
+    // 중상 회복: 병력(N주기 후 자동 복귀)과 대장(동료, 회복 후 재배치 가능 — 영구 사망 없음)
+    for (const squad of frontier.squads) {
+      squad.woundedTroops ||= { infantry: 0, archer: 0, cavalry: 0, recoverAt: null };
+      if (squad.woundedTroops.recoverAt != null && frontier.cycle >= squad.woundedTroops.recoverAt) {
+        for (const troopType of Object.keys(TROOP_TYPE_DEFS)) {
+          const recovered = squad.woundedTroops[troopType] || 0;
+          if (recovered > 0) {
+            squad.troops[troopType] = (squad.troops[troopType] || 0) + recovered;
+            squad.woundedTroops[troopType] = 0;
+          }
+        }
+        squad.woundedTroops.recoverAt = null;
+      }
+    }
+    frontier.woundedUnits ||= {};
+    for (const [unitId, recoverAt] of Object.entries(frontier.woundedUnits)) {
+      if (frontier.cycle >= recoverAt) delete frontier.woundedUnits[unitId];
+    }
+
     for (const squad of frontier.squads) {
       if (!squad.mission) continue;
       squad.mission.remaining -= 1;
       if (squad.mission.remaining > 0) continue;
       const { zoneId, type } = squad.mission;
       const zone = frontier.zones[zoneId];
-      const power = squad.memberIds.reduce((sum, unitId) => sum + (this.state.adventure.unitProgress[unitId]?.level || 1) + 2, 0);
-      if (type === "suppress") {
+      const zoneDefinition = FRONTIER_ZONE_DEFS[zoneId];
+      const leaderId = squad.memberIds[0] || null;
+      // 대장 전투력(기존 로직 유지) + 병종별 병력 수 x 병종 기본 전투력 x 상성 배율 x 대장 시너지 배율
+      const leaderPower = squad.memberIds.reduce((sum, unitId) => sum + (this.state.adventure.unitProgress[unitId]?.level || 1) + 2, 0);
+      let troopPower = 0;
+      for (const troopType of Object.keys(TROOP_TYPE_DEFS)) {
+        const count = squad.troops?.[troopType] || 0;
+        if (!count) continue;
+        troopPower += count * TROOP_TYPE_DEFS[troopType].basePower
+          * troopMatchupMultiplier(zoneDefinition.regionId, troopType)
+          * leaderRoleSynergy(leaderId, troopType);
+      }
+      const power = leaderPower + troopPower;
+      const tierDifficulty = { safe: 0, watch: 10, danger: 22 }[zoneDefinition.tier] ?? 10;
+      const difficulty = tierDifficulty + zone.threat * 0.5;
+      const successChance = Math.max(8, Math.min(96, 72 + (power - difficulty))) / 100;
+      const roll = deterministicFrontierRoll(frontier, `${squad.id}|mission-result|${zoneId}|${type}`);
+      const success = roll < successChance;
+      if (success && type === "suppress") {
         zone.threat = Math.max(0, zone.threat - 10 - power * 2);
         zone.stability = Math.min(100, zone.stability + 5 + power);
         zone.suppressions += 1;
         zone.suppressionClock = 0;
         zone.neglect = 0;
-        this.addFrontierEvent(`${squad.name}이 ${FRONTIER_ZONE_DEFS[zoneId].name} 순환 토벌을 마쳤다.`, "good");
-      } else {
+        this.addFrontierEvent(`${squad.name}이 ${zoneDefinition.name} 순환 토벌을 마쳤다.`, "good");
+      } else if (success) {
         this.discoverFrontierSite(zoneId, 22 + power * 2, false);
-        this.addFrontierEvent(`${squad.name}이 ${FRONTIER_ZONE_DEFS[zoneId].name} 탐사를 마쳤다.`);
+        this.addFrontierEvent(`${squad.name}이 ${zoneDefinition.name} 탐사를 마쳤다.`);
+      } else {
+        const losses = this.applyMissionLosses(squad, zoneDefinition, zone);
+        zone.threat = Math.min(100, zone.threat + (type === "suppress" ? 10 : 6));
+        this.addFrontierEvent(`${squad.name}이 ${zoneDefinition.name} ${type === "suppress" ? "토벌" : "탐사"}에 실패했다.${losses.deadTotal ? ` 병력 ${losses.deadTotal}명 전사.` : ""}${losses.woundedTotal ? ` 병력 ${losses.woundedTotal}명 중상.` : ""}${losses.leaderWounded ? ` ${UNIT_DEFS[leaderId]?.name || "대장"} 중상, 회복 전까지 재배치 불가.` : ""}`, "bad");
       }
       squad.mission = null;
     }
@@ -584,6 +840,21 @@ export class GameEngine {
           else addMaterial(this.state.meta.materials, materialId, amount);
           site.delivered += amount;
           site.lastEvent = `${MATERIAL_DEFS[materialId]?.name || "고철"} ${amount} 도착`;
+          // 세부 점령지가 주기마다 병력을 자동 보급 (모병의 두 번째 경로): 해당 구역 미션을 수행 중인 분대,
+          // 없으면 지정된 "본대"(homeSquadId)에게 낮은 확률로 병력 1명을 보충한다.
+          const troopRoll = deterministicFrontierRoll(frontier, `${site.id}|troopSupply|${frontier.cycle}`);
+          if (troopRoll < 0.12) {
+            const targetSquad = frontier.squads.find((entry) => entry.id !== "vanguard" && entry.mission?.zoneId === zoneId)
+              || frontier.squads.find((entry) => entry.id === frontier.homeSquadId && entry.unlocked);
+            if (targetSquad) {
+              const leaderLevel = targetSquad.memberIds[0] ? (this.state.adventure.unitProgress[targetSquad.memberIds[0]]?.level || 1) : 1;
+              if (squadTroopTotal(targetSquad) < troopCapForLeaderLevel(leaderLevel)) {
+                const troopType = SITE_TROOP_TYPE[site.typeId] || "infantry";
+                targetSquad.troops[troopType] = (targetSquad.troops[troopType] || 0) + 1;
+                this.addFrontierEvent(`${zoneDefinition.name} ${definition.name}에서 ${targetSquad.name}에 ${TROOP_TYPE_DEFS[troopType].name} 1명을 보충했다.`);
+              }
+            }
+          }
         }
       }
     }
@@ -591,6 +862,11 @@ export class GameEngine {
     const satisfaction = frontier.estateSatisfaction;
     satisfaction.prospect = Math.min(100, satisfaction.prospect + (availableFrontierPopulation(frontier) > 0 ? 1 : 0));
     satisfaction.overall = Math.round((satisfaction.living + satisfaction.safety + satisfaction.fairness + satisfaction.culture + satisfaction.prospect) / 5);
+
+    this.advanceEstateHappiness();
+    this.advanceFrontierPopulationGrowth();
+    stepMerchantCycle(frontier, this.state.meta.merchant);
+
     const incursion = Object.entries(frontier.zones).find(([zoneId, zone]) => occupiedZone(frontier, zoneId) && zone.threat >= 80);
     if (incursion && !this.state.estateDefense.pending) {
       const [zoneId] = incursion;
@@ -604,9 +880,87 @@ export class GameEngine {
       };
       this.addFrontierEvent(`${definition.name}의 위협이 내 영지 공격으로 번졌다.`, "bad");
     }
-    this.addFrontierEvent(`개척 주기 종료 · 가용 노동 ${availableFrontierPopulation(frontier)}/${frontier.population.total} · 영지 만족도 ${satisfaction.overall}.`);
+    this.addFrontierEvent(`개척 주기 종료 · 가용 노동 ${availableFrontierPopulation(frontier)}/${frontier.population.total} · 영지 만족도 ${satisfaction.overall} · 영지 행복도 ${this.state.meta.estate.happiness}.`);
     this.emit();
     return true;
+  }
+
+  // 원정/토벌 실패 손실 규칙: 병력은 중상(N주기 후 자동 복귀) 또는 사망(영구 손실) 중 판정하고,
+  // 대장(동료)은 중상만 가능하며 영구 사망하지 않는다.
+  applyMissionLosses(squad, zoneDefinition, zone) {
+    const frontier = this.state.frontier;
+    const severity = Math.min(0.6, 0.25 + (zone.threat || 0) / 200);
+    let deadTotal = 0;
+    let woundedTotal = 0;
+    for (const troopType of Object.keys(TROOP_TYPE_DEFS)) {
+      const count = squad.troops[troopType] || 0;
+      if (!count) continue;
+      const affected = Math.min(count, Math.max(0, Math.round(count * severity)));
+      if (!affected) continue;
+      const deathRoll = deterministicFrontierRoll(frontier, `${squad.id}|${troopType}|loss|${frontier.cycle}`);
+      const dead = deathRoll < 0.35 ? Math.max(1, Math.round(affected * 0.3)) : 0;
+      const wounded = affected - dead;
+      squad.troops[troopType] = Math.max(0, count - affected);
+      if (wounded > 0) {
+        squad.woundedTroops[troopType] = (squad.woundedTroops[troopType] || 0) + wounded;
+        woundedTotal += wounded;
+      }
+      deadTotal += dead;
+    }
+    if (woundedTotal > 0 || deadTotal > 0) {
+      squad.woundedTroops.recoverAt = Math.max(squad.woundedTroops.recoverAt || 0, frontier.cycle + TROOP_RECOVERY_CYCLES);
+    }
+    const leaderId = squad.memberIds[0] || null;
+    let leaderWounded = false;
+    if (leaderId) {
+      const leaderRoll = deterministicFrontierRoll(frontier, `${squad.id}|leader|${frontier.cycle}`);
+      if (leaderRoll < 0.3 + Math.min(0.3, (zone.threat || 0) / 200)) {
+        frontier.woundedUnits[leaderId] = frontier.cycle + LEADER_RECOVERY_CYCLES;
+        leaderWounded = true;
+      }
+    }
+    if (deadTotal > 0 || leaderWounded) {
+      const estate = this.state.meta.estate;
+      estate.happiness = Math.max(0, (estate.happiness ?? 70) - deadTotal * 1 - (leaderWounded ? 3 : 0));
+    }
+    return { deadTotal, woundedTotal, leaderWounded };
+  }
+
+  // 영지 행복도(수평 컨텐츠 충족도) 주기 갱신: 점령지 수에 비례한 기본 페널티를
+  // 주거 여유·호위 배치 비율로 대표되는 수평 컨텐츠 충족도가 상쇄한다.
+  advanceEstateHappiness() {
+    const frontier = this.state.frontier;
+    const estate = this.state.meta.estate;
+    const occupiedZoneCount = Object.keys(frontier.zones).filter((zoneId) => occupiedZone(frontier, zoneId)).length;
+    const basePenalty = occupiedZoneCount * 0.6;
+    const housingScore = availableFrontierPopulation(frontier) > 0 ? 1 : 0.4;
+    const developedSites = Object.values(frontier.zones).flatMap((zone) => zone.sites.filter((site) => site.status === "developed"));
+    const escortRatio = developedSites.length ? developedSites.filter((site) => site.escortUnitId).length / developedSites.length : 1;
+    const horizontalScore = (housingScore + escortRatio) / 2;
+    const offset = horizontalScore * occupiedZoneCount * 0.6;
+    const workerIds = ["lumberjack", "miner", "refiner", "herbalist", "blacksmith"];
+    const totalActive = workerIds.reduce((sum, id) => sum + activeWorkerCount(this.state, id), 0);
+    const totalCapacity = workerIds.reduce((sum, id) => sum + WORKER_DEFS[id].max, 0);
+    const loadRatio = totalCapacity ? totalActive / totalCapacity : 0;
+    const overworkPenalty = loadRatio > 0.8 ? (loadRatio - 0.8) * 10 : 0;
+    const shortagePenalty = (this.state.meta.materials.food || 0) <= 0 ? 2 : 0;
+    const delta = offset - basePenalty - overworkPenalty - shortagePenalty;
+    estate.happiness = Math.max(0, Math.min(100, Math.round(((estate.happiness ?? 70) + delta) * 10) / 10));
+  }
+
+  // 인구 성장률: 행복도가 높을수록 내 영지 인구가 더 빨리 늘어난다.
+  advanceFrontierPopulationGrowth() {
+    const frontier = this.state.frontier;
+    frontier.populationGrowth ||= { remainder: 0 };
+    const growthChance = 0.12 * happinessMultiplier(this.state.meta.estate.happiness);
+    frontier.populationGrowth.remainder += growthChance;
+    if (frontier.populationGrowth.remainder >= 1) {
+      const gained = Math.floor(frontier.populationGrowth.remainder);
+      frontier.populationGrowth.remainder -= gained;
+      frontier.livingAreas.home_estate.residents += gained;
+      frontier.population.total = totalFrontierPopulation(frontier);
+      this.addFrontierEvent(`내 영지에 새 주민 ${gained}명이 늘었다.`, "good");
+    }
   }
 
   moveAdventureStep(x, y) {
@@ -883,6 +1237,20 @@ export class GameEngine {
     defense.fortification += 1;
     defense.threat = Math.max(0, defense.threat - 8);
     this.addLog(`방어 시설 보강 ${defense.fortification}/5 · 위협도 감소`, "good");
+    this.emit();
+    return true;
+  }
+
+  // 영지 행복도·수평 컨텐츠: 축제를 열어 행복도를 즉시 끌어올리는 수동 이벤트 트리거.
+  holdEstateFestival() {
+    if (this.state.expedition || this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    const cost = { food: 4, scrap: 3 };
+    if ((this.state.meta.materials.food || 0) < cost.food || this.state.meta.scrap < cost.scrap) return false;
+    this.state.meta.materials.food -= cost.food;
+    this.state.meta.scrap -= cost.scrap;
+    const estate = this.state.meta.estate;
+    estate.happiness = Math.min(100, (estate.happiness ?? 70) + 8);
+    this.addLog(`영지 축제를 열었다. 행복도가 올랐다 (${estate.happiness}).`, "good");
     this.emit();
     return true;
   }
@@ -1192,6 +1560,8 @@ export class GameEngine {
       defense.threat = Math.max(0, defense.threat - 50);
       this.state.meta.scrap += 6;
       if (this.state.frontier?.estateSatisfaction) this.state.frontier.estateSatisfaction.safety = Math.min(100, this.state.frontier.estateSatisfaction.safety + 4);
+      const estate = this.state.meta.estate;
+      estate.happiness = Math.min(100, (estate.happiness ?? 70) + 5);
     } else {
       defense.threat = 28;
       this.state.meta.materials.wood = Math.max(0, (this.state.meta.materials.wood || 0) - 3);
@@ -1767,19 +2137,23 @@ export class GameEngine {
     this.state.inventory.push(item);
     const affixes = item.affixes.map((affixId) => AFFIX_DEFS[affixId].name).join(" · ");
     this.addLog(`제작 완료: ${ITEM_DEFS[item.defId].name} 품질 ${item.quality}${affixes ? ` · ${affixes}` : ""}`, "item");
-    const work = recordWorkerWork(this.state, "blacksmith", recipe.workHours || 4);
+    // 영지 행복도가 높을수록 대장장이 숙련(=재료 절감·산출 보너스로 이어지는 "제작 속도")이 더 빨리 쌓인다.
+    const work = recordWorkerWork(this.state, "blacksmith", (recipe.workHours || 4) * happinessMultiplier(this.state.meta.estate?.happiness));
     if (work.advanced) this.addLog(`대장장이 직종 숙련이 ${work.current.name} 단계에 도달했다.`, "good");
     this.emit();
     return item;
   }
 
-  recruitProductionCompanion(companionId) {
+  // free: true면 비용을 건너뛴다 (지역 부락 친목도 임계치의 "장인 파견" 보상 등, 슬롯 상한 체크는 그대로 적용).
+  recruitProductionCompanion(companionId, { free = false } = {}) {
     const definition = PRODUCTION_COMPANION_DEFS[companionId];
     if (this.state.expedition || this.state.adventure?.run || this.state.estateDefense?.campaign || !definition) return false;
     if (this.state.meta.estate.productionCompanions[companionId]) return false;
     if (activeWorkerCount(this.state, definition.workerId) >= WORKER_DEFS[definition.workerId].max) return false;
-    if (this.state.meta.scrap < definition.cost) return false;
-    this.state.meta.scrap -= definition.cost;
+    if (!free) {
+      if (this.state.meta.scrap < definition.cost) return false;
+      this.state.meta.scrap -= definition.cost;
+    }
     this.state.meta.estate.productionCompanions[companionId] = true;
     for (const recipeId of definition.recipeIds || []) {
       if (!this.state.meta.blueprints.includes(recipeId)) this.state.meta.blueprints.push(recipeId);

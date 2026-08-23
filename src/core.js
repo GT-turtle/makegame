@@ -16,11 +16,25 @@ import {
   WORKER_PROFICIENCY_TIERS,
   WORLD_SIZE
 } from "./data.js";
-import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState } from "./frontier.js";
+import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState, createInitialMerchantState } from "./frontier.js";
 import { createDefenseDeployments } from "./defense.js";
 import { PLAYER_KIT_DEFS, createDefaultCommander, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 17;
+export const SAVE_VERSION = 18;
+
+// 영지 행복도(state.meta.estate.happiness)가 생산 속도에 미치는 배율.
+// 기준치(70, 신규 영지의 시작값)에서는 정확히 1.0배 — 기존 저장/테스트의 기준 생산량을 그대로 유지한다.
+// 행복도가 오르내릴 때마다 1점당 0.6%씩 빨라지거나 느려지며 0.55~1.3배 사이로 제한된다.
+export function happinessMultiplier(happiness = 70) {
+  const value = Math.max(0, Math.min(100, Number(happiness) || 0));
+  return Math.max(0.55, Math.min(1.3, 1 + (value - 70) * 0.006));
+}
+
+// 분대 모병 비용 배율. 기준치(70)에서 1.0배이며, 행복도가 낮을수록 비싸지고(최대 1.4배) 높을수록 절감된다(최소 0.6배).
+export function happinessRecruitCostMultiplier(happiness = 70) {
+  const value = Math.max(0, Math.min(100, Number(happiness) || 0));
+  return Math.max(0.6, Math.min(1.4, 1 - (value - 70) * 0.008));
+}
 
 export function mulberry32(seed) {
   let value = seed >>> 0;
@@ -201,6 +215,7 @@ export function createCraftedItem(defId, uid, random = Math.random, { qualityBon
 }
 
 export function createInitialState() {
+  const frontier = createInitialFrontierState();
   return {
     version: SAVE_VERSION,
     nextUid: 5,
@@ -244,8 +259,12 @@ export function createInitialState() {
           herbalist: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} },
           blacksmith: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} }
         },
-        productionCompanions: {}
+        productionCompanions: {},
+        happiness: 70
       },
+      merchant: createInitialMerchantState(frontier),
+      villageFriendship: { north: 0, south: 0, east: 0, west: 0, central: 0 },
+      villageMilestones: { north: [], south: [], east: [], west: [], central: [] },
       expeditions: 0,
       victories: 0
     },
@@ -299,7 +318,7 @@ export function createInitialState() {
       deployments: createDefenseDeployments(),
       campaign: null
     },
-    frontier: createInitialFrontierState(),
+    frontier,
     expedition: null,
     log: [
       { text: "공방의 문이 열렸다. 첫 원정을 준비하자.", tone: "item" }
@@ -699,7 +718,8 @@ function advanceWorkerCycle(state, workerId, interval, activeWorkers) {
   if (activeWorkers <= 0) return { cycles: 0, advanced: false, current: workerProficiency(state, workerId) };
   const progress = ensureWorkerProgress(state, workerId);
   const beforeWork = workerProficiency(state, workerId);
-  progress.cycle += 1 + beforeWork.speedBonus;
+  // 영지 행복도가 높을수록 배경 생산(벌목·채광·제련·약초) 진행이 더 빨리 쌓인다.
+  progress.cycle += (1 + beforeWork.speedBonus) * happinessMultiplier(state.meta.estate?.happiness);
   const work = recordWorkerWork(state, workerId, activeWorkers);
   const cycles = Math.floor((progress.cycle + 1e-9) / interval);
   if (cycles > 0) progress.cycle -= cycles * interval;
@@ -996,6 +1016,16 @@ export function migrateState(rawState) {
       ])),
       skillMastery: { ...base.meta.skillMastery, ...(rawMeta.skillMastery || {}) },
       materials: { ...base.meta.materials, ...(rawMeta.materials || {}) },
+      merchant: {
+        ...base.meta.merchant,
+        ...(rawMeta.merchant || {}),
+        prices: { ...base.meta.merchant.prices, ...(rawMeta.merchant?.prices || {}) }
+      },
+      villageFriendship: { ...base.meta.villageFriendship, ...(rawMeta.villageFriendship || {}) },
+      villageMilestones: Object.fromEntries(Object.keys(base.meta.villageMilestones).map((regionId) => [
+        regionId,
+        [...new Set([...(base.meta.villageMilestones[regionId] || []), ...(rawMeta.villageMilestones?.[regionId] || [])])]
+      ])),
       estate: {
         ...base.meta.estate,
         ...(rawMeta.estate || {}),
@@ -1264,6 +1294,9 @@ export function migrateState(rawState) {
       if (player) Object.assign(player, playerCombatStats(state.adventure.commander, kit.id));
     }
     state.log.unshift({ text: "신성·자연 친화도와 크루세이더 해제, 6종 상태이상, 지역별 고블린·오크·늑대·곰 변종이 적용됐다.", tone: "item" });
+  }
+  if (previousVersion < 18) {
+    state.log.unshift({ text: "분대 병력·영지 행복도·행상인·지역 부락 친목도 체계가 열렸다.", tone: "item" });
   }
   state.adventure.party = state.adventure.party.slice(0, 2);
   state.adventure.commander.combatKitId = playerKitDefinition(state.adventure.commander.combatKitId).id;
