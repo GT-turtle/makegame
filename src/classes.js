@@ -631,12 +631,12 @@ export function runeDefinition(runeId) {
 // Math.random() 굴림으로만 처리된다 — 직업 공통 치명타 스탯 도입은 이번 범위
 // 밖이라 별도 논의 필요.
 export const WEAPON_DEFS = {
-  crusaderClaymore: { id: "crusaderClaymore", name: "빛나는 클레이모어", baseClassId: "crusader", materials: { ingot: 4, blackSteel: 1 }, bonus: { damageBonus: 0.08 }, description: "얇게 벼려낸 클레이모어. 공격력이 증가한다." },
-  barbarianGreataxe: { id: "barbarianGreataxe", name: "심연의 대부", baseClassId: "barbarian", materials: { ingot: 5, blackSteel: 1 }, bonus: { damageBonus: 0.12 }, description: "무게 자체가 무기인 특대 도끼. 공격력이 크게 증가한다." },
-  necromancerDagger: { id: "necromancerDagger", name: "귀곡도", baseClassId: "necromancer", materials: { ingot: 3, herb: 2 }, bonus: { cooldownReduction: 0.06 }, description: "저승사자의 단검. 스킬 재사용 대기시간이 감소한다." },
-  trackerBow: { id: "trackerBow", name: "매의 눈 장궁", baseClassId: "tracker", materials: { wood: 4, ingot: 2 }, bonus: { damageBonus: 0.08 }, description: "먼 거리도 정확히 꿰뚫는 장궁. 공격력이 증가한다." },
-  maehwaSword: { id: "maehwaSword", name: "일섬의 매화검", baseClassId: "maehwa", materials: { ingot: 3, wood: 1 }, bonus: { cooldownReduction: 0.06 }, description: "정교하게 벼려낸 매화검. 스킬 재사용 대기시간이 감소한다." },
-  archmageStaff: { id: "archmageStaff", name: "현자의 지팡이", baseClassId: "archmage", materials: { wood: 3, ingot: 2 }, bonus: { cooldownReduction: 0.1 }, description: "마력 순환을 돕는 대형 지팡이. 스킬 재사용 대기시간이 크게 감소한다." }
+  crusaderBastardSword: { id: "crusaderBastardSword", name: "성광의 바스타드 소드", baseClassId: "crusader", weaponType: "bastardSword", materials: { ingot: 4, blackSteel: 1 }, bonus: { damageBonus: 0.08 }, description: "한손·양손을 모두 쓰는 바스타드 소드. 공격력이 증가한다." },
+  barbarianGreataxe: { id: "barbarianGreataxe", name: "심연의 대부", baseClassId: "barbarian", weaponType: "greataxe", materials: { ingot: 5, blackSteel: 1 }, bonus: { damageBonus: 0.12 }, description: "무게 자체가 무기인 특대 도끼. 공격력이 크게 증가한다." },
+  necromancerArmorSword: { id: "necromancerArmorSword", name: "귀곡의 아머 소드", baseClassId: "necromancer", weaponType: "armorSword", materials: { ingot: 3, herb: 2 }, bonus: { cooldownReduction: 0.06 }, description: "갑주째 베어내는 아머 소드. 스킬 재사용 대기시간이 감소한다." },
+  trackerShortBow: { id: "trackerShortBow", name: "초원의 단궁", baseClassId: "tracker", weaponType: "shortBow", materials: { wood: 4, ingot: 2 }, bonus: { damageBonus: 0.08 }, description: "달리면서도 쏘기 좋은 몽고풍 단궁. 공격력이 증가한다." },
+  maehwaSabre: { id: "maehwaSabre", name: "일섬의 매화도", baseClassId: "maehwa", weaponType: "sabre", materials: { ingot: 3, wood: 1 }, bonus: { cooldownReduction: 0.06 }, description: "정교하게 벼려낸 매화도. 스킬 재사용 대기시간이 감소한다." },
+  archmageStaff: { id: "archmageStaff", name: "현자의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { wood: 3, ingot: 2 }, bonus: { cooldownReduction: 0.1 }, description: "마력 순환을 돕는 대형 지팡이. 스킬 재사용 대기시간이 크게 감소한다." }
 };
 
 export function weaponDefinition(weaponId) {

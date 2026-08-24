@@ -28,8 +28,10 @@ import {
   moveBattlePlayer,
   steerBattlePlayer,
   moveRunPlayer,
+  rollWeaponBlueprintDrop,
   selectPlayerTarget,
-  tickAutoBattle
+  tickAutoBattle,
+  WEAPON_BLUEPRINT_DROP_CHANCE
 } from "../src/adventure.js";
 import { PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, WEAPON_DEFS, createDefaultCommander, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
@@ -968,10 +970,10 @@ test("직업과 일치하는 무기는 보너스를 주지만, 다른 직업 무
   const bareStats = playerCombatStats(bare, bare.combatKitId);
 
   const withOwnWeapon = createDefaultCommander();
-  withOwnWeapon.equippedWeaponId = "crusaderClaymore";
+  withOwnWeapon.equippedWeaponId = "crusaderBastardSword";
   const ownWeaponStats = playerCombatStats(withOwnWeapon, withOwnWeapon.combatKitId);
   assert.ok(ownWeaponStats.damage > bareStats.damage, "크루세이더가 크루세이더 무기를 들면 공격력이 오른다");
-  assert.equal(ownWeaponStats.equippedWeaponId, "crusaderClaymore");
+  assert.equal(ownWeaponStats.equippedWeaponId, "crusaderBastardSword");
 
   const withWrongWeapon = createDefaultCommander();
   withWrongWeapon.equippedWeaponId = "barbarianGreataxe"; // 바바리안 전용 무기
@@ -980,11 +982,67 @@ test("직업과 일치하는 무기는 보너스를 주지만, 다른 직업 무
   assert.equal(wrongWeaponStats.equippedWeaponId, null);
 
   const necroCommander = createDefaultCommander();
-  necroCommander.equippedWeaponId = "necromancerDagger";
+  necroCommander.equippedWeaponId = "necromancerArmorSword";
   const necroStats = playerCombatStats(necroCommander, "heavyNecromancer");
   const necroBareStats = playerCombatStats(createDefaultCommander(), "heavyNecromancer");
   assert.ok(necroStats.cooldownReduction > necroBareStats.cooldownReduction, "네크로맨서 무기는 스킬 재사용 대기시간을 줄인다");
   assert.equal(necroStats.cooldownMultiplier, 1 - necroStats.cooldownReduction);
+});
+
+test("던전 최심부 상자는 보스를 잡아야 열리고, 무기 설계도를 낮은 확률로 준다", () => {
+  // 평균 3회 파밍을 의도한 수치.
+  assert.ok(Math.abs(WEAPON_BLUEPRINT_DROP_CHANCE - 1 / 3) < 1e-9);
+
+  const makeRun = () => ({
+    regionId: "west", // 크루세이더·네크로맨서 출신지
+    commander: { unlockedWeaponBlueprints: [] },
+    cargo: { scrap: 0, materials: {}, weaponBlueprints: [] }
+  });
+
+  // 확률 굴림에 실패하면 아무것도 안 나온다.
+  assert.equal(rollWeaponBlueprintDrop(makeRun(), () => 0.9), null);
+
+  // 성공하면 그 지역 출신 직업의 무기 설계도가 나온다.
+  const dropped = rollWeaponBlueprintDrop(makeRun(), () => 0);
+  assert.ok(["crusaderBastardSword", "necromancerArmorSword"].includes(dropped));
+
+  // 이미 가진 설계도는 후보에서 빠지고, 전부 가졌으면 null.
+  const fullRun = makeRun();
+  fullRun.commander.unlockedWeaponBlueprints = ["crusaderBastardSword", "necromancerArmorSword"];
+  assert.equal(rollWeaponBlueprintDrop(fullRun, () => 0), null);
+
+  // 다른 지역(북부=바바리안·아크메이지) 던전은 그 지역 무기만 준다.
+  const northRun = makeRun();
+  northRun.regionId = "north";
+  const northDrop = rollWeaponBlueprintDrop(northRun, () => 0);
+  assert.ok(["barbarianGreataxe", "archmageStaff"].includes(northDrop));
+});
+
+test("던전 상자는 보스를 쓰러뜨리기 전에는 잠겨 있다", () => {
+  const dungeon = createDungeon(4242, "west", null);
+  const chest = Object.values(dungeon.features).find((entry) => entry.type === "treasure");
+  assert.ok(chest, "던전에는 보물 상자가 하나 있다");
+  assert.equal(chest.opened, false);
+
+  const run = createRegionRun("west", 4242, STARTING_PARTY, {}, { unlockedWeaponBlueprints: [] });
+  run.dungeon = dungeon;
+  run.location = "dungeon";
+  run.player = { ...dungeon.start };
+
+  // 보스를 안 잡은 상태에서는 상자가 열리지 않는다.
+  const chestKey = Object.entries(dungeon.features).find(([, entry]) => entry.type === "treasure")[0];
+  const [chestX, chestY] = chestKey.split(",").map(Number);
+  run.player = { x: chestX, y: chestY - 1 };
+  const locked = moveRunPlayer(run, chestX, chestY);
+  assert.equal(locked.type, "treasureLocked");
+  assert.equal(chest.opened, false);
+
+  // 보스를 잡은 뒤에는 열린다.
+  Object.values(dungeon.features).find((entry) => entry.boss).cleared = true;
+  run.player = { x: chestX, y: chestY - 1 };
+  const opened = moveRunPlayer(run, chestX, chestY);
+  assert.equal(opened.type, "treasure");
+  assert.equal(chest.opened, true);
 });
 
 test("독은 출혈과 달리 중첩당 이동 속도를 늦춘다", () => {

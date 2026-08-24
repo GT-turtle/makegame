@@ -1146,6 +1146,16 @@ export class GameEngine {
       addMaterial(this.state.meta.materials, materialId, secured);
       materialText.push(`${MATERIAL_DEFS[materialId]?.name || materialId} ${secured}`);
     }
+    // 던전 상자에서 나온 무기 설계도는 패배해도 절반으로 깎이지 않는다 —
+    // 자원과 달리 개수 개념이 아니라 "습득했다/아니다"뿐이라서, 이미 상자를
+    // 연 뒤 전멸했다고 설계도가 사라지면 파밍 진행이 통째로 날아간다.
+    const blueprintText = [];
+    for (const weaponId of run.cargo.weaponBlueprints || []) {
+      const commanderRef = adventure.commander;
+      if (commanderRef.unlockedWeaponBlueprints.includes(weaponId)) continue;
+      commanderRef.unlockedWeaponBlueprints.push(weaponId);
+      blueprintText.push(WEAPON_DEFS[weaponId]?.name || weaponId);
+    }
     const levelMessages = [];
     for (const [unitId, earnedXp] of Object.entries(run.unitXp || {})) {
       const progress = adventure.unitProgress[unitId] ||= { level: 1, xp: 0, secondaryId: null };
@@ -1198,7 +1208,7 @@ export class GameEngine {
     }
     adventure.run = null;
     advanceEstate(this.state, Math.max(1, run.encountersWon));
-    this.addLog(`내 영지 귀환. 고철 ${securedScrap}${completed ? " · 지역 핵 1" : ""}${materialText.length ? ` · ${materialText.join(" · ")}` : ""}${recruited ? ` · ${UNIT_DEFS[recruited].name} 합류` : ""}${completed && run.capturedBoss ? ` · ${run.capturedBoss.name} 봉인 갱신` : ""}.`, "item");
+    this.addLog(`내 영지 귀환. 고철 ${securedScrap}${completed ? " · 지역 핵 1" : ""}${materialText.length ? ` · ${materialText.join(" · ")}` : ""}${blueprintText.length ? ` · 무기 설계도 ${blueprintText.join(" · ")}` : ""}${recruited ? ` · ${UNIT_DEFS[recruited].name} 합류` : ""}${completed && run.capturedBoss ? ` · ${run.capturedBoss.name} 봉인 갱신` : ""}.`, "item");
     if (levelMessages.length) this.addLog(`성장: ${levelMessages.join(" · ")}`, "good");
     if (defense.pending) this.addLog(`경고: ${defense.pending.title}`, "bad");
     this.emit();

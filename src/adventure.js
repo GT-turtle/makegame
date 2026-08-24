@@ -1,4 +1,4 @@
-import { normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { PLAYER_BASE_CLASS_DEFS, WEAPON_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
 export const DUNGEON_SIZE = 15;
@@ -353,7 +353,11 @@ export function createDungeon(seed, regionId, bossEncounterId = null) {
     [keyOf(start.x, start.y)]: { type: "dungeonExit", name: "필드로 나가기", glyph: "⇦" },
     "7,7": { id: "dungeon-guard-1", type: "encounter", encounterId: region.enemyPool[0], name: "입구 수문대", glyph: "!", cleared: false },
     "11,5": { id: "dungeon-guard-2", type: "encounter", encounterId: region.enemyPool[1] || region.enemyPool[0], name: "내부 경비대", glyph: "!", cleared: false },
-    "11,11": { id: "dungeon-boss", type: "encounter", encounterId: finalEncounterId, name: ENCOUNTER_DEFS[finalEncounterId]?.name || "던전 지배자", glyph: "☠", cleared: false, boss: true }
+    "11,11": { id: "dungeon-boss", type: "encounter", encounterId: finalEncounterId, name: ENCOUNTER_DEFS[finalEncounterId]?.name || "던전 지배자", glyph: "☠", cleared: false, boss: true },
+    // 보스를 쓰러뜨려야 열리는 최심부 보물 상자. 무기 설계도가 낮은 확률로
+    // 드랍되며(WEAPON_BLUEPRINT_DROP_CHANCE), 확정 보상이 아니라서 같은
+    // 던전을 여러 번 돌게 만드는 파밍 목표가 된다.
+    "13,12": { id: "dungeon-chest", type: "treasure", name: "봉인된 보물상자", glyph: "▣", opened: false }
   };
   const dungeon = { id: `${region.id}-dungeon`, kind: "dungeon", regionId: region.id, name: region.dungeonName, width: DUNGEON_SIZE, height: DUNGEON_SIZE, tiles, features, start, seen: [], seed };
   reveal(dungeon, start, 4);
@@ -400,7 +404,7 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
     unitProgress: Object.fromEntries(party.map((unitId) => [unitId, { level: 1, xp: 0, ...(unitProgress[unitId] || {}) }])),
     unitXp: Object.fromEntries(party.map((unitId) => [unitId, 0])),
     hazardMitigation,
-    cargo: { scrap: 0, materials: {} },
+    cargo: { scrap: 0, materials: {}, weaponBlueprints: [] },
     encountersWon: 0,
     bossDefeated: false,
     capturedBoss: null,
@@ -441,6 +445,24 @@ export function currentZone(run) {
 export function revealCurrentZone(run) {
   const zone = currentZone(run);
   if (zone) reveal(zone, run.player, zone.kind === "field" ? 5 : 4);
+}
+
+// 던전 최심부 상자의 무기 설계도 드랍 확률. 1/3이라 기대 시행 횟수가 평균 3회 —
+// "가끔 나오지만 확정은 아닌" 파밍 목표로 의도된 수치다.
+export const WEAPON_BLUEPRINT_DROP_CHANCE = 1 / 3;
+
+// 그 지역이 출신지인 직업의 무기 설계도만 드랍한다(부락 친목도 보상과 같은
+// 지역↔직업 매핑). 이미 가진 설계도는 후보에서 빠지고, 후보가 없거나 확률에
+// 실패하면 null — 상자는 열렸지만 설계도는 안 나온 상태가 된다.
+export function rollWeaponBlueprintDrop(run, random = Math.random) {
+  if (random() >= WEAPON_BLUEPRINT_DROP_CHANCE) return null;
+  const owned = run.commander?.unlockedWeaponBlueprints || [];
+  const candidates = Object.values(PLAYER_BASE_CLASS_DEFS)
+    .filter((baseClass) => baseClass.originRegionId === run.regionId)
+    .map((baseClass) => Object.values(WEAPON_DEFS).find((weapon) => weapon.baseClassId === baseClass.id))
+    .filter((weapon) => weapon && !owned.includes(weapon.id) && !run.cargo.weaponBlueprints.includes(weapon.id));
+  if (candidates.length === 0) return null;
+  return candidates[Math.floor(random() * candidates.length) % candidates.length].id;
 }
 
 export function moveRunPlayer(run, x, y) {
@@ -484,6 +506,14 @@ export function moveRunPlayer(run, x, y) {
   if (feature.type === "settlement") {
     run.pendingSettlement = { featureId: feature.id, name: feature.name, firstVisit: !feature.visited };
     return { moved: true, type: "settlement", feature };
+  }
+  if (feature.type === "treasure" && !feature.opened) {
+    const bossCleared = Object.values(zone.features).some((entry) => entry.boss && entry.cleared);
+    if (!bossCleared) return { moved: true, type: "treasureLocked", feature };
+    feature.opened = true;
+    const drop = rollWeaponBlueprintDrop(run);
+    if (drop) run.cargo.weaponBlueprints.push(drop);
+    return { moved: true, type: "treasure", feature, blueprintId: drop };
   }
   if (feature.type === "landmark" && !feature.visited) {
     feature.visited = true;
