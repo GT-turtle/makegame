@@ -31,7 +31,7 @@ import {
   selectPlayerTarget,
   tickAutoBattle
 } from "../src/adventure.js";
-import { PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, playerCombatStats } from "../src/classes.js";
+import { PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, WEAPON_DEFS, createDefaultCommander, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
 
 class MemoryStorage {
@@ -961,6 +961,30 @@ test("장착한 룬은 해당 스탯만 올리고 다른 룬 효과와는 섞이
   withPurple.equippedRuneId = "purpleRune";
   const purpleStats = playerCombatStats(withPurple, withPurple.combatKitId);
   assert.ok(purpleStats.attackMs < bareStats.attackMs);
+});
+
+test("직업과 일치하는 무기는 보너스를 주지만, 다른 직업 무기는 무시된다", () => {
+  const bare = createDefaultCommander(); // combatKitId 기본값 spiritCrusader -> baseClassId crusader
+  const bareStats = playerCombatStats(bare, bare.combatKitId);
+
+  const withOwnWeapon = createDefaultCommander();
+  withOwnWeapon.equippedWeaponId = "crusaderClaymore";
+  const ownWeaponStats = playerCombatStats(withOwnWeapon, withOwnWeapon.combatKitId);
+  assert.ok(ownWeaponStats.damage > bareStats.damage, "크루세이더가 크루세이더 무기를 들면 공격력이 오른다");
+  assert.equal(ownWeaponStats.equippedWeaponId, "crusaderClaymore");
+
+  const withWrongWeapon = createDefaultCommander();
+  withWrongWeapon.equippedWeaponId = "barbarianGreataxe"; // 바바리안 전용 무기
+  const wrongWeaponStats = playerCombatStats(withWrongWeapon, withWrongWeapon.combatKitId);
+  assert.equal(wrongWeaponStats.damage, bareStats.damage, "직업이 안 맞는 무기는 보너스가 적용되지 않는다");
+  assert.equal(wrongWeaponStats.equippedWeaponId, null);
+
+  const necroCommander = createDefaultCommander();
+  necroCommander.equippedWeaponId = "necromancerDagger";
+  const necroStats = playerCombatStats(necroCommander, "heavyNecromancer");
+  const necroBareStats = playerCombatStats(createDefaultCommander(), "heavyNecromancer");
+  assert.ok(necroStats.cooldownReduction > necroBareStats.cooldownReduction, "네크로맨서 무기는 스킬 재사용 대기시간을 줄인다");
+  assert.equal(necroStats.cooldownMultiplier, 1 - necroStats.cooldownReduction);
 });
 
 test("독은 출혈과 달리 중첩당 이동 속도를 늦춘다", () => {

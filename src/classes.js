@@ -618,6 +618,31 @@ export function runeDefinition(runeId) {
   return RUNE_DEFS[runeId] || null;
 }
 
+// 직업별 대표 무기 아이템. 지역 부락 친목도 60 달성 시 설계도 습득(출신 지역
+// 기준, grantVillageMilestoneReward 참고) → craftWeapon으로 재료 소모 제작 →
+// equipWeapon으로 장착(룬과 동일한 습득/장착 2단계 패턴). 자기 직업과 무기의
+// baseClassId가 일치해야 장착 가능.
+//
+// 보너스는 damageBonus/cooldownReduction만 사용한다 — criticalChance는 넣지
+// 않았다: 현재 어떤 기본 직업도 statProfile.base.criticalChance를 정의하지
+// 않아서 playerCombatStats()가 criticalChance를 항상 null로 반환하고,
+// commander.itemBonuses.criticalChance 보너스 자체가 이미 죽은 경로였다(무기
+// 시스템 이전부터). 치명타는 지금은 매화 등 일부 스킬 이펙트에서 개별
+// Math.random() 굴림으로만 처리된다 — 직업 공통 치명타 스탯 도입은 이번 범위
+// 밖이라 별도 논의 필요.
+export const WEAPON_DEFS = {
+  crusaderClaymore: { id: "crusaderClaymore", name: "빛나는 클레이모어", baseClassId: "crusader", materials: { ingot: 4, blackSteel: 1 }, bonus: { damageBonus: 0.08 }, description: "얇게 벼려낸 클레이모어. 공격력이 증가한다." },
+  barbarianGreataxe: { id: "barbarianGreataxe", name: "심연의 대부", baseClassId: "barbarian", materials: { ingot: 5, blackSteel: 1 }, bonus: { damageBonus: 0.12 }, description: "무게 자체가 무기인 특대 도끼. 공격력이 크게 증가한다." },
+  necromancerDagger: { id: "necromancerDagger", name: "귀곡도", baseClassId: "necromancer", materials: { ingot: 3, herb: 2 }, bonus: { cooldownReduction: 0.06 }, description: "저승사자의 단검. 스킬 재사용 대기시간이 감소한다." },
+  trackerBow: { id: "trackerBow", name: "매의 눈 장궁", baseClassId: "tracker", materials: { wood: 4, ingot: 2 }, bonus: { damageBonus: 0.08 }, description: "먼 거리도 정확히 꿰뚫는 장궁. 공격력이 증가한다." },
+  maehwaSword: { id: "maehwaSword", name: "일섬의 매화검", baseClassId: "maehwa", materials: { ingot: 3, wood: 1 }, bonus: { cooldownReduction: 0.06 }, description: "정교하게 벼려낸 매화검. 스킬 재사용 대기시간이 감소한다." },
+  archmageStaff: { id: "archmageStaff", name: "현자의 지팡이", baseClassId: "archmage", materials: { wood: 3, ingot: 2 }, bonus: { cooldownReduction: 0.1 }, description: "마력 순환을 돕는 대형 지팡이. 스킬 재사용 대기시간이 크게 감소한다." }
+};
+
+export function weaponDefinition(weaponId) {
+  return WEAPON_DEFS[weaponId] || null;
+}
+
 function grownValue(profile, key, level) {
   const base = Number(profile.base?.[key] || 0);
   const growth = Number(profile.growth?.[key] || 0);
@@ -635,13 +660,21 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
   const defense = grownValue(profile, "defense", level);
   const divineAffinity = grownValue(profile, "divineAffinity", level);
   const natureAffinity = grownValue(profile, "natureAffinity", level);
-  const itemCooldownReduction = Math.max(0, Math.min(0.35, Number(commander.itemBonuses?.cooldownReduction || 0)));
+  // 무기는 자기 직업(baseClassId)과 일치할 때만 보너스가 적용된다 — kitId를
+  // 바꾼 뒤 equipWeapon을 다시 안 거친 상태로 남아있을 수 있어 여기서도 방어적으로 재확인.
+  const weapon = weaponDefinition(commander.equippedWeaponId);
+  const weaponBonus = weapon?.baseClassId === kit.baseClassId ? weapon.bonus : null;
+  const itemCooldownReduction = Math.max(0, Math.min(0.35,
+    Number(commander.itemBonuses?.cooldownReduction || 0) + Number(weaponBonus?.cooldownReduction || 0)));
   const criticalChance = baseClass.statProfile.base.criticalChance == null
     ? null
-    : Math.max(0, grownValue(profile, "criticalChance", level) + Number(commander.itemBonuses?.criticalChance || 0));
+    : Math.max(0, grownValue(profile, "criticalChance", level)
+        + Number(commander.itemBonuses?.criticalChance || 0)
+        + Number(weaponBonus?.criticalChance || 0));
   const rune = runeDefinition(commander.equippedRuneId);
   const maxHp = Math.round(kit.stats.maxHp + Math.max(0, level - 1) * (2.2 + strength * 0.055)) * (rune?.id === "redRune" ? 1.08 : 1);
-  const damage = Math.round(kit.stats.damage + Math.max(0, level - 1) * (0.26 + strength * 0.012 + intelligence * 0.01)) * (rune?.id === "greenRune" ? 1.08 : 1);
+  const damage = Math.round(kit.stats.damage + Math.max(0, level - 1) * (0.26 + strength * 0.012 + intelligence * 0.01))
+    * (rune?.id === "greenRune" ? 1.08 : 1) * (1 + Number(weaponBonus?.damageBonus || 0));
   const armor = Math.min(0.58, kit.stats.armor + Math.max(0, level - 1) * 0.0025 + (rune?.id === "yellowRune" ? 0.03 : 0));
   const attackMs = Math.max(280, Math.round(kit.stats.attackMs * (rune?.id === "purpleRune" ? 0.94 : 1)));
   const manaRegen = grownValue(profile, "manaRegen", level) + (rune?.id === "blueRune" ? 0.6 : 0);
@@ -668,7 +701,8 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
     criticalChance,
     cooldownMultiplier: 1 - itemCooldownReduction,
     cooldownReduction: itemCooldownReduction,
-    equippedRuneId: rune?.id || null
+    equippedRuneId: rune?.id || null,
+    equippedWeaponId: weaponBonus ? weapon.id : null
   };
 }
 
@@ -682,6 +716,9 @@ export function createDefaultCommander() {
     itemBonuses: {},
     runesOwned: [],
     equippedRuneId: null,
+    unlockedWeaponBlueprints: [],
+    weaponsOwned: [],
+    equippedWeaponId: null,
     skillLoadouts: Object.fromEntries(Object.values(PLAYER_KIT_DEFS).map((kit) => [kit.id, [...kit.defaultLoadout]]))
   };
 }

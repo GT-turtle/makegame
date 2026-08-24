@@ -269,6 +269,57 @@ test("룬은 고철로 획득하고 한 번에 하나만 장착할 수 있다", 
   assert.equal(commander.equippedRuneId, null);
 });
 
+test("지역 부락 친목도 60 달성 시 출신 지역이 일치하는 직업의 무기 설계도를 습득한다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const commander = engine.state.adventure.commander;
+  assert.deepEqual(commander.unlockedWeaponBlueprints, []);
+
+  engine.state.meta.villageFriendship.west = 60;
+  const summary = engine.checkVillageMilestones("west");
+  // 크루세이더·네크로맨서 둘 다 출신 지역이 west라 한 번에 같이 습득된다.
+  assert.ok(commander.unlockedWeaponBlueprints.includes("crusaderClaymore"));
+  assert.ok(commander.unlockedWeaponBlueprints.includes("necromancerDagger"));
+  assert.ok(summary.includes("무기 설계도 습득"));
+
+  // 이미 습득한 설계도는 다시 안 늘어난다.
+  const before = commander.unlockedWeaponBlueprints.length;
+  engine.state.meta.villageMilestones.west = [30, 60]; // 재확인해도 threshold 60을 다시 못 밟도록
+  engine.checkVillageMilestones("west");
+  assert.equal(commander.unlockedWeaponBlueprints.length, before);
+});
+
+test("무기는 설계도 습득 후 재료로 제작해야 하고, 자기 직업과 일치해야 장착된다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const commander = engine.state.adventure.commander; // 기본 combatKitId = spiritCrusader -> baseClassId crusader
+
+  assert.equal(engine.craftWeapon("crusaderClaymore"), false, "설계도 미습득 상태에서는 제작 불가");
+
+  commander.unlockedWeaponBlueprints.push("crusaderClaymore");
+  engine.state.meta.materials.ingot = 1;
+  engine.state.meta.materials.blackSteel = 0;
+  assert.equal(engine.craftWeapon("crusaderClaymore"), false, "재료 부족하면 제작 불가");
+
+  engine.state.meta.materials.ingot = 4;
+  engine.state.meta.materials.blackSteel = 1;
+  assert.equal(engine.craftWeapon("crusaderClaymore"), true);
+  assert.equal(engine.state.meta.materials.ingot, 0);
+  assert.equal(engine.state.meta.materials.blackSteel, 0);
+  assert.ok(commander.weaponsOwned.includes("crusaderClaymore"));
+  assert.equal(engine.craftWeapon("crusaderClaymore"), false, "중복 제작 불가");
+
+  assert.equal(engine.equipWeapon("barbarianGreataxe"), false, "미보유 무기는 장착 불가");
+  assert.equal(engine.equipWeapon("crusaderClaymore"), true);
+  assert.equal(commander.equippedWeaponId, "crusaderClaymore");
+
+  // 바바리안 무기를 억지로 보유시켜도, 지금 직업(크루세이더)과 안 맞으면 장착 거부.
+  commander.weaponsOwned.push("barbarianGreataxe");
+  assert.equal(engine.equipWeapon("barbarianGreataxe"), false, "직업이 다른 무기는 장착 불가");
+  assert.equal(commander.equippedWeaponId, "crusaderClaymore", "장착 상태는 그대로 유지된다");
+
+  assert.equal(engine.equipWeapon(null), true);
+  assert.equal(commander.equippedWeaponId, null);
+});
+
 test("작업자는 실제로 생산한 시간만 쌓아 초심자에서 장인까지 숙련된다", () => {
   const state = createInitialState();
   state.meta.estate.workers.lumberjack = 1;

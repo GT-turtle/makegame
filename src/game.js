@@ -1,5 +1,5 @@
 import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
-import { PLAYER_KIT_DEFS, RUNE_DEFS, normalizedPlayerLoadout, playerKitDefinition } from "./classes.js";
+import { PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, WEAPON_DEFS, normalizedPlayerLoadout, playerKitDefinition } from "./classes.js";
 import {
   activeWorkerCount,
   addMaterial,
@@ -664,9 +664,32 @@ export class GameEngine {
         claimed.push(threshold);
         const text = this.grantVillageMilestoneReward(regionId, threshold);
         if (text) rewards.push(text);
+        if (threshold === 60) {
+          const weaponText = this.unlockWeaponBlueprintsForRegion(regionId);
+          if (weaponText) rewards.push(weaponText);
+        }
       }
     }
     return rewards.length ? rewards.join(" · ") : null;
+  }
+
+  // 지역 부락 친목도 60 달성 시, 그 지역이 출신지(originRegionId)인 직업의
+  // 무기 설계도를 습득한다. 마을 사람들이 "이 지역 출신 개척자"의 무기를
+  // 만들어줄 수 있게 됐다는 서사. 여러 직업이 같은 지역 출신이면 한 번에 전부 습득.
+  unlockWeaponBlueprintsForRegion(regionId) {
+    const commander = this.state.adventure.commander;
+    const matchingClasses = Object.values(PLAYER_BASE_CLASS_DEFS).filter((def) => def.originRegionId === regionId);
+    const newlyUnlocked = [];
+    for (const baseClass of matchingClasses) {
+      const weapon = Object.values(WEAPON_DEFS).find((def) => def.baseClassId === baseClass.id);
+      if (weapon && !commander.unlockedWeaponBlueprints.includes(weapon.id)) {
+        commander.unlockedWeaponBlueprints.push(weapon.id);
+        newlyUnlocked.push(weapon.name);
+      }
+    }
+    if (newlyUnlocked.length === 0) return null;
+    const villageName = WORLD_REGION_DEFS[regionId]?.villageName || regionId;
+    return `${villageName} 무기 설계도 습득: ${newlyUnlocked.join(", ")}.`;
   }
 
   grantVillageMilestoneReward(regionId, threshold) {
@@ -2182,6 +2205,43 @@ export class GameEngine {
     if (runeId !== null && !commander.runesOwned.includes(runeId)) return false;
     commander.equippedRuneId = runeId;
     this.addLog(runeId ? `${RUNE_DEFS[runeId].name} 장착.` : "룬 해제.", "item");
+    this.emit();
+    return true;
+  }
+
+  // 설계도(unlockedWeaponBlueprints)를 지역 부락 친목도로 습득한 뒤, 재료를
+  // 소모해 실제로 제작(weaponsOwned)하는 단계. 룬은 고철로 바로 구매하지만
+  // 무기는 설계도 선행 습득이 필요하다는 점만 다르고 나머지 습득/장착 2단계
+  // 구조는 룬과 동일하다.
+  craftWeapon(weaponId) {
+    const definition = WEAPON_DEFS[weaponId];
+    const commander = this.state.adventure.commander;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign || !definition) return false;
+    if (!commander.unlockedWeaponBlueprints.includes(weaponId)) return false;
+    if (commander.weaponsOwned.includes(weaponId)) return false;
+    for (const [materialId, amount] of Object.entries(definition.materials)) {
+      if ((this.state.meta.materials[materialId] || 0) < amount) return false;
+    }
+    for (const [materialId, amount] of Object.entries(definition.materials)) {
+      this.state.meta.materials[materialId] -= amount;
+    }
+    commander.weaponsOwned.push(weaponId);
+    this.addLog(`${definition.name} 제작 완료.`, "item");
+    this.emit();
+    return true;
+  }
+
+  equipWeapon(weaponId) {
+    const commander = this.state.adventure.commander;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    if (weaponId !== null) {
+      const definition = WEAPON_DEFS[weaponId];
+      if (!definition || !commander.weaponsOwned.includes(weaponId)) return false;
+      const kit = playerKitDefinition(commander.combatKitId);
+      if (definition.baseClassId !== kit.baseClassId) return false;
+    }
+    commander.equippedWeaponId = weaponId;
+    this.addLog(weaponId ? `${WEAPON_DEFS[weaponId].name} 장착.` : "무기 해제.", "item");
     this.emit();
     return true;
   }

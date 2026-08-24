@@ -20,7 +20,7 @@ import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState, creat
 import { createDefenseDeployments } from "./defense.js";
 import { PLAYER_KIT_DEFS, createDefaultCommander, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 18;
+export const SAVE_VERSION = 19;
 
 // 영지 행복도(state.meta.estate.happiness)가 생산 속도에 미치는 배율.
 // 기준치(70, 신규 영지의 시작값)에서는 정확히 1.0배 — 기존 저장/테스트의 기준 생산량을 그대로 유지한다.
