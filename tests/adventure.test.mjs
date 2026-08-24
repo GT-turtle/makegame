@@ -31,6 +31,11 @@ import {
   rollWeaponBlueprintDrop,
   selectPlayerTarget,
   tickAutoBattle,
+  ARENA_BOUNDS,
+  FIELD_AGGRO_RADIUS,
+  FIELD_BOUNDS,
+  consumeFieldTrigger,
+  createFieldBattle,
   WEAPON_BLUEPRINT_DROP_CHANCE
 } from "../src/adventure.js";
 import { PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, WEAPON_DEFS, createDefaultCommander, playerCombatStats } from "../src/classes.js";
@@ -1137,4 +1142,79 @@ test("고정 수비대는 성문 사이를 재배치하고 기동대가 돌아�
   assert.equal(engine.enterEstateDefenseGate("north"), true);
   assert.equal(engine.state.estateDefense.battle, northBattle);
   assert.equal(engine.state.estateDefense.battle.enemies[0].hp, northBattle.enemies[0].hp);
+});
+
+test("광역 필드 전투는 넓은 경계를 쓰고 몬스터를 여러 무리로 흩어 잠재운다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 4242, groupCount: 3 });
+  assert.ok(battle, "필드 전투가 생성된다");
+  assert.equal(battle.fieldMode, true);
+
+  // 기존 조우 아레나보다 실제로 훨씬 넓다.
+  assert.equal(battle.bounds.maxX, FIELD_BOUNDS.maxX);
+  assert.ok(battle.bounds.maxX > ARENA_BOUNDS.maxX * 3);
+
+  // 모든 적이 처음엔 잠들어 있고, 무리가 여럿으로 나뉜다.
+  assert.ok(battle.enemies.length >= 3);
+  assert.ok(battle.enemies.every((enemy) => enemy.dormant === true), "처음엔 전부 비활성");
+  const groups = new Set(battle.enemies.map((enemy) => enemy.groupIndex));
+  assert.equal(groups.size, 3, "3개 무리로 나뉜다");
+
+  // 무리끼리 실제로 떨어져 있다(전부 한 곳에 뭉쳐 있지 않다).
+  const xs = battle.enemies.map((enemy) => enemy.x);
+  assert.ok(Math.max(...xs) - Math.min(...xs) > 100, "무리들이 가로로 흩어져 있다");
+});
+
+test("필드 몬스터는 가까이 가야 무리 단위로 깨어나고, 멀리 있는 무리는 계속 잠들어 있다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 77, groupCount: 3 });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+
+  tickAutoBattle(battle, 16);
+  assert.ok(battle.enemies.every((enemy) => enemy.dormant), "시작 지점에서는 아무도 안 깨어난다");
+
+  // 첫 무리 바로 옆으로 순간이동시킨다.
+  const targetGroup = 0;
+  const first = battle.enemies.find((enemy) => enemy.groupIndex === targetGroup);
+  player.x = first.x;
+  player.y = first.y;
+  tickAutoBattle(battle, 16);
+
+  const awakeGroups = new Set(battle.enemies.filter((enemy) => !enemy.dormant).map((enemy) => enemy.groupIndex));
+  assert.ok(awakeGroups.has(targetGroup), "다가간 무리는 깨어난다");
+  assert.equal(battle.enemies.filter((enemy) => enemy.groupIndex === targetGroup).every((enemy) => !enemy.dormant), true,
+    "같은 무리는 한 마리가 아니라 전체가 함께 깨어난다");
+
+  // 다른 무리 중 사거리 밖에 있는 적은 그대로 잠들어 있어야 한다.
+  // (같은 무리는 멀리 있어도 함께 깨어나는 게 의도된 동작이라 무리 기준으로 걸러낸다.)
+  const otherGroupFar = battle.enemies.filter((enemy) => enemy.groupIndex !== targetGroup
+    && Math.hypot(enemy.x - player.x, enemy.y - player.y) > FIELD_AGGRO_RADIUS);
+  assert.ok(otherGroupFar.length, "이 시드에서는 사거리 밖 다른 무리가 있어야 테스트가 의미 있다");
+  assert.ok(otherGroupFar.every((enemy) => enemy.dormant), "사거리 밖 다른 무리는 계속 잠들어 있다");
+});
+
+test("던전 입구 트리거는 적을 정리해야 열리고, 밟으면 한 번만 발동한다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 909, groupCount: 2 });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const trigger = battle.triggers[0];
+  assert.equal(trigger.type, "dungeonEntrance");
+
+  // 적을 하나 깨워둔 채 입구에 서면 막힌다.
+  battle.enemies[0].dormant = false;
+  player.x = trigger.x;
+  player.y = trigger.y;
+  tickAutoBattle(battle, 16);
+  assert.equal(battle.pendingTrigger, null, "교전 중에는 던전에 못 들어간다");
+  assert.equal(battle.blockedTrigger, trigger.id);
+
+  // 정리하면 열린다.
+  for (const enemy of battle.enemies) enemy.hp = 0;
+  battle.enemies[0].dormant = false;
+  player.x = trigger.x;
+  player.y = trigger.y;
+  tickAutoBattle(battle, 16);
+  const fired = consumeFieldTrigger(battle);
+  assert.ok(fired, "적을 정리하면 던전 입구가 발동한다");
+  assert.equal(fired.type, "dungeonEntrance");
+
+  // 소비 후에는 다시 안 뜬다.
+  assert.equal(consumeFieldTrigger(battle), null);
 });
