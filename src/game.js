@@ -38,6 +38,7 @@ import {
   UNIT_DEFS,
   WORLD_REGION_DEFS,
   completeBattle,
+  consumeFieldTrigger,
   createAutoBattle,
   createRegionRun,
   enterRunDungeon,
@@ -1062,6 +1063,18 @@ export class GameEngine {
     if (run.battle.awaitingPlayerStart) return "waiting";
     const before = run.battle.status;
     const status = tickAutoBattle(run.battle, deltaMs);
+    // 광역 필드 전투: 적을 다 잡아도 전투가 끝나지 않고, 던전 입구 지점
+    // 트리거를 밟으면 그때 던전으로 넘어간다(화면 전환 없이 이어지는 흐름).
+    if (run.battle.fieldMode) {
+      const trigger = consumeFieldTrigger(run.battle);
+      if (trigger?.type === "dungeonEntrance") {
+        run.pendingEntrance = true;
+        run.battle = null;
+        this.addLog(`${trigger.name} 입구에 도착했다.`, "item");
+        this.emit();
+        return "dungeonEntrance";
+      }
+    }
     if (before === "active" && status !== "active") {
       const result = completeBattle(run);
       run.battle.resultRevealAt = Date.now() + 1000;

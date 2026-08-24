@@ -298,8 +298,14 @@ Unity 포팅 미완료: classes.js의 WEAPON_DEFS/playerCombatStats, game.js의 
 - 무리 단위 어그로(FIELD_AGGRO_RADIUS=26): 모든 적이 dormant 상태로 시작하고, 플레이어가 가까이 간 무리만 통째로 깨어난다. 잠든 적은 쿨다운·재생도 안 돌아서 멀리서 시간 끌기가 안 통한다. 덕분에 넓은 전장을 한 번에 다 어그로 끌지 않고 무리별 순차 교전이 된다.
 - 지점 트리거(battle.triggers): 던전 입구를 필드 안쪽 좌표에 배치. 반경 안에 들어가면 battle.pendingTrigger에 올라가고, requiresClear 옵션 때문에 깨어 있는 적이 남아 있으면 진입이 막힌다(전투 중 도주 방지). consumeFieldTrigger()로 상위 엔진이 소비.
 
+추가 구현 (2차):
+- 장애물: battle.obstacles에 원형 바위·잔해를 시드 기반으로 배치. 이동은 전부 resolveMove()를 거쳐 경계 클램프 + 장애물 밀어내기를 함께 적용하므로, 걷기·클릭 이동·돌진·넉백·끌어당김 어디서도 통과되지 않는다. 원형이라 벽면을 따라 자연스럽게 미끄러진다. 시작 지점과 던전 입구 주변은 비워두고, 장애물끼리도 안 겹치게 배치한다.
+- 런 교체 연결: createRegionRun에 { fieldBattle: true }를 주면 격자 필드를 아예 안 만들고(run.field = null) 런 시작부터 run.battle이 광역 전투가 된다. 적을 다 잡아도 전투가 끝나지 않고(fieldCleared 표시만) 던전 입구 트리거를 밟아야 던전으로 넘어간다 — advanceRealtimeBattle이 트리거를 소비해 pendingEntrance를 세우고, 기존 enterAdventureDungeon()이 그대로 이어받는다.
+- 전투 난수 시드화(battleRoll): 회피·치명타·정령크루 패시브 등 전투 확률 판정이 전역 Math.random()을 직접 쓰고 있어서, 무관한 테스트를 추가하기만 해도 소비 순서가 바뀌어 특정 테스트가 간헐 실패했다. battle.rollSeed 기반 결정적 수열로 교체(시드 없으면 기존처럼 무작위)하고 해당 테스트에 시드를 고정해 해결.
+
 아직 안 한 것:
-- 이 필드 전투를 실제 게임 흐름(createRegionRun/moveRunPlayer 기반 격자 탐험)과 교체 연결하는 작업. 지금은 엔진에 새 경로가 생겼을 뿐, 기존 격자 필드 흐름이 그대로 살아 있다.
+- fieldBattle을 기본값으로 켜는 것. 지금은 옵션이라 기존 격자 흐름이 그대로 동작한다 — app.js UI가 연속 좌표 렌더링을 지원해야 기본으로 전환할 수 있다.
+- 던전은 아직 격자 기반. 필드만 아레나로 바뀌었고 던전(가디언 2 + 보스 + 상자)은 그대로다.
 - app.js UI(격자 렌더링 → 연속 좌표 렌더링).
-- 지형·장애물·시야 차단(현재 필드는 장애물 없는 평면).
+- 시야 차단(장애물이 이동만 막고 시야·투사체는 안 막는다).
 - Unity C# 포팅.

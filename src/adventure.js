@@ -14,12 +14,57 @@ export const DUNGEON_VIEW_SIZE = 11;
 // 아니라 단순 불일치라 위치 클램프 쪽 값으로 통일했다.)
 export const ARENA_BOUNDS = { minX: 5, maxX: 95, minY: 8, maxY: 92 };
 
+// 전투 중 확률 판정(회피·치명타·정령크루 패시브 발동 등)은 전부 이걸 쓴다.
+// 예전에는 전역 Math.random()을 직접 호출해서, 전투와 무관한 테스트를 추가하기만
+// 해도 전역 PRNG 소비 순서가 바뀌어 특정 테스트가 간헐적으로 실패했다.
+// battle.rollSeed가 있으면 전투마다 결정적인 수열을 쓰고, 없으면 기존처럼
+// Math.random()으로 떨어져서 실제 플레이는 계속 무작위다.
+export function battleRoll(battle) {
+  if (!battle || battle.rollSeed == null) return Math.random();
+  battle.rollCount = (battle.rollCount || 0) + 1;
+  return mulberry32(battle.rollSeed + battle.rollCount * 2654435761)();
+}
+
 export function clampToArena(bounds, x, y) {
   const box = bounds || ARENA_BOUNDS;
   return {
     x: Math.max(box.minX, Math.min(box.maxX, x)),
     y: Math.max(box.minY, Math.min(box.maxY, y))
   };
+}
+
+// 장애물(바위·잔해 등)은 원형으로만 표현한다. 격자 벽이 아니라 원이라서
+// 연속 좌표계에서 밀어내기 계산이 단순하고, 어느 방향에서 부딪혀도 자연스럽게
+// 미끄러진다.
+// 안으로 파고든 위치를 가장 가까운 가장자리로 밀어내는 방식이라, 벽에 붙어
+// 비스듬히 움직이면 막히지 않고 표면을 따라 흐른다.
+export function resolveObstacles(obstacles, x, y, radius = 1.5) {
+  if (!obstacles?.length) return { x, y };
+  let nextX = x;
+  let nextY = y;
+  for (const obstacle of obstacles) {
+    const dx = nextX - obstacle.x;
+    const dy = nextY - obstacle.y;
+    const minDistance = obstacle.radius + radius;
+    const distance = Math.hypot(dx, dy);
+    if (distance >= minDistance) continue;
+    if (distance < 0.001) {
+      // 정확히 중심에 겹친 예외 상황 — 방향이 없으므로 임의로 위쪽으로 뺀다.
+      nextY = obstacle.y - minDistance;
+      continue;
+    }
+    nextX = obstacle.x + (dx / distance) * minDistance;
+    nextY = obstacle.y + (dy / distance) * minDistance;
+  }
+  return { x: nextX, y: nextY };
+}
+
+// 경계 클램프와 장애물 밀어내기를 함께 적용한다. 이동 계산은 전부 이 함수를
+// 거치게 해서 "경계는 지켰는데 바위는 통과" 같은 누락이 안 생기게 한다.
+export function resolveMove(battle, x, y) {
+  const clamped = clampToArena(battle?.bounds, x, y);
+  const pushed = resolveObstacles(battle?.obstacles, clamped.x, clamped.y);
+  return clampToArena(battle?.bounds, pushed.x, pushed.y);
 }
 
 // 디아블로식 광역 전장. 기존 조우 아레나(90×84)의 약 4배 폭으로, 화면 전환
@@ -394,7 +439,10 @@ export function createDungeon(seed, regionId, bossEncounterId = null) {
 export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyIds = STARTING_PARTY, unitProgress = {}, commander = {}, options = {}) {
   const region = WORLD_REGION_DEFS[regionId];
   if (!region || region.locked) return null;
-  const field = createField(seed, regionId);
+  // fieldBattle 모드에서는 격자 필드를 아예 만들지 않는다 — 필드 자체가
+  // 하나의 광역 전투 아레나가 되고, 이동·교전이 전부 그 안에서 일어난다.
+  const useFieldBattle = Boolean(options.fieldBattle);
+  const field = useFieldBattle ? null : createField(seed, regionId);
   const party = [...new Set(partyIds)].filter((unitId) => UNIT_DEFS[unitId]).slice(0, PARTY_LIMIT);
   const hazardMitigation = party.reduce((total, unitId) => {
     const unit = UNIT_DEFS[unitId];
@@ -404,6 +452,16 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
   const ambushInterval = Array.isArray(options.ambushInterval) ? options.ambushInterval : [7, 12];
   const firstAmbushRandom = mulberry32(seed + 99173)();
   const firstAmbushStep = ambushInterval[0] + Math.floor(firstAmbushRandom * (ambushInterval[1] - ambushInterval[0] + 1));
+  const commanderState = { name: "개척자", level: 1, xp: 0, ...commander };
+  const fieldBattle = useFieldBattle
+    ? createFieldBattle(regionId, partyIds, unitProgress, {
+      seed,
+      commander: commanderState,
+      hazardMitigation: 0,
+      groupCount: options.groupCount,
+      obstacleCount: options.obstacleCount
+    })
+    : null;
   return {
     seed,
     regionId,
@@ -412,10 +470,11 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
     bossEncounterId: options.bossEncounterId || null,
     location: "field",
     status: "active",
-    player: { ...field.start },
+    fieldBattle: useFieldBattle,
+    player: field ? { ...field.start } : null,
     field,
     dungeon: null,
-    battle: null,
+    battle: fieldBattle,
     pendingEntrance: false,
     pendingExit: false,
     pendingSettlement: null,
@@ -686,6 +745,8 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     // 좁은 아레나(ARENA_BOUNDS) 그대로이고, 넓은 필드 전투는 여기에 더 큰 값을
     // 넘겨 디아블로식 광역 전장으로 쓴다.
     bounds: options.bounds ? { ...options.bounds } : { ...ARENA_BOUNDS },
+    rollSeed: options.rollSeed ?? null,
+    rollCount: 0,
     awaitingPlayerStart: Boolean(options.awaitingPlayerStart),
     resultRevealAt: 0,
     units,
@@ -718,6 +779,8 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     rewardScrap: encounter.scrap,
     boss: Boolean(encounter.boss || options.forceBoss),
     fieldMode: Boolean(options.fieldMode),
+    // 원형 장애물. 좁은 조우 아레나는 비워두고 넓은 필드에서만 채운다.
+    obstacles: (options.obstacles || []).map((obstacle) => ({ ...obstacle })),
     triggers: (options.triggers || []).map((trigger) => ({ ...trigger, fired: false })),
     pendingTrigger: null,
     blockedTrigger: null
@@ -754,10 +817,31 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
   });
   if (!battle) return null;
 
+  const spawnX = bounds.minX + 20;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const trigger = battle.triggers[0] || null;
+
+  // 장애물(바위·잔해)을 먼저 깔고, 그 다음 유닛·적을 배치한다 — 순서를
+  // 뒤집으면 바위 안에 갇힌 채로 시작하는 개체가 생긴다.
+  // 시작 지점과 던전 입구 주변은 비워둬서 스폰 즉시 끼거나 입구가 막히지 않게 한다.
+  const obstacleCount = Math.max(0, Number(options.obstacleCount ?? 14));
+  const obstacles = [];
+  for (let attempt = 0; attempt < obstacleCount * 12 && obstacles.length < obstacleCount; attempt += 1) {
+    const radius = 6 + rng() * 9;
+    const x = bounds.minX + 40 + rng() * (bounds.maxX - bounds.minX - 60);
+    const y = bounds.minY + 10 + rng() * (bounds.maxY - bounds.minY - 20);
+    if (Math.hypot(x - spawnX, y - centerY) < 45 + radius) continue;
+    if (trigger && Math.hypot(x - trigger.x, y - trigger.y) < 30 + radius) continue;
+    if (obstacles.some((other) => Math.hypot(x - other.x, y - other.y) < radius + other.radius + 14)) continue;
+    obstacles.push({ x, y, radius });
+  }
+  battle.obstacles = obstacles;
+
   // 플레이어·동료는 왼쪽 입구 쪽에서 시작.
   for (const unit of battle.units) {
-    unit.x = bounds.minX + 20;
-    unit.y = clampToArena(bounds, 0, unit.y + (bounds.minY + bounds.maxY) / 2 - 50).y;
+    const placed = resolveMove(battle, spawnX, clampToArena(bounds, 0, unit.y + centerY - 50).y);
+    unit.x = placed.x;
+    unit.y = placed.y;
   }
 
   const perGroup = Math.max(1, Math.round(battle.enemies.length / groupCount));
@@ -767,7 +851,7 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
     const anchorX = bounds.minX + 70 + ((bounds.maxX - bounds.minX - 110) * groupIndex) / Math.max(1, groupCount - 1 || 1);
     const anchorY = bounds.minY + 30 + rng() * (bounds.maxY - bounds.minY - 60);
     const spread = 10;
-    const placed = clampToArena(bounds, anchorX + (rng() - 0.5) * spread * 2, anchorY + (rng() - 0.5) * spread * 2);
+    const placed = resolveMove(battle, anchorX + (rng() - 0.5) * spread * 2, anchorY + (rng() - 0.5) * spread * 2);
     enemy.x = placed.x;
     enemy.y = placed.y;
     enemy.groupIndex = groupIndex;
@@ -789,30 +873,30 @@ function distanceBetween(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function dashToTarget(player, target, standoff = 6, bounds = ARENA_BOUNDS) {
+function dashToTarget(player, target, standoff = 6, battle = null) {
   const dx = target.x - player.x;
   const dy = target.y - player.y;
   const distance = Math.max(0.001, Math.hypot(dx, dy));
   const travel = Math.max(0, distance - standoff);
-  const next = clampToArena(bounds, player.x + (dx / distance) * travel, player.y + (dy / distance) * travel);
+  const next = resolveMove(battle, player.x + (dx / distance) * travel, player.y + (dy / distance) * travel);
   player.x = next.x;
   player.y = next.y;
 }
 
-function retreatFromTarget(player, target, distance = 8, bounds = ARENA_BOUNDS) {
+function retreatFromTarget(player, target, distance = 8, battle = null) {
   const dx = player.x - target.x;
   const dy = player.y - target.y;
   const length = Math.max(0.001, Math.hypot(dx, dy));
-  const next = clampToArena(bounds, player.x + (dx / length) * distance, player.y + (dy / length) * distance);
+  const next = resolveMove(battle, player.x + (dx / length) * distance, player.y + (dy / length) * distance);
   player.x = next.x;
   player.y = next.y;
 }
 
-function knockback(source, target, distance = 5, bounds = ARENA_BOUNDS) {
+function knockback(source, target, distance = 5, battle = null) {
   const dx = target.x - source.x;
   const dy = target.y - source.y;
   const length = Math.max(0.001, Math.hypot(dx, dy));
-  const next = clampToArena(bounds, target.x + (dx / length) * distance, target.y + (dy / length) * distance);
+  const next = resolveMove(battle, target.x + (dx / length) * distance, target.y + (dy / length) * distance);
   target.x = next.x;
   target.y = next.y;
 }
@@ -1119,7 +1203,7 @@ export function tickAutoBattle(battle, deltaMs) {
       const normalizedY = inputY / Math.max(1, inputLength);
       const travel = player.speed * speedDebuffMultiplier(player) * hasteSpeedMultiplier(player, battle) * Math.min(1, inputLength) * (step / 1000);
       player.moveTarget = null;
-      const moved = clampToArena(battle.bounds, player.x + normalizedX * travel, player.y + normalizedY * travel);
+      const moved = resolveMove(battle, player.x + normalizedX * travel, player.y + normalizedY * travel);
       player.x = moved.x;
       player.y = moved.y;
       battle.playerFacing = Math.atan2(normalizedY, normalizedX);
@@ -1129,12 +1213,14 @@ export function tickAutoBattle(battle, deltaMs) {
       const distance = Math.hypot(dx, dy);
       const travel = player.speed * speedDebuffMultiplier(player) * hasteSpeedMultiplier(player, battle) * (step / 1000);
       if (distance <= travel || distance < 0.8) {
-        player.x = player.moveTarget.x;
-        player.y = player.moveTarget.y;
+        const arrived = resolveMove(battle, player.moveTarget.x, player.moveTarget.y);
+        player.x = arrived.x;
+        player.y = arrived.y;
         player.moveTarget = null;
       } else {
-        player.x += (dx / distance) * travel;
-        player.y += (dy / distance) * travel;
+        const stepped = resolveMove(battle, player.x + (dx / distance) * travel, player.y + (dy / distance) * travel);
+        player.x = stepped.x;
+        player.y = stepped.y;
         battle.playerFacing = Math.atan2(dy, dx);
       }
     }
@@ -1204,7 +1290,7 @@ export function tickAutoBattle(battle, deltaMs) {
       const length = Math.max(0.001, Math.hypot(dx, dy));
       actor.x += (dx / length) * actor.speed * speedDebuffMultiplier(actor) * (chargeBoost ? 1.7 : 1) * (step / 1000);
       actor.y += (dy / length) * actor.speed * speedDebuffMultiplier(actor) * (chargeBoost ? 1.7 : 1) * (step / 1000);
-      const chased = clampToArena(battle.bounds, actor.x, actor.y);
+      const chased = resolveMove(battle, actor.x, actor.y);
       actor.x = chased.x;
       actor.y = chased.y;
       continue;
@@ -1226,7 +1312,7 @@ export function tickAutoBattle(battle, deltaMs) {
     const isPlayerTarget = target.id === battle.playerId;
     const dodgeChance = (target.team === "unit" && target.basePassive?.effect === "dodgeChance" ? target.basePassive.chance || 0 : 0)
       + (isPlayerTarget ? Math.min(0.3, (actor.maehwaMarks || 0) * 0.05) : 0);
-    const dodged = dodgeChance > 0 && Math.random() < dodgeChance;
+    const dodged = dodgeChance > 0 && battleRoll(battle) < dodgeChance;
     actor.cooldown = actor.attackMs;
     actor.telegraphTargetId = null;
     if (dodged) {
@@ -1255,8 +1341,8 @@ export function tickAutoBattle(battle, deltaMs) {
       if (isPlayerTarget && battle.playerKitId === "heavyCrusader" && damage > 0) {
         battle.vengeanceStored = Math.min(240, (battle.vengeanceStored || 0) + damage * (battle.vengeanceGainBoostUntil > battle.elapsed ? 1 : 0.5));
       }
-      if (isPlayerTarget && battle.playerKitId === "spiritCrusader" && damage > 0 && Math.random() < 0.25) {
-        applyCombatStatus(battle, actor, Math.random() < 0.5 ? "burn" : "frost", target, { stacks: 1 });
+      if (isPlayerTarget && battle.playerKitId === "spiritCrusader" && damage > 0 && battleRoll(battle) < 0.25) {
+        applyCombatStatus(battle, actor, battleRoll(battle) < 0.5 ? "burn" : "frost", target, { stacks: 1 });
       }
       if (actor.lifeSteal && actor.hp > 0) actor.hp = Math.min(actor.maxHp, actor.hp + Math.max(1, Math.floor(damage * actor.lifeSteal)));
       target.lastHit = 260;
@@ -1267,8 +1353,17 @@ export function tickAutoBattle(battle, deltaMs) {
   }
   refreshBaseClassPassive(battle);
   if (!living(battle.enemies).length) {
-    battle.status = "victory";
-    pushBattleLog(battle, `교전 승리 · 고철 ${battle.rewardScrap} 확보`);
+    // 필드 전투는 적을 다 잡아도 끝나지 않는다 — 정리한 뒤 던전 입구까지
+    // 걸어가야 하므로 전투를 계속 active로 두고 "정리됨" 표시만 남긴다.
+    if (battle.fieldMode) {
+      if (!battle.fieldCleared) {
+        battle.fieldCleared = true;
+        pushBattleLog(battle, "필드의 무리를 모두 정리했다. 던전 입구로 이동할 수 있다.");
+      }
+    } else {
+      battle.status = "victory";
+      pushBattleLog(battle, `교전 승리 · 고철 ${battle.rewardScrap} 확보`);
+    }
   } else if (!living(battle.units).length) {
     battle.status = "defeated";
     pushBattleLog(battle, "부대가 전멸했다.");
@@ -1280,7 +1375,8 @@ export function moveBattlePlayer(battle, x, y) {
   if (!battle || battle.status !== "active") return false;
   const player = battle.units.find((unit) => unit.id === battle.playerId && unit.hp > 0);
   if (!player) return false;
-  player.moveTarget = clampToArena(battle.bounds, Number(x), Number(y));
+  // 목적지가 바위 안이면 도달 불가능한 지점이 되므로 미리 가장자리로 밀어낸다.
+  player.moveTarget = resolveMove(battle, Number(x), Number(y));
   return true;
 }
 
@@ -1558,7 +1654,7 @@ function resolvePlayerSkill(battle, player, skill) {
     if (!target || distanceBetween(player, target) > 50) return false;
     const heavy = battle.playerKitId === "heavyNecromancer";
     const archer = battle.playerKitId === "archeryNecromancer";
-    const crit = archer && Math.random() < 0.5;
+    const crit = archer && battleRoll(battle) < 0.5;
     const damage = damageCombatant(player, target, crit ? 1.9 : 1.3);
     if (heavy) {
       const summons = battle.units.filter((unit) => unit.summonType && unit.hp > 0);
@@ -1621,7 +1717,7 @@ function resolvePlayerSkill(battle, player, skill) {
   } else if (skill.effect === "recklessCharge") {
     if (!target) return false;
     const isSpiritBarbarian = battle.playerKitId === "spiritBarbarian";
-    dashToTarget(player, target, isSpiritBarbarian ? 2 : 6, battle.bounds);
+    dashToTarget(player, target, isSpiritBarbarian ? 2 : 6, battle);
     const damage = damageCombatant(player, target, 1.5);
     if (isSpiritBarbarian) {
       player.positiveEffects ||= {};
@@ -1667,10 +1763,10 @@ function resolvePlayerSkill(battle, player, skill) {
     const damage = damageCombatant(player, target, 1.4);
     if (battle.playerKitId === "heavyTracker") {
       const nearby = living(battle.enemies).filter((enemy) => distanceBetween(player, enemy) <= 14);
-      for (const enemy of nearby) knockback(player, enemy, 6, battle.bounds);
+      for (const enemy of nearby) knockback(player, enemy, 6, battle);
       pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해 · 주변 넉백`);
     } else {
-      retreatFromTarget(player, target, 8, battle.bounds);
+      retreatFromTarget(player, target, 8, battle);
       if (battle.playerKitId === "spiritTracker" && target.hp > 0) {
         const nearby = living(battle.enemies).filter((enemy) => distanceBetween(target, enemy) <= 14);
         for (const enemy of nearby) applyCombatStatus(battle, enemy, "frost", player, { stacks: 1 });
@@ -1697,14 +1793,14 @@ function resolvePlayerSkill(battle, player, skill) {
     const result = damageArea(battle, player, target, 30, 1.3);
     if (battle.playerKitId === "spiritTracker") {
       for (const enemy of result.targets) {
-        const statusId = ["burn", "frost", "poison"][Math.floor(Math.random() * 3)];
+        const statusId = ["burn", "frost", "poison"][Math.floor(battleRoll(battle) * 3)];
         applyCombatStatus(battle, enemy, statusId, player);
       }
     }
     pushBattleLog(battle, `${skill.name}: 적 ${result.targets.length}명에게 화살 세례${battle.playerKitId === "spiritTracker" ? " · 상태이상" : ""}`);
   } else if (skill.effect === "swiftStrike") {
     if (!target) return false;
-    dashToTarget(player, target, 5, battle.bounds);
+    dashToTarget(player, target, 5, battle);
     const stealthy = battle.playerKitId === "archeryMaehwa" && Boolean(player.positiveEffects?.stealth);
     const damage = damageCombatant(player, target, stealthy ? 2.6 : 1.4);
     if (stealthy) delete player.positiveEffects.stealth;
@@ -1717,7 +1813,7 @@ function resolvePlayerSkill(battle, player, skill) {
     }
     if (battle.playerKitId === "archeryMaehwa") {
       const nearest = nearestTarget(player, living(battle.enemies));
-      if (nearest) retreatFromTarget(player, nearest, 10, battle.bounds);
+      if (nearest) retreatFromTarget(player, nearest, 10, battle);
       player.positiveEffects ||= {};
       player.positiveEffects.stealth = { endsAt: battle.elapsed + 2000 };
     }
@@ -1727,7 +1823,7 @@ function resolvePlayerSkill(battle, player, skill) {
     if (!target || distanceBetween(player, target) > maxRange) return false;
     const hadBuffs = Boolean(target.positiveEffects && Object.keys(target.positiveEffects).length);
     target.positiveEffects = {};
-    const critical = battle.playerKitId === "archeryMaehwa" && Math.random() < 0.35;
+    const critical = battle.playerKitId === "archeryMaehwa" && battleRoll(battle) < 0.35;
     const damage = damageCombatant(player, target, (hadBuffs ? 2.0 : 1.6) * (critical ? 1.5 : 1));
     pushBattleLog(battle, `${skill.name}: ${target.name} ${damage} 피해${hadBuffs ? " · 이로운 효과 제거" : ""}${critical ? " · 치명타" : ""}`);
   } else if (skill.effect === "fleetStep") {
@@ -1789,7 +1885,7 @@ function resolvePlayerSkill(battle, player, skill) {
       const dy = target.y - enemy.y;
       const dist = Math.max(0.001, Math.hypot(dx, dy));
       const pull = Math.min(dist, 10);
-      const pulledTo = clampToArena(battle.bounds, enemy.x + (dx / dist) * pull, enemy.y + (dy / dist) * pull);
+      const pulledTo = resolveMove(battle, enemy.x + (dx / dist) * pull, enemy.y + (dy / dist) * pull);
       enemy.x = pulledTo.x;
       enemy.y = pulledTo.y;
     }
@@ -1984,7 +2080,7 @@ export function issuePlayerAction(battle, action) {
     target.lastHit = 260;
     if (stealthy) delete player.positiveEffects.stealth;
     if (target.hp > 0 && battle.playerKitId === "spiritBarbarian") applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
-    if (target.hp > 0 && battle.playerKitId === "heavyTracker" && player.positiveEffects?.siegeMode?.endsAt > battle.elapsed) knockback(player, target, 5, battle.bounds);
+    if (target.hp > 0 && battle.playerKitId === "heavyTracker" && player.positiveEffects?.siegeMode?.endsAt > battle.elapsed) knockback(player, target, 5, battle);
     if (target.hp > 0 && player.positiveEffects?.decayOnHit?.endsAt > battle.elapsed) {
       target.maehwaMarks = Math.min(5, (target.maehwaMarks || 0) + 1);
       if (battle.playerKitId === "magicMaehwa") applyCombatStatus(battle, target, "frost", player, { stacks: 1 });

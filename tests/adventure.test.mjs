@@ -35,6 +35,7 @@ import {
   FIELD_AGGRO_RADIUS,
   FIELD_BOUNDS,
   consumeFieldTrigger,
+  resolveObstacles,
   createFieldBattle,
   WEAPON_BLUEPRINT_DROP_CHANCE
 } from "../src/adventure.js";
@@ -352,8 +353,11 @@ test("직업은 패시브 1개·스킬 4개·궁 1개를 가지며 전승은 패
 });
 
 test("기본 직업 패시브는 전승 패시브와 별도로 실제 전투에 적용된다", () => {
-  const cycle = createAutoBattle("duneRaiders", "cycle", "field", [], {}, { commander: createDefaultCommander() });
-  const noCycle = createAutoBattle("duneRaiders", "no-cycle", "field", [], {}, { commander: createDefaultCommander() });
+  // rollSeed를 고정한다: 기본 킷(spiritCrusader)의 패시브가 피격 시 확률로
+  // 화상/빙결을 걸어 적을 먼저 죽여버리면 피격 횟수가 4가 아니라 3에서 끊긴다.
+  // 시드가 없으면 전역 Math.random() 소비 순서에 따라 간헐적으로 실패했다.
+  const cycle = createAutoBattle("duneRaiders", "cycle", "field", [], {}, { commander: createDefaultCommander(), rollSeed: 1234 });
+  const noCycle = createAutoBattle("duneRaiders", "no-cycle", "field", [], {}, { commander: createDefaultCommander(), rollSeed: 1234 });
   for (const battle of [cycle, noCycle]) {
     const player = battle.units.find((unit) => unit.controlled);
     player.hp = 30;
@@ -1217,4 +1221,108 @@ test("던전 입구 트리거는 적을 정리해야 열리고, 밟으면 한 �
 
   // 소비 후에는 다시 안 뜬다.
   assert.equal(consumeFieldTrigger(battle), null);
+});
+
+test("필드에는 장애물이 깔리고, 시작 지점과 던전 입구 주변은 비어 있다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 31337, groupCount: 3 });
+  assert.ok(battle.obstacles.length > 0, "장애물이 실제로 생성된다");
+
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const trigger = battle.triggers[0];
+  for (const obstacle of battle.obstacles) {
+    assert.ok(Math.hypot(obstacle.x - player.x, obstacle.y - player.y) > obstacle.radius,
+      "시작 지점이 바위 안에 박혀 있지 않다");
+    assert.ok(Math.hypot(obstacle.x - trigger.x, obstacle.y - trigger.y) > obstacle.radius,
+      "던전 입구가 바위로 막혀 있지 않다");
+  }
+
+  // 장애물끼리도 서로 겹치지 않는다.
+  for (let i = 0; i < battle.obstacles.length; i += 1) {
+    for (let j = i + 1; j < battle.obstacles.length; j += 1) {
+      const a = battle.obstacles[i];
+      const b = battle.obstacles[j];
+      assert.ok(Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius, "장애물끼리 겹치지 않는다");
+    }
+  }
+
+  // 스폰된 적도 바위 안에 갇혀 있지 않다.
+  for (const enemy of battle.enemies) {
+    for (const obstacle of battle.obstacles) {
+      assert.ok(Math.hypot(obstacle.x - enemy.x, obstacle.y - enemy.y) > obstacle.radius,
+        "적이 바위 안에서 스폰되지 않는다");
+    }
+  }
+});
+
+test("장애물은 통과할 수 없고, 표면을 따라 밀려난다", () => {
+  // 단독 함수 검증: 원 안으로 파고든 좌표는 가장자리로 밀려난다.
+  const obstacles = [{ x: 100, y: 100, radius: 10 }];
+  const pushed = resolveObstacles(obstacles, 100, 100 - 3, 0); // 중심 근처로 침투
+  assert.ok(Math.hypot(pushed.x - 100, pushed.y - 100) >= 10 - 1e-9, "장애물 밖으로 밀려난다");
+
+  // 장애물 밖의 좌표는 건드리지 않는다.
+  const untouched = resolveObstacles(obstacles, 200, 200, 0);
+  assert.deepEqual(untouched, { x: 200, y: 200 });
+
+  // 실제 전투에서 바위를 향해 계속 걸어가도 안으로 못 들어간다.
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 555, groupCount: 2 });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const rock = battle.obstacles[0];
+  // 바위 왼쪽에 서서 바위 중심을 향해 이동 명령.
+  player.x = rock.x - rock.radius - 6;
+  player.y = rock.y;
+  moveBattlePlayer(battle, rock.x, rock.y);
+  for (let i = 0; i < 60; i += 1) tickAutoBattle(battle, 50);
+
+  const gap = Math.hypot(player.x - rock.x, player.y - rock.y);
+  assert.ok(gap >= rock.radius - 0.01, `바위를 통과하지 못한다 (거리 ${gap.toFixed(2)} >= 반지름 ${rock.radius.toFixed(2)})`);
+});
+
+test("광역 필드 런: 무리를 정리하고 던전 입구까지 걸어가면 화면 전환 없이 던전으로 이어진다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const run = createRegionRun("north", 2024, STARTING_PARTY, {}, engine.state.adventure.commander, {
+    fieldBattle: true,
+    groupCount: 2
+  });
+  assert.ok(run, "필드 전투 런이 만들어진다");
+  assert.equal(run.fieldBattle, true);
+  assert.equal(run.field, null, "격자 필드는 만들지 않는다");
+  assert.ok(run.battle?.fieldMode, "런 시작부터 광역 전투가 활성 상태다");
+  engine.state.adventure.run = run;
+
+  const battle = run.battle;
+  battle.awaitingPlayerStart = false;
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const trigger = battle.triggers[0];
+
+  // 아직 적이 남아 있으면 입구에 서 있어도 진입이 막힌다.
+  player.x = trigger.x;
+  player.y = trigger.y;
+  battle.enemies[0].dormant = false;
+  assert.equal(engine.advanceRealtimeBattle(16), "active");
+  assert.equal(run.location, "field", "교전 중에는 던전으로 안 넘어간다");
+
+  // 필드를 정리하면 전투가 끝나는 게 아니라 "정리됨" 상태가 된다.
+  // (입구에서 떨어뜨려 놓고 확인 — 입구 위에 선 채로 틱을 돌리면 이 시점에
+  //  트리거가 발동해버려서 "정리 직후 상태"를 관찰할 수 없다.)
+  for (const enemy of battle.enemies) enemy.hp = 0;
+  player.x = battle.bounds.minX + 20;
+  player.y = trigger.y;
+  engine.advanceRealtimeBattle(16);
+  assert.equal(battle.fieldCleared, true, "필드 정리 표시");
+  assert.equal(battle.status, "active", "필드를 비워도 전투가 종료되지 않는다");
+  assert.equal(run.status, "active", "런도 계속 진행 중이다");
+
+  // 입구를 밟으면 던전으로 넘어간다.
+  player.x = trigger.x;
+  player.y = trigger.y;
+  const result = engine.advanceRealtimeBattle(16);
+  assert.equal(result, "dungeonEntrance");
+  assert.equal(run.pendingEntrance, true);
+  assert.equal(run.battle, null, "필드 전투는 정리된다");
+
+  // 실제 던전 진입까지 이어진다.
+  assert.equal(engine.enterAdventureDungeon(), true);
+  assert.equal(run.location, "dungeon");
+  assert.ok(run.dungeon, "던전이 생성된다");
 });
