@@ -253,7 +253,7 @@
         },
         {
           "id": "earthSlam",
-          "name": "회전베기",
+          "name": "회전찍기",
           "glyph": "☗",
           "cooldownMs": 6800,
           "effect": "earthSlam",
@@ -273,7 +273,7 @@
           "glyph": "⚔",
           "cooldownMs": 4400,
           "effect": "cleave",
-          "description": "단일 적을 강하게 벤다."
+          "description": "단일 적을 강하게 찍는다."
         }
       ],
       "ultimate": {
@@ -682,7 +682,7 @@
       "baseClassId": "barbarian",
       "primaryId": "heavy",
       "inheritedId": null,
-      "description": "아직 보조 계통을 배우지 않은 순수 대검 바바리안.",
+      "description": "아직 보조 계통을 배우지 않은 순수 도끼 바바리안.",
       "passive": {
         "id": "none",
         "name": "없음",
@@ -715,7 +715,7 @@
         },
         {
           "id": "earthSlam",
-          "name": "회전베기",
+          "name": "회전찍기",
           "glyph": "☗",
           "cooldownMs": 6800,
           "effect": "earthSlam",
@@ -735,7 +735,7 @@
           "glyph": "⚔",
           "cooldownMs": 4400,
           "effect": "cleave",
-          "description": "단일 적을 강하게 벤다."
+          "description": "단일 적을 강하게 찍는다."
         }
       ],
       "ultimate": {

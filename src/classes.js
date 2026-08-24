@@ -86,9 +86,9 @@ export const PLAYER_BASE_CLASS_DEFS = {
     },
     skills: [
       { id: "battleRoar", name: "광란", glyph: "҂", cooldownMs: 7200, effect: "battleRoar", description: "짧은 시간 공격 속도와 이동 속도를 높인다. 체력이 낮을수록 효과가 커진다." },
-      { id: "earthSlam", name: "회전베기", glyph: "☗", cooldownMs: 6800, effect: "earthSlam", description: "자신 주변을 강타해 피해를 입힌다." },
+      { id: "earthSlam", name: "회전찍기", glyph: "☗", cooldownMs: 6800, effect: "earthSlam", description: "자신 주변을 강타해 피해를 입힌다." },
       { id: "recklessCharge", name: "돌진", glyph: "➶", cooldownMs: 5600, effect: "recklessCharge", description: "목표에게 달려들어 피해를 입힌다." },
-      { id: "cleave", name: "뚝배기", glyph: "⚔", cooldownMs: 4400, effect: "cleave", description: "단일 적을 강하게 벤다." }
+      { id: "cleave", name: "뚝배기", glyph: "⚔", cooldownMs: 4400, effect: "cleave", description: "단일 적을 강하게 찍는다." }
     ],
     ultimate: { id: "berserkerRage", name: "광폭화", glyph: "Ϟ", cooldownMs: 14000, effect: "berserkerRage", description: "일정 시간 격노 효과가 크게 늘고 공격에 흡혈이 붙는다." }
   },
@@ -214,7 +214,7 @@ export const PLAYER_KIT_DEFS = {
     baseClassId: "barbarian",
     primaryId: "heavy",
     inheritedId: null,
-    description: "아직 보조 계통을 배우지 않은 순수 대검 바바리안.",
+    description: "아직 보조 계통을 배우지 않은 순수 도끼 바바리안.",
     passive: { id: "none", name: "없음", glyph: "—", description: "전승을 익히면 추가 패시브를 얻는다." },
     stats: { maxHp: 64, damage: 10, range: 7, speed: 15, attackMs: 780, armor: 0.2, color: "#c07a4f", glyph: "Ϟ" },
     defaultLoadout: ["battleRoar", "earthSlam", "cleave"],
