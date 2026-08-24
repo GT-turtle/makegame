@@ -3871,3 +3871,51 @@ body.battle-active .modal-wrap { z-index: 3200; }
   .class-choice.class-choice-illustrated { min-height: 270px; }
   .class-choice-art > img { max-height: 280px; }
 }
+
+/* 광역 필드 전투: 원형 장애물(바위·잔해)과 던전 입구 같은 지점 트리거.
+   전투 유닛과 같은 투영을 쓰므로 left/top/z-index는 인라인으로 들어온다. */
+.battle-obstacle {
+  position: absolute;
+  aspect-ratio: 1 / .55;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 40% 30%, rgba(126,122,112,.95), rgba(58,56,52,.92) 70%);
+  border: 1px solid rgba(28,26,24,.7);
+  box-shadow: 0 6px 14px rgba(0,0,0,.45), inset 0 -4px 10px rgba(0,0,0,.4);
+  pointer-events: none;
+}
+
+.battle-trigger {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  text-align: center;
+}
+.battle-trigger i {
+  font-style: normal;
+  font-size: 18px;
+  line-height: 1;
+  animation: trigger-bob 1.4s ease-in-out infinite;
+}
+.battle-trigger span {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  background: rgba(18,16,14,.82);
+  border: 1px solid currentColor;
+}
+.battle-trigger span em { display: block; font-style: normal; font-size: 10px; font-weight: 500; opacity: .82; }
+.battle-trigger.ready { color: #8fd6a0; }
+.battle-trigger.waiting { color: #d8cba4; }
+.battle-trigger.blocked { color: #d99a86; }
+
+@keyframes trigger-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}

@@ -261,7 +261,11 @@ export class GameEngine {
     if (!adventure || adventure.run || this.state.estateDefense?.campaign || !region || region.locked || !adventure.unlockedRegionIds.includes(regionId)) return false;
     const party = adventure.party.filter((unitId) => adventure.roster.includes(unitId) && UNIT_DEFS[unitId]).slice(0, PARTY_LIMIT);
     if (!party.length) return false;
-    const run = createRegionRun(regionId, seed, party, adventure.unitProgress, adventure.commander);
+    // 지역 탐험은 격자 필드 대신 광역 전투 아레나를 쓴다 — 화면 전환 없이
+    // 필드를 돌아다니며 무리와 싸우고 던전 입구까지 걸어간다. 던전에 들어가면
+    // 그때부터는 기존 격자 던전이 그대로 이어받는다.
+    // (개척지 세부 원정은 아직 격자 흐름 그대로 — 습격 주기가 칸 이동 수에 묶여 있어서 별도 작업 필요)
+    const run = createRegionRun(regionId, seed, party, adventure.unitProgress, adventure.commander, { fieldBattle: true });
     if (!run) return false;
     adventure.selectedRegionId = regionId;
     adventure.run = run;

@@ -204,7 +204,9 @@ test("게임 저장에는 직접 조작 개척자와 기본 자동전투 동료�
   assert.deepEqual(engine.state.adventure.roster, STARTING_ROSTER);
   assert.deepEqual(engine.state.adventure.party, STARTING_PARTY);
   assert.equal(engine.startRegionAdventure("north", 7788), true);
-  assert.equal(engine.state.adventure.run.field.width, FIELD_SIZE);
+  // 지역 탐험은 이제 격자 필드가 아니라 광역 전투 아레나로 시작한다.
+  assert.equal(engine.state.adventure.run.field, null);
+  assert.ok(engine.state.adventure.run.battle?.fieldMode);
   const restored = new GameEngine(storage);
   assert.equal(restored.state.adventure.run.regionId, "north");
   assert.equal(restored.state.adventure.commander.name, "개척자");
@@ -292,7 +294,35 @@ test("필드 조우부터 던전 우두머리와 영지 정산까지 한 원정�
   };
 
   let run = engine.state.adventure.run;
-  walkTo(run.field.entrance);
+
+  // 1단계: 광역 필드 — 화면 전환 없이 그 자리에서 무리를 정리한다.
+  const fieldBattle = run.battle;
+  assert.ok(fieldBattle?.fieldMode, "지역 탐험은 광역 전투로 시작한다");
+  let fieldGuard = 0;
+  while (fieldBattle.enemies.some((enemy) => enemy.hp > 0) && fieldGuard < 2000) {
+    const player = fieldBattle.units.find((unit) => unit.controlled && unit.hp > 0);
+    const target = fieldBattle.enemies.find((enemy) => enemy.hp > 0);
+    if (player && target) {
+      player.x = target.x - 5;
+      player.y = target.y;
+      target.dormant = false;
+      engine.playerRealtimeAction("attack");
+      engine.playerRealtimeAction("skill1");
+      engine.playerRealtimeAction("skill2");
+      engine.playerRealtimeAction("skill3");
+    }
+    engine.advanceRealtimeBattle(120);
+    fieldGuard += 1;
+  }
+  assert.ok(fieldBattle.fieldCleared, "필드의 무리를 전부 정리했다");
+  assert.equal(fieldBattle.status, "active", "필드를 비워도 전투 자체는 끝나지 않는다");
+
+  // 2단계: 던전 입구로 걸어가면 그대로 던전으로 이어진다.
+  const entrance = fieldBattle.triggers[0];
+  const fieldPlayer = fieldBattle.units.find((unit) => unit.controlled);
+  fieldPlayer.x = entrance.x;
+  fieldPlayer.y = entrance.y;
+  assert.equal(engine.advanceRealtimeBattle(120), "dungeonEntrance");
   assert.equal(run.pendingEntrance, true);
   assert.equal(engine.enterAdventureDungeon(), true);
   for (const target of [{ x: 7, y: 7 }, { x: 11, y: 5 }, { x: 11, y: 11 }]) walkTo(target);

@@ -1363,6 +1363,32 @@ function battleProjection(entity, battle) {
   };
 }
 
+// 장애물·지점 트리거는 전투 유닛과 같은 투영 함수를 쓴다 — 카메라가 이미
+// 플레이어 상대 좌표로 그리기 때문에, 넓은 필드에서도 좌표만 넘기면 맞게 놓인다.
+function battleObstacles(battle) {
+  if (!battle.obstacles?.length) return "";
+  return battle.obstacles.map((obstacle) => {
+    const projection = battleProjection(obstacle, battle);
+    if (!projection.visible) return "";
+    // battleProjection의 lateral 계수(0.72)와 같은 비율로 폭을 잡아야
+    // 화면상 크기가 실제 충돌 반지름과 어긋나지 않는다.
+    const width = obstacle.radius * 2 * 0.72 * (projection.scale / 0.9);
+    return `<div class="battle-obstacle" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;z-index:${projection.z - 1}"></div>`;
+  }).join("");
+}
+
+function battleTriggers(battle) {
+  if (!battle.triggers?.length) return "";
+  return battle.triggers.filter((trigger) => !trigger.fired).map((trigger) => {
+    const projection = battleProjection(trigger, battle);
+    if (!projection.visible) return "";
+    const blocked = battle.blockedTrigger === trigger.id;
+    const state = blocked ? "blocked" : battle.fieldCleared ? "ready" : "waiting";
+    const hint = blocked ? "적을 먼저 정리해야 한다" : battle.fieldCleared ? "진입 가능" : "";
+    return `<div class="battle-trigger ${state}" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;z-index:${projection.z}"><i>▼</i><span>${trigger.name}${hint ? `<em>${hint}</em>` : ""}</span></div>`;
+  }).join("");
+}
+
 function battleRadar(battle) {
   const player = battle.units.find((unit) => unit.id === battle.playerId);
   if (!player) return "";
@@ -1497,6 +1523,8 @@ function battleScreen(state, defenseMode = false) {
         <div class="battle-reticle"><i></i></div>
         ${battlePartyRail(battle)}
         ${battleRadar(battle)}
+        ${battleObstacles(battle)}
+        ${battleTriggers(battle)}
         ${[...battle.units, ...battle.enemies].map((entity) => battleEntity(entity, battle)).join("")}
         ${joystickControl("combat")}
         ${waitingForResult ? '<div class="battle-result-pause"><span>⚔</span><strong>전투 종료</strong><small>전장을 정리하고 있습니다…</small></div>' : ""}
@@ -1539,6 +1567,9 @@ function zoneMapOverlay(state) {
   if (!view.zoneMapOpen || !state.adventure?.run) return "";
   const run = state.adventure.run;
   const zone = currentZone(run);
+  // 광역 필드 전투 중에는 격자 지도가 없다(필드 자체가 전투 아레나라
+  // 미니맵은 battleRadar가 대신한다).
+  if (!zone) return "";
   const seen = new Set(zone.seen || []);
   const cells = [];
   for (let y = 0; y < zone.height; y += 1) {
