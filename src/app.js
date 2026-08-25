@@ -1370,13 +1370,30 @@ function battleProjection(entity, battle) {
 function battleZones(battle) {
   if (!battle.zones?.length) return "";
   return battle.zones.map((zone) => {
-    const projection = battleProjection(zone, battle);
-    if (!projection.visible) return "";
+    // 연속 장판은 시간차로 깔린다 — 아직 깔릴 차례가 아닌 건 그리지 않는다.
+    if (battle.elapsed < zone.bornAt) return "";
     const span = Math.max(1, zone.fireAt - zone.bornAt);
     const progress = Math.max(0, Math.min(1, (battle.elapsed - zone.bornAt) / span));
+
+    if (zone.kind === "line") {
+      // 직선 돌진은 양 끝점을 각각 투영해서 그 사이를 회전한 띠로 잇는다.
+      const from = battleProjection(zone, battle);
+      const to = battleProjection({ id: zone.id + "-end", x: zone.x2, y: zone.y2 }, battle);
+      if (!from.visible && !to.visible) return "";
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const length = Math.hypot(dx, dy);
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      const thickness = zone.width * 0.72 * (from.scale / 0.9) * 0.62;
+      return `<div class="battle-zone battle-zone-line" style="left:${from.x.toFixed(2)}%;top:${from.y.toFixed(2)}%;width:${length.toFixed(2)}%;height:${thickness.toFixed(2)}%;transform:rotate(${angle.toFixed(1)}deg);--zone-progress:${progress.toFixed(3)};z-index:${from.z - 2}"><i></i></div>`;
+    }
+
+    const projection = battleProjection(zone, battle);
+    if (!projection.visible) return "";
     // 장애물과 같은 계수를 써야 화면 크기가 실제 판정 반경과 맞는다.
     const width = zone.radius * 2 * 0.72 * (projection.scale / 0.9);
-    return `<div class="battle-zone" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;--zone-progress:${progress.toFixed(3)};z-index:${projection.z - 2}"><i></i></div>`;
+    const kindClass = zone.kind === "summon" ? " battle-zone-summon" : "";
+    return `<div class="battle-zone${kindClass}" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;--zone-progress:${progress.toFixed(3)};z-index:${projection.z - 2}"><i></i></div>`;
   }).join("");
 }
 

@@ -23,6 +23,7 @@ import {
   enterRunSettlement,
   explorationPath,
   BOSS_PATTERN_DEFS,
+  ENEMY_COMBATANTS,
   PLAYER_DODGE_DEFS,
   playerDodgeDefinition,
   issuePlayerAction,
@@ -42,6 +43,7 @@ import {
   createFieldBattle,
   REGION_ARMOR_SET
 } from "../src/adventure.js";
+import { MATERIAL_DEFS } from "../src/data.js";
 import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, LEGENDARY_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, legendariesForRegion, legendaryCollection, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
 
@@ -96,8 +98,12 @@ test("전투 조이스틱 입력은 플레이어를 연속 이동시키고 놓�
 
 test("원정 전장의 몬스터는 2~3마리로 제한해 영혼 수확 상한을 통제한다", () => {
   for (const encounter of Object.values(ENCOUNTER_DEFS)) {
-    assert.ok(encounter.enemies.length >= 2);
-    assert.ok(encounter.enemies.length <= 3);
+    // 지역 보스는 단독 전투다. 기믹과 페이즈로 싸우는 보스라 잡몹을 섞으면
+    // 무엇을 보고 대응해야 하는지가 흐려진다(docs/BOSS_DESIGN.md §2).
+    // 이 규칙은 "적이 많을 때"의 영혼 수확 상한을 막는 게 목적이므로
+    // 단독 전투는 애초에 문제가 되지 않는다.
+    if (!encounter.regionBoss) assert.ok(encounter.enemies.length >= 2, `${encounter.name} 최소 2마리`);
+    assert.ok(encounter.enemies.length <= 3, `${encounter.name} 최대 3마리`);
   }
 });
 
@@ -1138,6 +1144,139 @@ test("회피 버튼은 크루세이더만 방패 막기이고 나머지는 이�
   const blockX = blockPlayer.x;
   issuePlayerAction(blockBattle, "dodge");
   assert.equal(blockPlayer.x, blockX, "방패 막기는 제자리에서 버틴다");
+});
+
+test("모든 보스 패턴은 '보고 피할 수 있어야' 한다는 기준식을 지킨다", () => {
+  // 예고 시간(초) × 플레이어 이동속도(17) > 벗어나야 하는 거리.
+  // 이 부등식이 깨지면 아무리 잘 피해도 못 빠져나오는 패턴이 된다.
+  const PLAYER_SPEED = 17;
+  for (const pattern of Object.values(BOSS_PATTERN_DEFS)) {
+    if (pattern.kind === "summon") continue; // 소환은 피할 대상이 아니다
+    const reach = PLAYER_SPEED * (pattern.telegraphMs / 1000);
+    // 직선은 폭의 절반만 옆으로 비키면 된다.
+    const need = pattern.kind === "line" ? pattern.width / 2 : pattern.radius;
+    assert.ok(reach > need,
+      `${pattern.name}: 예고 동안 ${reach.toFixed(1)} 이동 가능한데 ${need}를 벗어나야 한다`);
+  }
+});
+
+test("직선 돌진은 뒤로 도망치는 것보다 옆으로 비켜야 피해진다", () => {
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242 });
+  const boss = battle.enemies.find((enemy) => enemy.patterns?.includes("chargeRush"));
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+
+  // 돌진만 나오게 다른 패턴을 잠가둔다.
+  boss.patterns = ["chargeRush"];
+  let guard = 0;
+  while (!battle.zones.length && guard++ < 300) tickAutoBattle(battle, 100);
+  const zone = battle.zones[0];
+  assert.equal(zone.kind, "line", "돌진은 직선 장판이다");
+  assert.ok(zone.x2 !== undefined && zone.y2 !== undefined, "끝점이 있다");
+
+  // 띠는 보스에서 시작해 플레이어 방향으로 뻗는다.
+  assert.ok(Math.abs(zone.x - boss.x) < 0.01 && Math.abs(zone.y - boss.y) < 0.01, "보스 위치에서 시작한다");
+  const length = Math.hypot(zone.x2 - zone.x, zone.y2 - zone.y);
+  assert.ok(Math.abs(length - BOSS_PATTERN_DEFS.chargeRush.length) < 0.5, "정의된 길이만큼 뻗는다");
+
+  // 띠 위(중간 지점)는 맞고, 옆으로 폭의 절반 넘게 비키면 안 맞는다.
+  const midX = (zone.x + zone.x2) / 2;
+  const midY = (zone.y + zone.y2) / 2;
+  const angle = Math.atan2(zone.y2 - zone.y, zone.x2 - zone.x);
+  const sideX = midX + Math.cos(angle + Math.PI / 2) * (zone.width / 2 + 3);
+  const sideY = midY + Math.sin(angle + Math.PI / 2) * (zone.width / 2 + 3);
+
+  player.x = midX; player.y = midY;
+  const hpOnLine = player.hp;
+  while (battle.zones.length && guard++ < 400) tickAutoBattle(battle, 100);
+  assert.ok(player.hp < hpOnLine, "띠 위에 서 있으면 맞는다");
+
+  // 다시 한 번, 이번엔 옆으로 비켜서.
+  boss.patternReadyAt.chargeRush = 0;
+  while (!battle.zones.length && guard++ < 400) tickAutoBattle(battle, 100);
+  const zone2 = battle.zones[0];
+  const angle2 = Math.atan2(zone2.y2 - zone2.y, zone2.x2 - zone2.x);
+  const mid2X = (zone2.x + zone2.x2) / 2;
+  const mid2Y = (zone2.y + zone2.y2) / 2;
+  player.x = mid2X + Math.cos(angle2 + Math.PI / 2) * (zone2.width / 2 + 6);
+  player.y = mid2Y + Math.sin(angle2 + Math.PI / 2) * (zone2.width / 2 + 6);
+  const hpAside = player.hp;
+  let fired = false;
+  while (battle.zones.length && guard++ < 500) {
+    tickAutoBattle(battle, 100);
+    fired = true;
+    // 보스가 다시 조준하지 못하게 위치를 고정
+    player.x = mid2X + Math.cos(angle2 + Math.PI / 2) * (zone2.width / 2 + 6);
+    player.y = mid2Y + Math.sin(angle2 + Math.PI / 2) * (zone2.width / 2 + 6);
+  }
+  assert.ok(fired, "두 번째 돌진도 터졌다");
+  assert.equal(player.hp, hpAside, "폭 밖으로 비키면 돌진에 맞지 않는다");
+});
+
+test("연속 장판은 시간차로 여러 개가 깔린다", () => {
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242 });
+  const boss = battle.enemies.find((enemy) => enemy.patterns?.length);
+  boss.patterns = ["frostVolley"];
+
+  let guard = 0;
+  while (!battle.zones.length && guard++ < 300) tickAutoBattle(battle, 100);
+  const pattern = BOSS_PATTERN_DEFS.frostVolley;
+  assert.equal(battle.zones.length, pattern.volleyCount, "한 번 시전에 여러 발이 예약된다");
+
+  // 각 발은 시간차를 두고 깔린다.
+  const bornTimes = battle.zones.map((zone) => zone.bornAt).sort((a, b) => a - b);
+  for (let i = 1; i < bornTimes.length; i += 1) {
+    assert.equal(bornTimes[i] - bornTimes[i - 1], pattern.volleyIntervalMs, "간격이 일정하다");
+  }
+  // 시전 시간은 마지막 발이 터질 때까지 이어진다.
+  assert.ok(boss.castingUntil >= battle.elapsed + (pattern.volleyCount - 1) * pattern.volleyIntervalMs);
+});
+
+test("필드 보스는 HP 50%에서 패턴이 추가되고, 지역 보스는 교체되며 형태가 바뀐다", () => {
+  const drive = (encounterId) => {
+    const battle = createAutoBattle(encounterId, null, null, ["shieldGuard", "archer"], {}, { rollSeed: 55 });
+    const boss = battle.enemies.find((enemy) => enemy.patterns?.length);
+    const first = [...boss.patterns];
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.hp = player.maxHp = 99999;
+    boss.hp = Math.floor(boss.maxHp * 0.4);
+    for (let i = 0; i < 60 && boss.phase === 1; i += 1) {
+      tickAutoBattle(battle, 100);
+      player.hp = 99999;
+      boss.hp = Math.floor(boss.maxHp * 0.4);
+    }
+    return { boss, first, battle };
+  };
+
+  const field = drive("frostColossusPack");
+  assert.equal(field.boss.phase, 2, "HP 50% 아래에서 2페이즈로 넘어간다");
+  assert.equal(field.boss.phaseMode, "extend");
+  for (const id of field.first) {
+    assert.ok(field.boss.patterns.includes(id), "필드 보스는 기존 패턴을 유지한다");
+  }
+  assert.ok(field.boss.patterns.length > field.first.length, "새 패턴이 추가된다");
+  assert.equal(field.boss.form, null, "필드 보스는 형태가 그대로다");
+
+  const region = drive("frostTitanLair");
+  assert.equal(region.boss.phase, 2);
+  assert.equal(region.boss.phaseMode, "replace");
+  for (const id of region.first) {
+    assert.ok(!region.boss.patterns.includes(id), "지역 보스는 기존 패턴이 사라진다");
+  }
+  assert.ok(region.boss.form, "지역 보스는 형태가 바뀐다");
+});
+
+test("필드 보스는 부산물을 확률이 아니라 확정으로 준다", () => {
+  // 완제품을 낮은 확률로 떨구는 대신 부산물을 확정 지급하고 고정 조합표로
+  // 가공하는 구조다(docs/EQUIPMENT_DESIGN.md §5).
+  const bear = ENEMY_COMBATANTS.northBear;
+  assert.ok(bear.byproducts, "설원 거대 곰은 부산물을 가진다");
+  assert.deepEqual(Object.keys(bear.byproducts).sort(), ["bearHide", "bearSinew"]);
+  for (const materialId of Object.keys(bear.byproducts)) {
+    assert.ok(MATERIAL_DEFS[materialId], `${materialId}가 재료로 정의돼 있어야 한다`);
+  }
+
+  // 지역 보스도 부산물을 준다.
+  assert.ok(ENEMY_COMBATANTS.northTitan.byproducts);
 });
 
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {

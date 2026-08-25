@@ -109,23 +109,98 @@ export function playerDodgeDefinition(kitId) {
 // 그래서 "다가와서 때린다"가 아니라 "예고를 보고 피한다"가 된다.
 //
 // 패턴은 코드가 아니라 데이터다. 새 보스는 여기서 패턴 id만 골라 담으면 된다.
+//
+// **모든 패턴의 난이도 기준식**:
+//   예고 시간(초) × 플레이어 이동속도(17) > 장판 반경   → 보고 걸어 나갈 수 있다
+// 이 부등식이 깨지면 아무리 잘 피해도 못 빠져나오는 패턴이 된다.
+// 새 패턴을 추가할 때 반드시 확인할 것(테스트로도 고정해뒀다).
 export const BOSS_PATTERN_DEFS = {
+  // 원형 장판 — 기본기. 플레이어 발밑에 깔린다.
   groundSlam: {
     id: "groundSlam", name: "대지 강타", kind: "circle",
-    // 예고 시간 × 플레이어 이동속도(17)가 "도망칠 수 있는 거리"다.
-    // 반경 15 < 도달 거리 17.9라서 보고 걸어 나가면 빠져나올 수 있고,
-    // 가만히 서 있으면 반드시 맞는다. 이 관계가 패턴 난이도의 기준이다.
-    telegraphMs: 1050,
-    radius: 15,
-    damageMultiplier: 1.7,
-    cooldownMs: 6200,
-    // 플레이어의 현재 위치에 깔린다. 예고 중에 움직이면 피해진다.
-    aim: "target"
+    telegraphMs: 1050, radius: 15, damageMultiplier: 1.7,
+    cooldownMs: 6200, aim: "target"
+  },
+
+  // 직선 돌진 — 보스에서 플레이어 방향으로 긴 띠. 옆으로 비켜야 한다.
+  // 뒤로 도망치는 게 정답이 아니라는 점에서 원형 장판과 대응법이 다르다.
+  chargeRush: {
+    id: "chargeRush", name: "돌진", kind: "line",
+    telegraphMs: 1150, length: 70, width: 14, damageMultiplier: 1.5,
+    cooldownMs: 9000, aim: "target"
+  },
+
+  // 연속 장판 — 작은 원이 시간차로 여러 개. 한 번 피하고 끝이 아니라 계속 움직여야 한다.
+  frostVolley: {
+    id: "frostVolley", name: "빙결 연격", kind: "circle",
+    telegraphMs: 900, radius: 11, damageMultiplier: 0.9,
+    cooldownMs: 11000, aim: "scatter",
+    // 시간차로 3발. 간격이 예고보다 짧아 앞발이 터지기 전에 뒷발이 깔린다.
+    volleyCount: 3, volleyIntervalMs: 650, volleySpread: 20,
+    status: { id: "freeze" }
+  },
+
+  // 광역 포효 — 보스 자신을 중심으로 크게. 붙어 있으면 맞으니 거리를 벌려야 한다.
+  // 반경이 크지만 예고도 길어서 기준식은 지킨다.
+  quakeRoar: {
+    id: "quakeRoar", name: "포효", kind: "circle",
+    telegraphMs: 1600, radius: 25, damageMultiplier: 1.3,
+    cooldownMs: 13000, aim: "self",
+    status: { id: "stun", durationMs: 700 }
+  },
+
+  // ── 지역 보스 전용 ──
+  // 2페이즈 전용 광역기. 장갑이 무너진 뒤 핵이 노출되며 쓰는 큰 기술이라
+  // 반경이 크고 예고도 길다.
+  coreBurst: {
+    id: "coreBurst", name: "핵 폭주", kind: "circle",
+    telegraphMs: 1800, radius: 28, damageMultiplier: 1.9,
+    cooldownMs: 12000, aim: "self",
+    status: { id: "burn" }
+  },
+
+  // 2페이즈 연속 돌진. 1페이즈 돌진보다 짧게 여러 번.
+  ruinCharge: {
+    id: "ruinCharge", name: "붕괴 돌진", kind: "line",
+    telegraphMs: 1000, length: 60, width: 12, damageMultiplier: 1.4,
+    cooldownMs: 7000, aim: "target"
+  },
+
+  // 소환 — 장판이 아니라 잡몹을 부른다. 2페이즈 압박용.
+  callPack: {
+    id: "callPack", name: "무리 부름", kind: "summon",
+    telegraphMs: 1200, summonId: "northWolf", summonCount: 2,
+    cooldownMs: 16000, aim: "self"
   }
 };
 
 export function bossPatternDefinition(patternId) {
   return BOSS_PATTERN_DEFS[patternId] || null;
+}
+
+// 보스 페이즈. HP 50% 이하에서 넘어간다(docs/BOSS_DESIGN.md §1·§2).
+// - 필드 보스(extend): 기존 패턴은 그대로 두고 새 패턴을 **추가**한다. 형태 유지.
+// - 지역 보스(replace): 패턴 풀을 통째로 **교체**하고 형태가 바뀐다.
+export const BOSS_PHASE_THRESHOLD = 0.5;
+
+function updateBossPhase(battle, actor) {
+  if (!actor.phase2Patterns?.length || actor.phase >= 2) return;
+  if (actor.hp / actor.maxHp > BOSS_PHASE_THRESHOLD) return;
+
+  actor.phase = 2;
+  actor.patterns = actor.phaseMode === "replace"
+    ? [...actor.phase2Patterns]
+    : [...actor.patterns, ...actor.phase2Patterns];
+
+  if (actor.phaseMode === "replace") {
+    // 지역 보스는 외형/형태가 바뀐다. 렌더러가 이 플래그를 보고 그린다.
+    actor.form = actor.phase2Form || "broken";
+    pushBattleLog(battle, `${actor.name}: 형태가 무너지며 다른 존재가 되었다!`);
+  } else {
+    pushBattleLog(battle, `${actor.name}: 분노하며 새로운 공격을 꺼낸다!`);
+  }
+  // 전환 직후 바로 패턴이 나가면 연출이 묻힌다. 잠깐 숨을 준다.
+  actor.castingUntil = Math.max(actor.castingUntil || 0, battle.elapsed + 700);
 }
 
 // 보스가 지금 쓸 수 있는 패턴을 고른다. 패턴마다 개별 쿨다운이 있어서
@@ -138,29 +213,95 @@ function pickBossPattern(battle, actor) {
   return ready[Math.floor(battleRoll(battle) * ready.length) % ready.length];
 }
 
-// 예고 장판을 깐다. 이 시점에는 피해가 없고, fireAt이 되어야 터진다.
-function spawnBossZone(battle, actor, pattern, target) {
-  const center = pattern.aim === "self" ? actor : target;
+function pushZone(battle, actor, pattern, shape, delayMs = 0) {
   battle.zones.push({
     id: `zone-${battle.zoneSeq = (battle.zoneSeq || 0) + 1}`,
     ownerId: actor.id,
     patternId: pattern.id,
     name: pattern.name,
     kind: pattern.kind,
-    x: center.x,
-    y: center.y,
-    radius: pattern.radius,
     damageMultiplier: pattern.damageMultiplier,
     status: pattern.status || null,
-    bornAt: battle.elapsed,
-    fireAt: battle.elapsed + pattern.telegraphMs
+    bornAt: battle.elapsed + delayMs,
+    fireAt: battle.elapsed + delayMs + pattern.telegraphMs,
+    ...shape
   });
+}
+
+// 예고를 깐다. 이 시점에는 피해가 없고, fireAt이 되어야 터진다.
+function spawnBossZone(battle, actor, pattern, target) {
+  const center = pattern.aim === "self" ? actor : target;
+
+  if (pattern.kind === "line") {
+    // 보스에서 대상 방향으로 뻗는 띠. 뒤로 도망치는 것보다 옆으로 비키는 게 정답이다.
+    const angle = Math.atan2(target.y - actor.y, target.x - actor.x);
+    pushZone(battle, actor, pattern, {
+      x: actor.x, y: actor.y,
+      x2: actor.x + Math.cos(angle) * pattern.length,
+      y2: actor.y + Math.sin(angle) * pattern.length,
+      width: pattern.width,
+      angle
+    });
+  } else if (pattern.kind === "summon") {
+    pushZone(battle, actor, pattern, { x: actor.x, y: actor.y, radius: 6 });
+  } else if (pattern.volleyCount > 1) {
+    // 시간차 연속 장판. 첫 발은 대상 위치, 이후는 주변으로 흩뿌린다.
+    for (let i = 0; i < pattern.volleyCount; i += 1) {
+      const spread = i === 0 ? 0 : pattern.volleySpread;
+      pushZone(battle, actor, pattern, {
+        x: center.x + (battleRoll(battle) - 0.5) * 2 * spread,
+        y: center.y + (battleRoll(battle) - 0.5) * 2 * spread,
+        radius: pattern.radius
+      }, i * pattern.volleyIntervalMs);
+    }
+  } else {
+    pushZone(battle, actor, pattern, { x: center.x, y: center.y, radius: pattern.radius });
+  }
+
   actor.patternReadyAt ||= {};
   actor.patternReadyAt[pattern.id] = battle.elapsed + pattern.cooldownMs;
   // 시전 중에는 움직이거나 평타를 치지 않는다 — 예고와 본체 행동이 겹치면
   // 무엇을 보고 피해야 하는지 알 수 없게 된다.
-  actor.castingUntil = battle.elapsed + pattern.telegraphMs;
+  const castMs = pattern.volleyCount > 1
+    ? pattern.telegraphMs + (pattern.volleyCount - 1) * pattern.volleyIntervalMs
+    : pattern.telegraphMs;
+  actor.castingUntil = battle.elapsed + castMs;
   pushBattleLog(battle, `${actor.name}: ${pattern.name} 준비`);
+}
+
+// 점과 선분 사이 거리. 직선 돌진 판정에 쓴다.
+function distanceToSegment(point, x1, y1, x2, y2) {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq < 0.0001) return Math.hypot(point.x - x1, point.y - y1);
+  const t = Math.max(0, Math.min(1, ((point.x - x1) * dx + (point.y - y1) * dy) / lengthSq));
+  return Math.hypot(point.x - (x1 + t * dx), point.y - (y1 + t * dy));
+}
+
+function zoneCovers(zone, unit) {
+  if (zone.kind === "line") {
+    return distanceToSegment(unit, zone.x, zone.y, zone.x2, zone.y2) <= zone.width / 2;
+  }
+  return distanceBetween(zone, unit) <= zone.radius;
+}
+
+// 소환 패턴이 터지면 잡몹이 나온다.
+function resolveSummonZone(battle, zone, owner) {
+  const pattern = BOSS_PATTERN_DEFS[zone.patternId];
+  if (!pattern?.summonId) return;
+  for (let i = 0; i < (pattern.summonCount || 1); i += 1) {
+    const definition = ENEMY_COMBATANTS[pattern.summonId];
+    if (!definition) continue;
+    const spawned = createCombatant(
+      definition, `summon-${battle.zoneSeq}-${i}`, "enemy", battle.enemies.length % 5
+    );
+    const spot = resolveMove(battle, owner.x + (battleRoll(battle) - 0.5) * 24, owner.y + (battleRoll(battle) - 0.5) * 24);
+    spawned.x = spot.x;
+    spawned.y = spot.y;
+    battle.enemies.push(spawned);
+  }
+  pushBattleLog(battle, `${zone.name}: 무리가 나타났다`);
 }
 
 // 시간이 된 장판을 터뜨린다. 범위 안에 있는 플레이어·동료가 맞는다.
@@ -171,7 +312,11 @@ function advanceBossZones(battle) {
     if (battle.elapsed < zone.fireAt) { remaining.push(zone); continue; }
 
     const owner = battle.enemies.find((enemy) => enemy.id === zone.ownerId);
-    const hit = living(battle.units).filter((unit) => distanceBetween(zone, unit) <= zone.radius);
+    if (zone.kind === "summon") {
+      if (owner) resolveSummonZone(battle, zone, owner);
+      continue;
+    }
+    const hit = living(battle.units).filter((unit) => zoneCovers(zone, unit));
     if (owner) {
       for (const unit of hit) {
         // 회피 중이면 장판도 회피 감소를 받는다(방패 막기로 버티는 선택지가 살아 있게).
@@ -341,7 +486,28 @@ export const ENEMY_COMBATANTS = {
   northGoblin: { name: "북부 홉고블린", species: "goblin", variant: "대형종", glyph: "G", maxHp: 29, damage: 7, range: 8, speed: 7, attackMs: 1380, armor: 0.08, color: "#789db0" },
   northOrc: { name: "서리갑주 오크", species: "orc", variant: "빙철 갑주", glyph: "O", maxHp: 34, damage: 7, range: 8, speed: 6, attackMs: 1460, armor: 0.16, color: "#7292a3", statusOnHit: { id: "frost", stacks: 1 }, statusEvery: 2 },
   northWolf: { name: "설원 늑대", species: "wolf", variant: "빙결 송곳니", glyph: "Λ", maxHp: 21, damage: 5, range: 7, speed: 13, attackMs: 1020, color: "#8cb9cd", statusOnHit: { id: "frost", stacks: 1 }, statusEvery: 3 },
-  northBear: { name: "빙맥 큰곰", species: "bear", variant: "빙맥 우두머리", glyph: "B", maxHp: 96, damage: 11, range: 9, speed: 4, attackMs: 1650, armor: 0.12, color: "#79aec7", boss: true, patterns: ["groundSlam"], statusOnHit: { id: "stun", durationMs: 850 }, statusEvery: 3 },
+  // 북부 지역 보스(docs/BOSS_DESIGN.md §4 타이탄).
+  // 필드 보스와 달리 HP 50%에서 패턴 풀이 **교체**되고 형태가 바뀐다.
+  // 부위 공략(팔·다리를 노려 자세를 무너뜨리는 기믹)은 유닛에 부위 개념이
+  // 필요해서 이번 범위 밖이다 - 문서에서도 타이탄 전용 기믹으로 못박아뒀다.
+  northTitan: {
+    name: "설산의 타이탄", species: "titan", variant: "지역 보스", glyph: "T",
+    maxHp: 320, damage: 14, range: 11, speed: 3, attackMs: 1900, armor: 0.2,
+    color: "#8fa6bd", boss: true, preScaled: true,
+    patterns: ["groundSlam", "chargeRush", "quakeRoar"],
+    phase2Patterns: ["coreBurst", "ruinCharge", "callPack"],
+    phaseMode: "replace",
+    phase2Form: "coreExposed",
+    byproducts: { frostIron: 3, bearHide: 2 }
+  },
+  northBear: { name: "빙맥 큰곰", species: "bear", variant: "빙맥 우두머리", glyph: "B", maxHp: 96, damage: 11, range: 9, speed: 4, attackMs: 1650, armor: 0.12, color: "#79aec7", boss: true,
+    // 북부 필드 보스(docs/EQUIPMENT_DESIGN.md §9 "설원 거대 곰").
+    // 1페이즈는 원형·직선 두 종류로 대응법을 나누고, HP 50%부터 연속 장판과
+    // 광역 포효가 추가된다(필드 보스이므로 교체가 아니라 추가 - §1).
+    patterns: ["groundSlam", "chargeRush"],
+    phase2Patterns: ["frostVolley", "quakeRoar"],
+    phaseMode: "extend",
+    byproducts: { bearHide: 2, bearSinew: 1 }, statusOnHit: { id: "stun", durationMs: 850 }, statusEvery: 3 },
 
   southGoblin: { name: "독침 고블린", species: "goblin", variant: "독침 사수", glyph: "G", maxHp: 19, damage: 4, range: 21, speed: 10, attackMs: 1080, color: "#6fa66d", statusOnHit: { id: "poison", stacks: 1 } },
   southOrc: { name: "덩굴갑주 오크", species: "orc", variant: "재생 갑주", glyph: "O", maxHp: 31, damage: 6, range: 8, speed: 6, attackMs: 1390, armor: 0.14, hpRegen: 0.2, color: "#638f63" },
@@ -384,7 +550,8 @@ export const ENCOUNTER_DEFS = {
   manaWraiths: { name: "마나 고블린 술사대", glyph: "!", enemies: ["westGoblin", "westGoblin", "westWolf"], scrap: 5 },
   ruinWardenPack: { name: "폐서약당 룬갑주", glyph: "☠", enemies: ["westBear", "westOrc", "westGoblin"], scrap: 12, boss: true },
   duneTyrantPack: { name: "유리사의 사구 큰곰", glyph: "☠", enemies: ["centralBear", "centralOrc", "centralGoblin"], scrap: 11, boss: true },
-  frostColossusPack: { name: "빙맥 큰곰", glyph: "☠", enemies: ["northBear", "northOrc", "northGoblin"], scrap: 13, boss: true }
+  frostColossusPack: { name: "빙맥 큰곰", glyph: "☠", enemies: ["northBear", "northOrc", "northGoblin"], scrap: 13, boss: true },
+  frostTitanLair: { name: "설산의 타이탄", glyph: "☠", enemies: ["northTitan"], scrap: 24, boss: true, regionBoss: true }
 };
 
 function mulberry32(seed) {
@@ -821,6 +988,8 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
     poisonDamage: Math.max(definition.poisonDamage || 0, secondary?.poisonDamage || 0),
     statusOnHit: definition.statusOnHit ? { ...definition.statusOnHit } : null,
     statusEvery: Math.max(1, Number(definition.statusEvery || 1)),
+    // 필드 보스가 죽을 때 확정으로 주는 재료(docs/EQUIPMENT_DESIGN.md §5).
+    byproducts: definition.byproducts ? { ...definition.byproducts } : null,
     attackCount: 0,
     lifeSteal: definition.lifeSteal || 0,
     finisher: definition.finisher || 1,
@@ -834,6 +1003,12 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
     boss: Boolean(definition.boss),
     // 보스 패턴 목록. 있으면 평타 대신 예고 장판을 깐다.
     patterns: [...(definition.patterns || [])],
+    // HP 50%에서 열리는 패턴. extend는 추가, replace는 교체(docs/BOSS_DESIGN.md).
+    phase2Patterns: [...(definition.phase2Patterns || [])],
+    phaseMode: definition.phaseMode || "extend",
+    phase2Form: definition.phase2Form || null,
+    phase: 1,
+    form: null,
     patternReadyAt: {},
     castingUntil: 0,
     lastHit: 0,
@@ -1452,6 +1627,7 @@ export function tickAutoBattle(battle, deltaMs) {
     // 보스 패턴은 평타보다 우선한다. 시전 중에는 이동도 평타도 하지 않는다 —
     // 예고와 본체 행동이 겹치면 무엇을 보고 피해야 할지 알 수 없어진다.
     if (actor.patterns?.length) {
+      updateBossPhase(battle, actor);
       if ((actor.castingUntil || 0) > battle.elapsed) {
         actor.telegraphTargetId = null;
         continue;
@@ -2353,6 +2529,18 @@ export function completeBattle(run) {
   if (feature) feature.cleared = true;
   run.cargo.scrap += battle.rewardScrap;
   run.encountersWon += 1;
+
+  // 필드 보스 부산물. 전설 장비 제작의 핵심 재료다(docs/EQUIPMENT_DESIGN.md §5).
+  // 완제품을 확률로 떨구는 게 아니라 부산물을 확정 지급하고 고정 조합표로 가공하는
+  // 구조라, 여기서는 드랍 굴림을 하지 않는다.
+  for (const enemy of battle.enemies) {
+    if (enemy.hp > 0 || !enemy.byproducts) continue;
+    for (const [materialId, amount] of Object.entries(enemy.byproducts)) {
+      run.cargo.materials[materialId] = (run.cargo.materials[materialId] || 0) + amount;
+    }
+    pushBattleLog(battle, `${enemy.name}에게서 부산물을 회수했다.`);
+  }
+
   const xp = battle.boss ? 12 : 4;
   for (const unitId of run.party || []) run.unitXp[unitId] = (run.unitXp[unitId] || 0) + xp;
   run.commanderXp = (run.commanderXp || 0) + xp;

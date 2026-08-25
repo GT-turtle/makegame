@@ -341,7 +341,13 @@ export const MATERIAL_DEFS = {
   venomSac: { id: "venomSac", name: "맹독낭", glyph: "♢", category: "special", description: "독성 생물에게서 얻는 고농축 약재" },
   sunShard: { id: "sunShard", name: "태양 파편", glyph: "☀", category: "special", description: "강한 열과 빛을 품은 사막의 특수 소재" },
   sporeGland: { id: "sporeGland", name: "심층 포자샘", glyph: "●", category: "special", description: "남부 심층 생물의 희귀 약재" },
-  watcherEye: { id: "watcherEye", name: "감시자의 수정안", glyph: "◈", category: "special", description: "오염을 감지하는 우두머리의 특수 기관" }
+  watcherEye: { id: "watcherEye", name: "감시자의 수정안", glyph: "◈", category: "special", description: "오염을 감지하는 우두머리의 특수 기관" },
+
+  // 필드 보스 부산물(docs/EQUIPMENT_DESIGN.md §9). 전설 장비 제작의 재료가 된다.
+  // 보스마다 2종씩 나오며, 여러 보스의 부산물을 섞는 고정 조합표를 쓴다(§5).
+  // 지금은 북부 설원 거대 곰 것만 있고 나머지 보스는 순차적으로 추가한다.
+  bearHide: { id: "bearHide", name: "설원곰 가죽", glyph: "▨", category: "special", description: "북부 거대 곰의 두꺼운 방한 가죽. 중갑·경갑·천 어디에도 쓰인다" },
+  bearSinew: { id: "bearSinew", name: "설원곰 힘줄", glyph: "≈", category: "special", description: "질기고 탄력 있는 힘줄. 경량 장비의 뼈대가 된다" }
 };
 
 // 약초학자가 소비할 수 있는 약초 계열 원재료 목록 (일반 약초 + 지역별 특산 약초)
