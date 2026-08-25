@@ -22,6 +22,9 @@ import {
   enterRunDungeon,
   enterRunSettlement,
   explorationPath,
+  BOSS_PATTERN_DEFS,
+  PLAYER_DODGE_DEFS,
+  playerDodgeDefinition,
   issuePlayerAction,
   issueBattleCommand,
   leaveRunSettlement,
@@ -1041,6 +1044,100 @@ test("직업과 일치하는 무기는 보너스를 주지만, 다른 직업 무
   const necroBareStats = playerCombatStats(createDefaultCommander(), "heavyNecromancer");
   assert.ok(necroStats.cooldownReduction > necroBareStats.cooldownReduction, "네크로맨서 무기는 스킬 재사용 대기시간을 줄인다");
   assert.equal(necroStats.cooldownMultiplier, 1 - necroStats.cooldownReduction);
+});
+
+test("보스는 예고 장판을 깔고, 예고 시간이 지나야 터진다", () => {
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242 });
+  const boss = battle.enemies.find((enemy) => enemy.patterns?.length);
+  assert.ok(boss, "빙맥 큰곰은 패턴을 가진 보스다");
+
+  // 장판이 깔릴 때까지 진행
+  let guard = 0;
+  while (!battle.zones.length && guard++ < 200) tickAutoBattle(battle, 100);
+  assert.equal(battle.zones.length, 1, "예고 장판이 깔린다");
+
+  const zone = battle.zones[0];
+  const pattern = BOSS_PATTERN_DEFS[zone.patternId];
+  assert.equal(zone.fireAt - zone.bornAt, pattern.telegraphMs, "예고 시간만큼 떠 있는다");
+
+  // 예고 중에는 아직 피해가 없다.
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const hpBefore = player.hp;
+  tickAutoBattle(battle, 100);
+  assert.equal(player.hp, hpBefore, "예고만 떠 있는 동안에는 피해가 없다");
+
+  // 시전 중에는 보스가 움직이지 않는다 — 예고와 본체 행동이 겹치면 안 된다.
+  assert.ok(boss.castingUntil > battle.elapsed, "시전 중 상태가 유지된다");
+
+  // 예고가 끝나면 터지고 사라진다.
+  while (battle.zones.length && guard++ < 400) tickAutoBattle(battle, 100);
+  assert.equal(battle.zones.length, 0, "터진 장판은 사라진다");
+});
+
+test("예고를 보고 걸어 나가면 장판을 피할 수 있다", () => {
+  // 이 관계가 패턴 난이도의 기준이다: 예고 시간 × 이동속도 > 반경 이어야
+  // "보고 피하는" 게 성립한다.
+  const pattern = BOSS_PATTERN_DEFS.groundSlam;
+
+  const run = (evade) => {
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242 });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.hp = player.maxHp = 9999; // 장판 피해만 보려고 죽지 않게 한다
+    let hits = 0;
+    for (let t = 0; t < 400 && battle.status === "active"; t += 1) {
+      if (evade && battle.zones.length) steerBattlePlayer(battle, 1, 0);
+      tickAutoBattle(battle, 100);
+      hits += battle.log.filter((line) => /대지 강타: 개척자/.test(line.text || line)).length;
+      battle.log = battle.log.filter((line) => !/대지 강타: 개척자/.test(line.text || line));
+      player.hp = 9999;
+    }
+    return hits;
+  };
+
+  const reach = 17 * (pattern.telegraphMs / 1000);
+  assert.ok(reach > pattern.radius,
+    `예고 동안 이동 가능 거리(${reach.toFixed(1)})가 반경(${pattern.radius})보다 커야 피할 수 있다`);
+
+  const still = run(false);
+  const moving = run(true);
+  assert.ok(still > 0, "가만히 서 있으면 맞는다");
+  assert.ok(moving < still, `걸어 나가면 덜 맞아야 한다 (가만히 ${still} vs 이동 ${moving})`);
+});
+
+test("회피 버튼은 크루세이더만 방패 막기이고 나머지는 이동기다", () => {
+  assert.equal(playerDodgeDefinition("spiritCrusader").type, "block");
+  assert.equal(playerDodgeDefinition("heavyCrusader").type, "block");
+  assert.equal(playerDodgeDefinition("heavyTracker").type, "dash");
+  assert.equal(playerDodgeDefinition("archeryMaehwa").type, "dash");
+
+  // 막기는 이동하지 않는 대신 더 많이 줄여준다 — 역할이 겹치지 않게.
+  const block = PLAYER_DODGE_DEFS.block;
+  const dash = PLAYER_DODGE_DEFS.dash;
+  assert.ok(block.reduction > dash.reduction, "막기가 더 많이 줄여준다");
+  assert.ok(!block.distance, "막기는 이동하지 않는다");
+  assert.ok(dash.distance > 0, "이동기는 실제로 움직인다");
+
+  const gearUpKit = (kitId) => {
+    const commander = createDefaultCommander();
+    commander.combatKitId = kitId;
+    return createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 7, commander });
+  };
+
+  // 이동기는 실제로 위치를 바꾼다.
+  const dashBattle = gearUpKit("heavyTracker");
+  const dashPlayer = dashBattle.units.find((unit) => unit.id === dashBattle.playerId);
+  steerBattlePlayer(dashBattle, 1, 0);
+  const fromX = dashPlayer.x;
+  issuePlayerAction(dashBattle, "dodge");
+  assert.ok(dashPlayer.x > fromX, "회피 기동은 바라보는 방향으로 이동시킨다");
+
+  // 막기는 위치를 바꾸지 않는다.
+  const blockBattle = gearUpKit("spiritCrusader");
+  const blockPlayer = blockBattle.units.find((unit) => unit.id === blockBattle.playerId);
+  steerBattlePlayer(blockBattle, 1, 0);
+  const blockX = blockPlayer.x;
+  issuePlayerAction(blockBattle, "dodge");
+  assert.equal(blockPlayer.x, blockX, "방패 막기는 제자리에서 버틴다");
 });
 
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {

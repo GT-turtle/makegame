@@ -78,6 +78,115 @@ export const FIELD_BOUNDS = { minX: 5, maxX: 395, minY: 8, maxY: 292 };
 export const FIELD_AGGRO_RADIUS = 26;
 
 export const ATTACK_TELEGRAPH_MS = 320;
+
+// 회피 버튼의 성격은 직업마다 다르다.
+// 크루세이더는 방패를 세워 버티고(이동 없음, 대신 감소량이 크고 오래간다),
+// 나머지는 앞으로 파고드는 이동기다(예고 장판을 보고 빠져나오는 용도).
+//
+// 이동 거리와 감소량은 서로 맞바꾼 값이다 — 이동으로 피할 수 있으면 감소가 덜 필요하고,
+// 못 피하는 대신 버티는 쪽은 감소가 커야 한다.
+export const PLAYER_DODGE_DEFS = {
+  block: {
+    type: "block", name: "방패 막기", durationMs: 1500, reduction: 0.85, cooldownMs: 4200,
+    logSuffix: "방패를 세워 받는 피해를 크게 줄인다"
+  },
+  dash: {
+    type: "dash", name: "회피 기동", durationMs: 900, reduction: 0.7, cooldownMs: 4200,
+    distance: 24, logSuffix: "앞으로 파고들며 잠시 피해 감소"
+  }
+};
+
+// 크루세이더 계열(기본 직업이 crusader)만 방패 막기를 쓴다.
+export function playerDodgeDefinition(kitId) {
+  const baseClassId = kitId ? playerKitDefinition(kitId).baseClassId : null;
+  return baseClassId === "crusader" ? PLAYER_DODGE_DEFS.block : PLAYER_DODGE_DEFS.dash;
+}
+
+// ── 보스 패턴 ────────────────────────────────────────────────────────────────
+//
+// 보스 공격의 핵심은 **예고 장판**이다. 바닥에 위험 지역을 미리 띄우고 일정 시간 뒤에
+// 터뜨린다. 플레이어는 그 사이에 걸어 나가거나 회피기로 빠져나온다.
+// 그래서 "다가와서 때린다"가 아니라 "예고를 보고 피한다"가 된다.
+//
+// 패턴은 코드가 아니라 데이터다. 새 보스는 여기서 패턴 id만 골라 담으면 된다.
+export const BOSS_PATTERN_DEFS = {
+  groundSlam: {
+    id: "groundSlam", name: "대지 강타", kind: "circle",
+    // 예고 시간 × 플레이어 이동속도(17)가 "도망칠 수 있는 거리"다.
+    // 반경 15 < 도달 거리 17.9라서 보고 걸어 나가면 빠져나올 수 있고,
+    // 가만히 서 있으면 반드시 맞는다. 이 관계가 패턴 난이도의 기준이다.
+    telegraphMs: 1050,
+    radius: 15,
+    damageMultiplier: 1.7,
+    cooldownMs: 6200,
+    // 플레이어의 현재 위치에 깔린다. 예고 중에 움직이면 피해진다.
+    aim: "target"
+  }
+};
+
+export function bossPatternDefinition(patternId) {
+  return BOSS_PATTERN_DEFS[patternId] || null;
+}
+
+// 보스가 지금 쓸 수 있는 패턴을 고른다. 패턴마다 개별 쿨다운이 있어서
+// 같은 패턴이 연달아 나오지 않는다.
+function pickBossPattern(battle, actor) {
+  const ready = (actor.patterns || [])
+    .map((patternId) => BOSS_PATTERN_DEFS[patternId])
+    .filter((pattern) => pattern && (actor.patternReadyAt?.[pattern.id] || 0) <= battle.elapsed);
+  if (!ready.length) return null;
+  return ready[Math.floor(battleRoll(battle) * ready.length) % ready.length];
+}
+
+// 예고 장판을 깐다. 이 시점에는 피해가 없고, fireAt이 되어야 터진다.
+function spawnBossZone(battle, actor, pattern, target) {
+  const center = pattern.aim === "self" ? actor : target;
+  battle.zones.push({
+    id: `zone-${battle.zoneSeq = (battle.zoneSeq || 0) + 1}`,
+    ownerId: actor.id,
+    patternId: pattern.id,
+    name: pattern.name,
+    kind: pattern.kind,
+    x: center.x,
+    y: center.y,
+    radius: pattern.radius,
+    damageMultiplier: pattern.damageMultiplier,
+    status: pattern.status || null,
+    bornAt: battle.elapsed,
+    fireAt: battle.elapsed + pattern.telegraphMs
+  });
+  actor.patternReadyAt ||= {};
+  actor.patternReadyAt[pattern.id] = battle.elapsed + pattern.cooldownMs;
+  // 시전 중에는 움직이거나 평타를 치지 않는다 — 예고와 본체 행동이 겹치면
+  // 무엇을 보고 피해야 하는지 알 수 없게 된다.
+  actor.castingUntil = battle.elapsed + pattern.telegraphMs;
+  pushBattleLog(battle, `${actor.name}: ${pattern.name} 준비`);
+}
+
+// 시간이 된 장판을 터뜨린다. 범위 안에 있는 플레이어·동료가 맞는다.
+function advanceBossZones(battle) {
+  if (!battle.zones?.length) return;
+  const remaining = [];
+  for (const zone of battle.zones) {
+    if (battle.elapsed < zone.fireAt) { remaining.push(zone); continue; }
+
+    const owner = battle.enemies.find((enemy) => enemy.id === zone.ownerId);
+    const hit = living(battle.units).filter((unit) => distanceBetween(zone, unit) <= zone.radius);
+    if (owner) {
+      for (const unit of hit) {
+        // 회피 중이면 장판도 회피 감소를 받는다(방패 막기로 버티는 선택지가 살아 있게).
+        const dodging = unit.id === battle.playerId && battle.playerDodgeUntil > battle.elapsed;
+        const reduction = dodging ? 1 - playerDodgeDefinition(battle.playerKitId).reduction : 1;
+        const damage = damageCombatant(owner, unit, zone.damageMultiplier * reduction);
+        if (zone.status) applyCombatStatus(battle, unit, zone.status, owner);
+        if (unit.id === battle.playerId) battle.playerHitFlash = battle.elapsed;
+        pushBattleLog(battle, `${zone.name}: ${unit.name}이 ${damage} 피해`);
+      }
+    }
+    if (!hit.length) pushBattleLog(battle, `${zone.name}: 아무도 맞지 않았다`);
+  }
+  battle.zones = remaining;
+}
 export const PARTY_LIMIT = 2;
 // Scales each companion's own maxHp/damage by the player's level growth rate, so their
 // power tracks the player live instead of an independent per-companion level table.
@@ -232,7 +341,7 @@ export const ENEMY_COMBATANTS = {
   northGoblin: { name: "북부 홉고블린", species: "goblin", variant: "대형종", glyph: "G", maxHp: 29, damage: 7, range: 8, speed: 7, attackMs: 1380, armor: 0.08, color: "#789db0" },
   northOrc: { name: "서리갑주 오크", species: "orc", variant: "빙철 갑주", glyph: "O", maxHp: 34, damage: 7, range: 8, speed: 6, attackMs: 1460, armor: 0.16, color: "#7292a3", statusOnHit: { id: "frost", stacks: 1 }, statusEvery: 2 },
   northWolf: { name: "설원 늑대", species: "wolf", variant: "빙결 송곳니", glyph: "Λ", maxHp: 21, damage: 5, range: 7, speed: 13, attackMs: 1020, color: "#8cb9cd", statusOnHit: { id: "frost", stacks: 1 }, statusEvery: 3 },
-  northBear: { name: "빙맥 큰곰", species: "bear", variant: "빙맥 우두머리", glyph: "B", maxHp: 96, damage: 11, range: 9, speed: 4, attackMs: 1650, armor: 0.12, color: "#79aec7", boss: true, statusOnHit: { id: "stun", durationMs: 850 }, statusEvery: 3 },
+  northBear: { name: "빙맥 큰곰", species: "bear", variant: "빙맥 우두머리", glyph: "B", maxHp: 96, damage: 11, range: 9, speed: 4, attackMs: 1650, armor: 0.12, color: "#79aec7", boss: true, patterns: ["groundSlam"], statusOnHit: { id: "stun", durationMs: 850 }, statusEvery: 3 },
 
   southGoblin: { name: "독침 고블린", species: "goblin", variant: "독침 사수", glyph: "G", maxHp: 19, damage: 4, range: 21, speed: 10, attackMs: 1080, color: "#6fa66d", statusOnHit: { id: "poison", stacks: 1 } },
   southOrc: { name: "덩굴갑주 오크", species: "orc", variant: "재생 갑주", glyph: "O", maxHp: 31, damage: 6, range: 8, speed: 6, attackMs: 1390, armor: 0.14, hpRegen: 0.2, color: "#638f63" },
@@ -723,6 +832,10 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
     x: unitSide ? 14 : 86,
     y: unitSide ? unitY : enemyY,
     boss: Boolean(definition.boss),
+    // 보스 패턴 목록. 있으면 평타 대신 예고 장판을 깐다.
+    patterns: [...(definition.patterns || [])],
+    patternReadyAt: {},
+    castingUntil: 0,
     lastHit: 0,
     telegraphTargetId: null,
     statuses: {},
@@ -833,7 +946,10 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     obstacles: (options.obstacles || []).map((obstacle) => ({ ...obstacle })),
     triggers: (options.triggers || []).map((trigger) => ({ ...trigger, fired: false })),
     pendingTrigger: null,
-    blockedTrigger: null
+    blockedTrigger: null,
+    // 보스가 깔아둔 예고 장판. 시간이 되면 터지고 사라진다.
+    zones: [],
+    zoneSeq: 0
   };
 }
 
@@ -1294,6 +1410,7 @@ export function tickAutoBattle(battle, deltaMs) {
   }
   wakeNearbyFieldGroups(battle);
   checkFieldTriggers(battle);
+  advanceBossZones(battle);
   for (const actor of all) {
     if (actor.hp <= 0) continue;
     // 아직 안 깨어난 무리는 시간도 흐르지 않는다 — 쿨다운·재생이 진행되면
@@ -1331,6 +1448,22 @@ export function tickAutoBattle(battle, deltaMs) {
     }
     target ||= nearestTarget(actor, targets);
     const distance = distanceBetween(target, actor);
+
+    // 보스 패턴은 평타보다 우선한다. 시전 중에는 이동도 평타도 하지 않는다 —
+    // 예고와 본체 행동이 겹치면 무엇을 보고 피해야 할지 알 수 없어진다.
+    if (actor.patterns?.length) {
+      if ((actor.castingUntil || 0) > battle.elapsed) {
+        actor.telegraphTargetId = null;
+        continue;
+      }
+      const pattern = pickBossPattern(battle, actor);
+      if (pattern) {
+        spawnBossZone(battle, actor, pattern, target);
+        actor.telegraphTargetId = null;
+        continue;
+      }
+    }
+
     const chargeBoost = actor.team === "unit" && battle.command.chargeUntil > battle.elapsed;
     if (distance > actor.range) {
       actor.telegraphTargetId = null;
@@ -1349,7 +1482,9 @@ export function tickAutoBattle(battle, deltaMs) {
     if (actor.cooldown > 0) continue;
     const dodging = target.id === battle.playerId && battle.playerDodgeUntil > battle.elapsed;
     const personalDefense = (target.defenseUntil || 0) > battle.elapsed ? (target.defenseMultiplier || 0.55) : 1;
-    const guardReduction = (dodging ? 0.2 : target.team === "unit" && battle.command.guardUntil > battle.elapsed ? 0.5 : 1) * personalDefense;
+    // 회피 감소량은 직업별 회피 정의에서 온다(방패 막기가 이동기보다 더 줄여준다).
+    const dodgeReduction = 1 - playerDodgeDefinition(battle.playerKitId).reduction;
+    const guardReduction = (dodging ? dodgeReduction : target.team === "unit" && battle.command.guardUntil > battle.elapsed ? 0.5 : 1) * personalDefense;
     const armorReduction = 1 - effectiveArmor(target);
     const activeBuffs = actor.team === "unit"
       ? [battle.command.chargeUntil, battle.command.guardUntil, battle.command.focusUntil].filter((until) => until > battle.elapsed).length
@@ -2109,9 +2244,24 @@ export function issuePlayerAction(battle, action) {
   const player = battle.units.find((unit) => unit.id === battle.playerId && unit.hp > 0);
   if (!player || actorDisabled(player, battle) || (battle.playerReadyAt[action] || 0) > battle.elapsed) return false;
   if (action === "dodge") {
-    battle.playerDodgeUntil = battle.elapsed + 1050;
-    battle.playerReadyAt.dodge = battle.elapsed + 4200;
-    pushBattleLog(battle, "개척자 회피: 잠시 받는 피해 80% 감소");
+    const dodge = playerDodgeDefinition(battle.playerKitId);
+    battle.playerDodgeUntil = battle.elapsed + dodge.durationMs;
+    battle.playerReadyAt.dodge = battle.elapsed + dodge.cooldownMs;
+
+    if (dodge.type === "dash") {
+      // 바라보는 방향으로 즉시 이동한다. 예고 장판에서 빠져나오는 게 주 용도라
+      // 이동은 즉발이어야 한다 — 이동하는 동안 장판이 터지면 회피의 의미가 없다.
+      const facing = battle.playerFacing || 0;
+      const moved = resolveMove(
+        battle,
+        player.x + Math.cos(facing) * dodge.distance,
+        player.y + Math.sin(facing) * dodge.distance
+      );
+      player.x = moved.x;
+      player.y = moved.y;
+      player.moveTarget = null;
+    }
+    pushBattleLog(battle, `${dodge.name}: ${dodge.logSuffix}`);
     return true;
   }
   const target = battle.enemies.find((enemy) => enemy.id === battle.playerTargetId && enemy.hp > 0)

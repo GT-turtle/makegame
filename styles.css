@@ -4006,3 +4006,26 @@ body.battle-active .modal-wrap { z-index: 3200; }
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-4px); }
 }
+
+/* 보스 예고 장판. 바깥 테두리는 위험 범위, 안쪽 원은 남은 시간을 나타낸다.
+   안쪽이 바깥까지 차오르면 터진다 — 그 전에 원 밖으로 나가야 한다. */
+.battle-zone {
+  position: absolute;
+  aspect-ratio: 1 / 0.62;
+  transform: translate(-50%, -50%);
+  border: 2px solid rgba(224, 106, 90, 0.85);
+  border-radius: 50%;
+  background: rgba(224, 90, 74, 0.14);
+  pointer-events: none;
+}
+
+.battle-zone i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(var(--zone-progress, 0) * 100%);
+  height: calc(var(--zone-progress, 0) * 100%);
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(224, 90, 74, 0.42);
+}

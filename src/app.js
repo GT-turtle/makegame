@@ -1365,6 +1365,21 @@ function battleProjection(entity, battle) {
 
 // 장애물·지점 트리거는 전투 유닛과 같은 투영 함수를 쓴다 — 카메라가 이미
 // 플레이어 상대 좌표로 그리기 때문에, 넓은 필드에서도 좌표만 넘기면 맞게 놓인다.
+// 보스 예고 장판. 안쪽 원이 차오르는 걸 보고 터지기 전에 빠져나오는 게 핵심이라
+// 진행도(0~1)를 CSS 변수로 넘겨 채워지는 정도를 그린다.
+function battleZones(battle) {
+  if (!battle.zones?.length) return "";
+  return battle.zones.map((zone) => {
+    const projection = battleProjection(zone, battle);
+    if (!projection.visible) return "";
+    const span = Math.max(1, zone.fireAt - zone.bornAt);
+    const progress = Math.max(0, Math.min(1, (battle.elapsed - zone.bornAt) / span));
+    // 장애물과 같은 계수를 써야 화면 크기가 실제 판정 반경과 맞는다.
+    const width = zone.radius * 2 * 0.72 * (projection.scale / 0.9);
+    return `<div class="battle-zone" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;--zone-progress:${progress.toFixed(3)};z-index:${projection.z - 2}"><i></i></div>`;
+  }).join("");
+}
+
 function battleObstacles(battle) {
   if (!battle.obstacles?.length) return "";
   return battle.obstacles.map((obstacle) => {
@@ -1524,6 +1539,7 @@ function battleScreen(state, defenseMode = false) {
         ${battlePartyRail(battle)}
         ${battleRadar(battle)}
         ${battleObstacles(battle)}
+        ${battleZones(battle)}
         ${battleTriggers(battle)}
         ${[...battle.units, ...battle.enemies].map((entity) => battleEntity(entity, battle)).join("")}
         ${joystickControl("combat")}
