@@ -532,6 +532,48 @@ function tickLegendaryEffects(battle, step) {
   }
 }
 
+// ── 서부 저주 ────────────────────────────────────────────────────────────────
+//
+// 서부를 탐사하는 동안 **동료에게** 저주가 쌓인다(REGION_PROGRESSION_HAZARDS.md 서부).
+// 한계에 닿아도 적으로 돌아서지는 않는다 — 팀 판정이 배열 소속이라 동료를 적으로
+// 옮기면 "내 동료를 내가 죽여야 이기는" 구도가 되기 때문이다. 대신 두 단계를 거친다:
+//
+//   공포(경고)  : 잠시 무력화된다. 시간이 지나면 회복한다.
+//   이탈(결과)  : 전장을 벗어난다. 남은 전투를 수적 열세로 치른다.
+//
+// 공포를 경고로 두는 건 이 게임이 보스 패턴을 전부 "예고 → 결과"로 짠 것과 같은
+// 이유다. 동료를 잃기 전에 물러나거나 대응 장신구를 낄 판단 시점이 생긴다.
+//
+// 플레이어 본인은 저주에 걸리지 않는다 — 플레이어가 무력화되면 조작할 게 없어진다.
+function accumulateCurse(battle, counter) {
+  battle.curse ||= {};
+  const companions = living(battle.units).filter((unit) => unit.id !== battle.playerId);
+
+  for (const unit of companions) {
+    const before = battle.curse[unit.id] || 0;
+    const now = before + counter.perTick;
+    battle.curse[unit.id] = now;
+
+    // 이탈: 배열에서 빼기만 한다. 플레이어가 남아 있어 패배 판정은 유지되고,
+    // 승리 조건은 적만 보므로 안전하다. 죽은 게 아니라 이탈이므로 사상자가 아니다.
+    if (now >= counter.fleeAt) {
+      battle.units = battle.units.filter((entry) => entry.id !== unit.id);
+      battle.fledUnits ||= [];
+      battle.fledUnits.push(unit.id);
+      delete battle.curse[unit.id];
+      pushBattleLog(battle, `${unit.name}이 저주를 견디지 못하고 전장을 벗어났다.`);
+      continue;
+    }
+
+    // 공포: 임계를 처음 넘는 순간에만 건다. 매 tick 다시 걸면 회복할 틈이 없다.
+    if (now >= counter.fearAt && before < counter.fearAt) {
+      unit.statuses ||= {};
+      unit.statuses.stun = { id: "stun", expiresAt: battle.elapsed + counter.fearMs, stacks: 1 };
+      pushBattleLog(battle, `${unit.name}이 저주에 질려 몸이 굳었다.`);
+    }
+  }
+}
+
 // 플레이어가 적을 때릴 때의 전설 고유효과. 기본 공격 경로와 AI 경로가 갈려 있어
 // 양쪽에서 같은 함수를 부르도록 모아뒀다.
 
@@ -733,7 +775,10 @@ export const WORLD_REGION_DEFS = {
     id: "west", direction: "서부", name: "서부 제후국", subtitle: "기사와 마나, 정령의 봉건령",
     description: "석성 사이에 오래된 계약과 마력 유적이 남아 있다. 서약은 정의가 아니라 힘을 빌리는 방식이다.",
     glyph: "♜", accent: "#c6a66b", danger: "위험 2", pressure: "마력 이상", mapX: 18, mapY: 51,
-    hazard: { name: "마력 이상", glyph: "✦", description: "불안정한 마력이 방어를 뚫고 피해를 준다.", techniqueId: "oath" },
+    // 서부는 저주가 동료에게 누적된다(REGION_PROGRESSION_HAZARDS.md 서부).
+    // 한계에 닿으면 적으로 돌아서는 게 아니라 공포 → 전장 이탈 두 단계를 거친다.
+    hazard: { name: "저주", glyph: "✦", description: "저주가 동료에게 스며든다. 한계에 닿으면 전장을 벗어난다.", techniqueId: "oath",
+      counterEffect: { type: "curse", perTick: 12, fearAt: 60, fleeAt: 100, fearMs: 2600, resistedAt: 4 } },
     enemyPool: ["thornBeasts", "oathbreakers", "manaWraiths"], fieldBossPool: ["westDurahanLair", "westLichLair", "westDragonLair"], villageName: "변경 순례촌", dungeonName: "무너진 서약당", dungeonGlyph: "✧",
     bossEncounterId: "ruinWardenPack", defenseEncounterId: "oathbreakers", rewardMaterial: "manaStone", rewardAmount: 2,
     recruits: ["oath_knight", "mana_weaver", "spirit_ranger"], techniqueId: "oath"
@@ -2233,6 +2278,8 @@ export function tickAutoBattle(battle, deltaMs) {
           unit.mana = Math.max(0, unit.mana - Math.max(1, Math.round(unit.maxMana * counter.ratio)));
         }
         pushBattleLog(battle, `${battle.hazard.name}: 마력 순환이 굳어 마나가 빠져나간다`);
+      } else if (counter.type === "curse") {
+        accumulateCurse(battle, counter);
       }
     }
 

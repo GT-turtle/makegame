@@ -1859,6 +1859,101 @@ test("주술 공명반지는 스킬을 쓸 때 마나를 채워준다", () => {
   assert.ok(measure("resonanceRing") > 0, "반지를 끼면 마나를 채워준다");
 });
 
+test("서부 저주는 동료를 공포로 묶었다가 전장에서 이탈시킨다", () => {
+  // 적대화(적 진영 전환)는 채택하지 않았다 - 팀 판정이 battle.units/enemies 배열
+  // 소속이라 동료를 적으로 옮기면 "내 동료를 내가 죽여야 이기는" 구도가 된다.
+  const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
+    { rollSeed: 3, regionId: "west" });
+  assert.equal(battle.hazard.counterEffect.type, "curse", "서부 환경은 저주다");
+
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+  for (const enemy of battle.enemies) enemy.dormant = true;
+
+  const startCompanions = battle.units.length - 1;
+  assert.ok(startCompanions >= 2, "동료가 둘 이상 있다");
+
+  let fearAt = null;
+  let fleeAt = null;
+  for (let t = 0; t < 600; t += 1) {
+    tickAutoBattle(battle, 100);
+    player.hp = 99999;
+    if (fearAt === null && battle.log.some((line) => /몸이 굳었다/.test(line.text || line))) fearAt = battle.elapsed;
+    if (fleeAt === null && battle.log.some((line) => /전장을 벗어났다/.test(line.text || line))) fleeAt = battle.elapsed;
+    battle.log = [];
+  }
+
+  assert.ok(fearAt !== null, "먼저 공포가 온다");
+  assert.ok(fleeAt !== null, "그 다음 이탈한다");
+  assert.ok(fearAt < fleeAt, "공포가 이탈보다 먼저다(경고 -> 결과)");
+
+  assert.equal(battle.units.length - 1, 0, "동료가 전부 이탈했다");
+  assert.equal(battle.fledUnits.length, startCompanions);
+
+  // 플레이어는 남는다 - 무력화되면 조작할 게 없어진다.
+  assert.ok(battle.units.some((unit) => unit.id === battle.playerId), "플레이어는 이탈하지 않는다");
+});
+
+test("동료가 이탈해도 승패 판정이 정상 동작한다", () => {
+  // 이탈은 배열에서 빼기만 한다. 플레이어가 남아 있어 패배 판정이 유지되고
+  // 승리 조건은 적만 보므로 안전하다.
+  const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
+    { rollSeed: 3, regionId: "west" });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+  for (const enemy of battle.enemies) enemy.dormant = true;
+
+  for (let t = 0; t < 600 && battle.units.length > 1; t += 1) {
+    tickAutoBattle(battle, 100);
+    player.hp = 99999;
+  }
+  assert.equal(battle.units.length, 1, "플레이어만 남았다");
+  assert.equal(battle.status, "active", "동료가 다 빠져도 패배가 아니다");
+
+  // 적을 전멸시키면 승리한다.
+  for (const enemy of battle.enemies) enemy.hp = 0;
+  tickAutoBattle(battle, 100);
+  assert.equal(battle.status, "victory");
+});
+
+test("저주는 대응 수치가 충분하면 아예 걸리지 않는다", () => {
+  const measure = (mitigation) => {
+    const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
+      { rollSeed: 3, regionId: "west", hazardMitigation: mitigation });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 99999;
+    for (const enemy of battle.enemies) enemy.dormant = true;
+    for (let t = 0; t < 600; t += 1) { tickAutoBattle(battle, 100); player.hp = 99999; }
+    return (battle.fledUnits || []).length;
+  };
+  assert.ok(measure(0) > 0, "대응이 없으면 이탈한다");
+  assert.equal(measure(4), 0, "대응 수치를 갖추면 이탈하지 않는다");
+});
+
+test("지역별 필드 진행 순서가 문서와 일치한다", () => {
+  // REGION_PROGRESSION_HAZARDS.md §2 확정 표.
+  const expected = {
+    northLich: 1, northBear: 2, northWarchief: 3,
+    southSerpent: 1, southSpider: 2, southStarSpawn: 3,
+    eastFox: 1, eastOni: 2, eastCentipede: 3,
+    westDurahan: 1, westDragon: 2, westLich: 3,
+    centralSandworm: 1, centralManticore: 2, centralGolem: 3
+  };
+  for (const [id, tier] of Object.entries(expected)) {
+    assert.equal(ENEMY_COMBATANTS[id]?.fieldTier, tier, `${id}는 ${tier}필드`);
+  }
+
+  // 1필드 보스는 그 지역의 진행용 핵심 소재를 반드시 떨군다.
+  const keyMaterials = {
+    northLich: "frostCore", southSerpent: "venomSac", eastFox: "spiritCore",
+    westDurahan: "durahanSoul", centralSandworm: "wormCore"
+  };
+  for (const [id, materialId] of Object.entries(keyMaterials)) {
+    assert.ok(ENEMY_COMBATANTS[id].byproducts?.[materialId],
+      `${id}는 진행용 핵심 소재 ${materialId}를 떨궈야 한다`);
+  }
+});
+
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {
   // 서부는 크루세이더·네크로맨서 두 직업의 출신지다.
   const first = dungeonClearRewards("west", 1, []);
