@@ -39,7 +39,7 @@ import {
   createFieldBattle,
   REGION_ARMOR_SET
 } from "../src/adventure.js";
-import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, playerCombatStats } from "../src/classes.js";
+import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, LEGENDARY_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, legendariesForRegion, legendaryCollection, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
 
 class MemoryStorage {
@@ -1049,6 +1049,91 @@ test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지
   // 지역마다 나오는 방어구 세트가 다르다.
   const centralSecond = dungeonClearRewards("central", 2, []);
   assert.notDeepEqual(centralSecond, westSet.pieces, "중부는 서부와 다른 세트를 준다");
+});
+
+test("전설 설계도는 일반 설계도를 다 받은 뒤 높은 회차에서만 나온다", () => {
+  const westSet = ARMOR_SET_DEFS[REGION_ARMOR_SET.west];
+  const allNormal = ["crusaderBastardSword", "necromancerArmorSword", ...westSet.pieces];
+
+  // 요구 회차 전에는 다 받았어도 전설이 나오지 않는다.
+  for (let clear = 1; clear < LEGENDARY_CLEAR_REQUIREMENT; clear++) {
+    const rewards = dungeonClearRewards("west", clear, allNormal);
+    assert.ok(
+      rewards.every((id) => !EQUIPMENT_DEFS[id]?.legendary),
+      `${clear}회차에는 전설이 나오면 안 된다`
+    );
+  }
+
+  const westLegendaries = legendariesForRegion("west").map((entry) => entry.id);
+  assert.equal(westLegendaries.length, 2, "서부는 두 직업 출신지라 전설도 둘이다");
+
+  // 한 번에 하나씩만 준다 — 둘 다 모으려면 더 돌아야 한다.
+  const fifth = dungeonClearRewards("west", LEGENDARY_CLEAR_REQUIREMENT, allNormal);
+  assert.equal(fifth.length, 1, "전설은 한 번에 하나만");
+  assert.ok(westLegendaries.includes(fifth[0]));
+
+  const sixth = dungeonClearRewards("west", LEGENDARY_CLEAR_REQUIREMENT + 1, [...allNormal, fifth[0]]);
+  assert.equal(sixth.length, 1);
+  assert.notEqual(sixth[0], fifth[0], "이미 받은 전설은 다시 나오지 않는다");
+
+  const done = dungeonClearRewards("west", 99, [...allNormal, ...westLegendaries]);
+  assert.deepEqual(done, [], "전설까지 다 모으면 설계도 보상이 끝난다");
+
+  // 다른 지역의 전설은 이 지역에서 나오지 않는다(지역색 유지).
+  assert.ok(!westLegendaries.includes("moya"), "동부 전설이 서부에서 나오면 안 된다");
+});
+
+test("전설 장비는 지역별로 흩어져 있고 컬렉션 진행도로 집계된다", () => {
+  const all = Object.values(LEGENDARY_DEFS);
+  const regions = new Set(all.map((entry) => entry.regionId));
+  assert.equal(regions.size, 5, "다섯 지역 전부에 전설이 하나 이상 있다");
+
+  // 전부 EQUIPMENT_DEFS에 합쳐져 있어야 제작·장착이 일반 장비와 같은 경로로 돈다.
+  for (const entry of all) {
+    assert.equal(EQUIPMENT_DEFS[entry.id], entry, `${entry.id}가 장비 목록에 등록돼야 한다`);
+    assert.ok(entry.materials && Object.keys(entry.materials).length, "제작 재료가 있다");
+  }
+
+  // 컬렉션은 "제작해서 보유한" 것만 센다 — 설계도만 받은 건 아직 모은 게 아니다.
+  const blueprintOnly = { unlockedBlueprints: all.map((entry) => entry.id), equipmentOwned: [] };
+  assert.equal(legendaryCollection(blueprintOnly).collectedCount, 0, "설계도만으로는 0");
+
+  const partial = legendaryCollection({ equipmentOwned: ["moya", "durandal", "notLegendary"] });
+  assert.equal(partial.collectedCount, 2, "전설이 아닌 장비는 세지 않는다");
+  assert.equal(partial.total, all.length);
+  assert.equal(partial.complete, false);
+
+  const full = legendaryCollection({ equipmentOwned: all.map((entry) => entry.id) });
+  assert.equal(full.complete, true);
+});
+
+test("전설 장비는 수치가 아니라 보너스 '조합'으로 차별화된다", () => {
+  // 사용자 제약: 선택·수집으로 인한 성능 차이는 크게 나지 않게.
+  // 그래서 전설은 개별 수치를 크게 올리는 대신, 일반 장비가 주지 않는
+  // 두 종류 이상의 보너스를 함께 준다.
+  for (const entry of Object.values(LEGENDARY_DEFS)) {
+    const kinds = Object.keys(entry.bonus || {});
+    assert.ok(kinds.length >= 2, `${entry.id}는 두 가지 이상의 보너스를 함께 준다`);
+
+    for (const [key, value] of Object.entries(entry.bonus)) {
+      // manaRegenBonus만 비율이 아닌 절대값이라 상한이 다르다.
+      const cap = key === "manaRegenBonus" ? 1 : 0.12;
+      assert.ok(value <= cap, `${entry.id}.${key}=${value}가 상한 ${cap}을 넘는다`);
+    }
+  }
+
+  // 전설 무기도 직업 제한을 그대로 받는다(직업군 차별을 만들지 않기 위해,
+  // 여섯 직업 각각에 하나씩 있고 장신구 하나만 공용이다).
+  const weapons = Object.values(LEGENDARY_DEFS).filter((entry) => entry.slot === "weapon");
+  const classIds = weapons.map((entry) => entry.baseClassId);
+  assert.equal(new Set(classIds).size, weapons.length, "한 직업이 전설 무기를 둘 갖지 않는다");
+  for (const classId of classIds) {
+    assert.ok(PLAYER_BASE_CLASS_DEFS[classId], `${classId}는 실제 기본 직업이어야 한다`);
+  }
+  assert.equal(
+    new Set(Object.keys(PLAYER_BASE_CLASS_DEFS)).size, weapons.length,
+    "모든 기본 직업이 전설 무기를 하나씩 갖는다"
+  );
 });
 
 test("던전 상자는 보스를 쓰러뜨리기 전에는 잠겨 있다", () => {

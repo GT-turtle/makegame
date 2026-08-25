@@ -1810,6 +1810,55 @@ button:disabled {
 .trait-choice strong { font-size: 11px; }
 .trait-choice small { color: var(--muted); font-size: 9px; }
 
+.equipment-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.equipment-card {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+}
+
+.equipment-card strong { font-size: 11px; }
+.equipment-card small { color: var(--muted); font-size: 9px; line-height: 1.4; }
+.equipment-card i { color: var(--gold); font-size: 9px; font-style: normal; }
+.equipment-card[disabled] { opacity: 0.45; }
+.equipment-card[disabled] i { color: var(--muted); }
+/* 장착 표시는 테두리가 아니라 왼쪽 띠로 준다 — 전설 테두리(금색)와 겹쳐 보이지 않게. */
+.equipment-card.selected {
+  border-color: var(--gold);
+  background: #272316;
+  box-shadow: inset 3px 0 0 var(--gold);
+  padding-left: 13px;
+}
+.equipment-card .equipment-set { color: #7fb2d8; }
+.equipment-card .equipment-lore { color: #6f6a5c; font-style: italic; }
+
+/* 전설은 색으로만 구분한다 — 수치가 아니라 조합이 다른 등급이라 과하게 강조하지 않는다. */
+.equipment-card.legendary { border-color: #a5762e; background: linear-gradient(180deg, #241d10, var(--panel)); }
+.equipment-card.legendary.selected { border-color: #e0a648; background: #2e2413; box-shadow: inset 3px 0 0 #e0a648; }
+.equipment-card .equipment-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 8px;
+  font-style: normal;
+  letter-spacing: 0.08em;
+  color: #e0a648;
+}
+
+.equipment-slot + .equipment-slot { margin-top: 4px; }
+
 .inventory-tray {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

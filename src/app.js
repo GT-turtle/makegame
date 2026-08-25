@@ -1,7 +1,7 @@
 import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
 import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency } from "./core.js";
 import { GameEngine } from "./game.js";
-import { BASIC_DISCIPLINE_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, equipmentDefinition, equipmentForSlot, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 import {
   DUNGEON_VIEW_SIZE,
   FIELD_VIEW_SIZE,
@@ -1918,6 +1918,7 @@ function classOverlay(state) {
         <div class="kit-skill-grid">
           <button class="kit-skill-choice selected ultimate" style="--class-color:${selectedKit.color}" disabled><span>${selectedKit.ultimate.glyph}</span><strong>${escapeHtml(selectedKit.ultimate.name)}</strong><small>${escapeHtml(selectedKit.ultimate.description)}</small><i>항상 장착 · 숙련 ${masteryLevel(state.meta.skillMastery[selectedKit.ultimate.id] || 0)}</i></button>
         </div>
+        ${commanderEquipmentSection(state, selectedKit)}
         <div class="section-heading"><h2>출신 특성</h2><span>직업과 자유롭게 조합</span></div>
         <div class="trait-choice-grid">
           ${Object.values(TRAIT_DEFS).map((trait) => `
@@ -1928,6 +1929,82 @@ function classOverlay(state) {
         </div>
       </section>
     </div>
+  `;
+}
+
+const BONUS_LABELS = {
+  maxHpBonus: "체력",
+  damageBonus: "공격력",
+  armorBonus: "방어력",
+  cooldownReduction: "재사용 감소",
+  manaRegenBonus: "마나 회복"
+};
+
+// manaRegenBonus만 절대값이고 나머지는 비율이라 표기를 나눈다.
+function bonusText(bonus = {}) {
+  return Object.entries(bonus)
+    .map(([key, value]) => {
+      const label = BONUS_LABELS[key] || key;
+      return key === "manaRegenBonus"
+        ? `${label} +${value}`
+        : `${label} +${Math.round(value * 100)}%`;
+    })
+    .join(" · ");
+}
+
+function commanderEquipmentSection(state, selectedKit) {
+  const commander = state.adventure?.commander;
+  if (!commander) return "";
+  const materials = state.meta.materials || {};
+  const unlocked = new Set(commander.unlockedBlueprints || []);
+  const owned = new Set(commander.equipmentOwned || []);
+  const equipped = commander.equipped || {};
+  const collection = legendaryCollection(commander);
+
+  const slots = EQUIPMENT_SLOTS.map((slot) => {
+    // 무기만 직업 제한이 있다. 설계도를 받은 것만 노출해서 미획득 스포일러를 줄인다.
+    const candidates = equipmentForSlot(slot).filter((entry) => {
+      if (!unlocked.has(entry.id)) return false;
+      return slot !== "weapon" || entry.baseClassId === selectedKit.baseClassId;
+    });
+
+    const cards = candidates.map((entry) => {
+      const isOwned = owned.has(entry.id);
+      const isEquipped = equipped[slot] === entry.id;
+      const lacking = Object.entries(entry.materials || {})
+        .filter(([id, amount]) => (materials[id] || 0) < amount);
+      const cost = Object.entries(entry.materials || {})
+        .map(([id, amount]) => `${MATERIAL_DEFS[id]?.name || id} ${amount}`).join(" · ");
+      const set = entry.setId ? ARMOR_SET_DEFS[entry.setId] : null;
+
+      const action = isOwned
+        ? `data-action="equip-equipment" data-equipment-id="${entry.id}" data-slot="${slot}"`
+        : `data-action="craft-equipment" data-equipment-id="${entry.id}"${lacking.length ? " disabled" : ""}`;
+
+      return `
+        <button class="equipment-card${isEquipped ? " selected" : ""}${entry.legendary ? " legendary" : ""}" ${action}>
+          <strong>${escapeHtml(entry.name)}</strong>
+          ${entry.legendary ? '<em class="equipment-tag">전설</em>' : ""}
+          <small>${escapeHtml(bonusText(entry.bonus))}</small>
+          ${set ? `<small class="equipment-set">${escapeHtml(set.name)} · 2세트 ${escapeHtml(bonusText(set.setBonus))}</small>` : ""}
+          ${entry.lore ? `<small class="equipment-lore">${escapeHtml(entry.lore)}</small>` : ""}
+          <i>${isEquipped ? "장착 중 · 눌러서 해제" : isOwned ? "장착하기" : lacking.length ? `재료 부족 · ${escapeHtml(cost)}` : `제작 · ${escapeHtml(cost)}`}</i>
+        </button>`;
+    }).join("");
+
+    return `
+      <div class="equipment-slot">
+        <div class="section-heading"><h2>${EQUIPMENT_SLOT_LABELS[slot]}</h2><span>${
+          equipped[slot] ? escapeHtml(equipmentDefinition(equipped[slot])?.name || "") : "미장착"
+        }</span></div>
+        <div class="equipment-grid">${cards || '<p class="facility-note">아직 이 부위의 설계도가 없다. 지역 던전을 정복하면 얻는다.</p>'}</div>
+      </div>`;
+  }).join("");
+
+  return `
+    <div class="section-heading"><h2>장비</h2><span>전설 컬렉션 ${collection.collectedCount}/${collection.total}</span></div>
+    ${slots}
+    <p class="facility-note">무기는 직업 전용이고 방어구·장신구는 공용이다. 같은 세트의 방어구와 장신구를 함께 차면 세트 효과가 붙는다. 전설 장비는 지역 던전을 ${5}회 이상 정복하면 설계도가 나오며, 수치를 크게 올리는 대신 일반 장비가 함께 주지 않는 조합을 준다.</p>
   `;
 }
 
@@ -2901,6 +2978,14 @@ app.addEventListener("click", (event) => {
   }
   if (action === "select-class") engine.selectClass(button.dataset.classId);
   if (action === "select-trait") engine.selectTrait(button.dataset.traitId);
+  if (action === "craft-equipment") engine.craftEquipment(button.dataset.equipmentId);
+  if (action === "equip-equipment") {
+    // 이미 장착한 걸 다시 누르면 해제 — 스킬 장착 토글과 같은 조작감.
+    const slot = button.dataset.slot;
+    const current = engine.state.adventure?.commander?.equipped?.[slot];
+    const equipmentId = button.dataset.equipmentId;
+    engine.equipEquipment(current === equipmentId ? null : equipmentId, slot);
+  }
   if (action === "open-map") {
     view.mapOpen = true;
     render();

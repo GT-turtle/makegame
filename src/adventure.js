@@ -1,4 +1,4 @@
-import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
 export const DUNGEON_SIZE = 15;
@@ -551,6 +551,7 @@ export const REGION_ARMOR_SET = {
 //   1회차 → 그 지역 출신 직업의 무기 설계도
 //   2회차 → 그 지역 방어구 세트 설계도 (방어구 + 짝 장신구를 한 번에 해금)
 //   3회차 → 그 지역 출신 두 번째 직업의 무기 설계도 (있는 경우)
+//   5회차+ → 그 지역 전설 장비 설계도 (한 번에 하나씩)
 //
 // 이미 가진 설계도는 건너뛰고 다음 후보로 넘어가므로 같은 던전을 계속 돌아도
 // 중복 보상이 쌓이지 않는다. 다 받은 뒤에는 빈 배열(설계도 보상 없음)이 된다.
@@ -559,7 +560,7 @@ export function dungeonClearRewards(regionId, clearCount, ownedBlueprints = []) 
   const weapons = Object.values(PLAYER_BASE_CLASS_DEFS)
     .filter((baseClass) => baseClass.originRegionId === regionId)
     .map((baseClass) => Object.values(EQUIPMENT_DEFS)
-      .find((entry) => entry.slot === "weapon" && entry.baseClassId === baseClass.id))
+      .find((entry) => entry.slot === "weapon" && !entry.legendary && entry.baseClassId === baseClass.id))
     .filter(Boolean);
 
   const armorSet = ARMOR_SET_DEFS[REGION_ARMOR_SET[regionId]];
@@ -569,9 +570,20 @@ export function dungeonClearRewards(regionId, clearCount, ownedBlueprints = []) 
     weapons[1] ? [weapons[1].id] : []
   ];
 
+  const stage = Math.max(1, Number(clearCount) || 1);
+
+  // 3단계를 다 받은 뒤에도 계속 돌 이유를 남긴다 — 전설 설계도는 회차 요구가 있어서
+  // 아래 "앞 회차 미수령분 보충"에는 끼워넣지 않고 여기서 따로 처리한다.
+  // 한 번에 하나씩만 줘서 지역에 전설이 둘인 곳(북부·서부)은 더 돌아야 한다.
+  if (stage >= LEGENDARY_CLEAR_REQUIREMENT) {
+    const pending = legendariesForRegion(regionId)
+      .map((entry) => entry.id)
+      .filter((id) => !owned.has(id));
+    if (pending.length) return [pending[0]];
+  }
+
   // 해당 회차 칸부터 훑고, 그래도 없으면 앞 회차 미수령분을 채워준다
   // (순서를 건너뛰었거나 이미 다른 경로로 얻은 경우 대비).
-  const stage = Math.max(1, Number(clearCount) || 1);
   const order = [
     ...schedule.slice(Math.min(stage, schedule.length) - 1),
     ...schedule.slice(0, Math.min(stage, schedule.length) - 1)

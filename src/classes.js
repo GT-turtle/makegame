@@ -689,6 +689,100 @@ export function armorSetDefinition(setId) {
   return ARMOR_SET_DEFS[setId] || null;
 }
 
+// 전설 장비. 지역 문화권의 신화·전승에서 이름을 따왔다(북부=북유럽, 동부=동양 무예,
+// 서부=기사 서사시, 남부=인도·동남아, 중부=중동 교역로).
+//
+// 설계 원칙: 전설이라고 수치를 크게 올리지 않는다. 대신 **일반 장비가 절대 함께
+// 주지 않는 조합**을 준다(예: 공격력과 방어력을 동시에, 체력과 쿨다운을 동시에).
+// 그래서 "더 세다"가 아니라 "다르게 굴린다"가 되고, docs/CHOICE_DESIGN.md의
+// "선택은 강함이 아니라 방향을 바꾼다" 원칙과 어긋나지 않는다.
+//
+// 획득: 그 지역 던전을 LEGENDARY_CLEAR_REQUIREMENT회 이상 클리어하면 설계도가 나온다.
+// 설계도 3단계(무기→방어구 세트→두 번째 무기)를 모두 받은 뒤의 장기 목표이자
+// 컬렉션 요소다.
+export const LEGENDARY_DEFS = {
+  durandal: {
+    id: "durandal", slot: "weapon", legendary: true, regionId: "west",
+    name: "뒤랑달", baseClassId: "crusader", weaponType: "bastardSword",
+    materials: { ingot: 8, blackSteel: 3, ore: 4 },
+    bonus: { damageBonus: 0.07, armorBonus: 0.03 },
+    lore: "부러지지 않는 성기사의 검. 롤랑의 전설에서 이름을 따왔다."
+  },
+  tyrfing: {
+    id: "tyrfing", slot: "weapon", legendary: true, regionId: "west",
+    name: "티르빙", baseClassId: "necromancer", weaponType: "armorSword",
+    materials: { ingot: 6, blackSteel: 3, herb: 5 },
+    bonus: { cooldownReduction: 0.05, damageBonus: 0.05 },
+    lore: "뽑으면 반드시 피를 봐야 하는 저주받은 검. 북구 전승의 티르빙."
+  },
+  jotunbane: {
+    id: "jotunbane", slot: "weapon", legendary: true, regionId: "north",
+    name: "요툰베인", baseClassId: "barbarian", weaponType: "greataxe",
+    materials: { ingot: 8, frostIron: 4, blackSteel: 2 },
+    bonus: { damageBonus: 0.1, maxHpBonus: 0.06 },
+    lore: "거인을 베어 넘긴 설산의 도끼. 북구의 거인 살해 전승에서."
+  },
+  caduceus: {
+    id: "caduceus", slot: "weapon", legendary: true, regionId: "north",
+    name: "카두케우스", baseClassId: "archmage", weaponType: "staff",
+    materials: { wood: 6, frostIron: 3, herb: 4 },
+    bonus: { cooldownReduction: 0.09, manaRegenBonus: 0.6 },
+    lore: "두 마리 뱀이 감긴 전령의 지팡이. 마탑이 보관하던 유물."
+  },
+  moya: {
+    id: "moya", slot: "weapon", legendary: true, regionId: "east",
+    name: "막야", baseClassId: "maehwa", weaponType: "sabre",
+    materials: { ingot: 5, mountainIron: 4, wood: 3 },
+    bonus: { cooldownReduction: 0.06, damageBonus: 0.06 },
+    lore: "장인 부부가 몸을 던져 벼려낸 자웅 한 쌍 중 하나. 동방 간장·막야 설화."
+  },
+  gandiva: {
+    id: "gandiva", slot: "weapon", legendary: true, regionId: "south",
+    name: "간디바", baseClassId: "tracker", weaponType: "shortBow",
+    materials: { wood: 8, ingot: 4, herb: 5 },
+    bonus: { damageBonus: 0.09, cooldownReduction: 0.04 },
+    lore: "천 년을 시위가 늘어지지 않는 활. 남방 서사시의 대궁."
+  },
+  solomonSeal: {
+    id: "solomonSeal", slot: "accessory", legendary: true, regionId: "central",
+    name: "솔로몬의 인장", baseClassId: null,
+    materials: { glassSand: 5, ore: 4, herb: 4 },
+    bonus: { maxHpBonus: 0.06, damageBonus: 0.04, manaRegenBonus: 0.3 },
+    lore: "정령을 부리고 봉인했다는 반지. 사막 대상단이 전하는 이야기."
+  }
+};
+
+// 전설 설계도가 열리는 클리어 횟수. 설계도 3단계(1~3회차)를 다 받은 뒤라
+// 자연스럽게 장기 목표가 된다.
+export const LEGENDARY_CLEAR_REQUIREMENT = 5;
+
+export function legendaryDefinition(id) {
+  return LEGENDARY_DEFS[id] || null;
+}
+
+export function legendariesForRegion(regionId) {
+  return Object.values(LEGENDARY_DEFS).filter((entry) => entry.regionId === regionId);
+}
+
+// 컬렉션 진행도. 제작해서 실제로 보유한 전설 장비 기준으로 센다
+// (설계도만 받은 건 아직 "모은 것"이 아니다).
+export function legendaryCollection(commander = {}) {
+  const owned = new Set(commander.equipmentOwned || []);
+  const all = Object.values(LEGENDARY_DEFS);
+  const collected = all.filter((entry) => owned.has(entry.id));
+  return {
+    collected: collected.map((entry) => entry.id),
+    collectedCount: collected.length,
+    total: all.length,
+    complete: collected.length === all.length
+  };
+}
+
+// 전설 장비를 일반 장비 목록에 합쳐둔다. 제작·장착·보너스 합산이 전부
+// EQUIPMENT_DEFS를 보고 돌아가므로, 이렇게 등록해두면 전설이라고 해서 별도
+// 경로를 탈 필요가 없다(직업 제한·슬롯 규칙도 그대로 적용된다).
+Object.assign(EQUIPMENT_DEFS, LEGENDARY_DEFS);
+
 export function equipmentDefinition(equipmentId) {
   return EQUIPMENT_DEFS[equipmentId] || null;
 }
