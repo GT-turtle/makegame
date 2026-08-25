@@ -809,6 +809,30 @@ export function instanceBonuses(instance) {
   return totals;
 }
 
+// 장착 중인 전설 장비의 고유효과를 모은다. 전투 엔진이 이 목록을 보고 분기한다.
+// 같은 종류가 둘이면(반지 두 칸) 둘 다 들어간다 - 합산 여부는 사용하는 쪽이 정한다.
+export function equippedUniqueEffects(commander = {}, baseClassId = null) {
+  const effects = [];
+  const equipped = commander.equipped || {};
+  const seen = new Set();
+  for (const slotId of EQUIPMENT_SLOTS) {
+    const instance = findEquipmentInstance(commander, equipped[slotId]);
+    const definition = EQUIPMENT_DEFS[instance?.defId];
+    if (!definition?.uniqueEffect || seen.has(instance.uid)) continue;
+    const slotDef = EQUIPMENT_SLOT_DEFS[slotId];
+    if (definition.slot !== slotDef.itemSlot) continue;
+    if (slotDef.classLocked && baseClassId && definition.baseClassId !== baseClassId) continue;
+    seen.add(instance.uid);
+    effects.push({ ...definition.uniqueEffect, sourceId: definition.id, sourceName: definition.name });
+  }
+  return effects;
+}
+
+// 특정 종류의 고유효과 하나를 찾는다(같은 종류가 둘이면 첫 번째).
+export function findUniqueEffect(commander, type, baseClassId = null) {
+  return equippedUniqueEffects(commander, baseClassId).find((effect) => effect.type === type) || null;
+}
+
 export function findEquipmentInstance(commander, uid) {
   return (commander?.equipmentOwned || []).find((entry) => entry?.uid === uid) || null;
 }
@@ -876,7 +900,147 @@ export function armorSetDefinition(setId) {
 // 획득: 그 지역 던전을 LEGENDARY_CLEAR_REQUIREMENT회 이상 클리어하면 설계도가 나온다.
 // 설계도 3단계(무기→방어구 세트→두 번째 무기)를 모두 받은 뒤의 장기 목표이자
 // 컬렉션 요소다.
+// ── 전설 방어구·장신구 (docs/EQUIPMENT_DESIGN.md §10·§11) ──
+//
+// 무기와 달리 이쪽은 **보스 부산물로만** 만든다(§5). 재료 조합은 문서의 고정
+// 조합표를 그대로 옮긴 것이며, 여러 보스의 부산물을 섞는 레시피가 많아
+// "어느 보스를 돌 것인가"가 파밍 동선의 선택이 된다.
+//
+// 전설의 정체성은 수치가 아니라 uniqueEffect다 — 전투 방식 자체를 바꾼다.
+const LEGENDARY_GEAR_DEFS = {
+  // --- 중갑 2종 ---
+  dragonRampart: {
+    id: "dragonRampart", slot: "chest", armorClass: "heavy", legendary: true,
+    name: "고룡의 성벽",
+    materials: { dragonScale: 2, chitinPlate: 2, cursedPlate: 2 },
+    bonus: { maxHpBonus: 0.1, armorBonus: 0.03 },
+    // 중간급 피해만 강제로 깎는다. 보스 대형 기믹(40% 초과)은 그대로 맞으므로
+    // "잡공격은 무시하되 큰 건 피해야 하는" 중갑이 된다.
+    uniqueEffect: { type: "damageBand", floorRatio: 0.05, capRatio: 0.4 },
+    lore: "폐허를 차지한 용의 비늘을 겹쳐 두른 성벽 같은 갑주."
+  },
+  warchiefPlate: {
+    id: "warchiefPlate", slot: "chest", armorClass: "heavy", legendary: true,
+    name: "대전사의 전투갑주",
+    materials: { chitinPlate: 2, warchiefAxe: 1, shamanStone: 2 },
+    bonus: { maxHpBonus: 0.08, damageBonus: 0.04 },
+    // 중갑의 둔중함을 깨는 공격형 중갑.
+    uniqueEffect: { type: "battleTempo", attackSpeed: 0.1, moveSpeed: 0.12 },
+    lore: "오크 대전사의 도끼를 녹여 덧댄 갑주. 무겁지만 몸이 앞선다."
+  },
+
+  // --- 경갑 2종 ---
+  foxMantle: {
+    id: "foxMantle", slot: "chest", armorClass: "light", legendary: true,
+    name: "구미호의 외투",
+    materials: { foxTail: 1, spiritCore: 2, spiderSilk: 2 },
+    bonus: { maxHpBonus: 0.06, cooldownReduction: 0.04 },
+    // 폭딜을 즉시 받지 않고 지속 피해로 흘린다. 총량은 같지만 한 방에 죽지 않는다.
+    uniqueEffect: { type: "damageSpread", ratio: 0.4, durationMs: 3000 },
+    lore: "아홉 꼬리의 털을 짜 만든 외투. 큰 상처를 시간에 흩뜨린다."
+  },
+  phantomLeather: {
+    id: "phantomLeather", slot: "chest", armorClass: "light", legendary: true,
+    name: "환영 경갑",
+    materials: { spiritCore: 2, serpentHide: 2, bearSinew: 1 },
+    bonus: { armorBonus: 0.02, cooldownReduction: 0.06 },
+    uniqueEffect: { type: "phantomDodge", chance: 0.15 },
+    lore: "입은 자의 윤곽이 흐려진다. 노려도 빗나가는 일이 생긴다."
+  },
+
+  // --- 천 2종 ---
+  arcaneVeil: {
+    id: "arcaneVeil", slot: "chest", armorClass: "cloth", legendary: true,
+    name: "마도사의 장막",
+    materials: { taintedTome: 1, shamanStone: 2, frostCore: 2 },
+    bonus: { manaRegenBonus: 0.6, cooldownReduction: 0.04 },
+    // 마나를 생존 자원으로 바꾼다. 마나가 마르면 그냥 천옷이 된다.
+    uniqueEffect: { type: "manaShieldGear", ratio: 0.35, manaPerDamage: 1.4 },
+    lore: "마력으로 짠 장막. 상처를 마나로 대신 치른다."
+  },
+  soulVeil: {
+    id: "soulVeil", slot: "chest", armorClass: "cloth", legendary: true,
+    name: "영혼의 장막",
+    materials: { soulStone: 2, fallenRelic: 1, spiderSilk: 2 },
+    bonus: { maxHpBonus: 0.05, manaRegenBonus: 0.4 },
+    // 안 맞고 버틴 시간을 한 방 방어로 바꾼다. 치고 빠지는 운용과 맞물린다.
+    uniqueEffect: { type: "recoveryShield", quietMs: 5000, maxRatio: 0.6 },
+    lore: "영혼석을 엮어 짠 장막. 숨을 고르면 한 번을 막아준다."
+  },
+
+  // --- 반지 6종 ---
+  frostArcaneRing: {
+    id: "frostArcaneRing", slot: "ring", legendary: true,
+    name: "빙결 마도반지",
+    materials: { frostCore: 2, taintedTome: 1 },
+    bonus: { damageBonus: 0.04, manaRegenBonus: 0.2 },
+    uniqueEffect: { type: "statusExecute", statusId: "freeze", bonus: 0.25 },
+    lore: "냉기 핵을 박은 반지. 얼어붙은 것을 더 아프게 때린다."
+  },
+  resonanceRing: {
+    id: "resonanceRing", slot: "ring", legendary: true,
+    name: "주술 공명반지",
+    materials: { shamanStone: 2, spiritCore: 1 },
+    bonus: { manaRegenBonus: 0.7, cooldownReduction: 0.03 },
+    lore: "주술사의 마력석을 물린 반지. 마력 순환이 매끄러워진다."
+  },
+  abyssInkRing: {
+    id: "abyssInkRing", slot: "ring", legendary: true,
+    name: "심연 먹물반지",
+    materials: { inkSac: 1, soulStone: 2 },
+    bonus: { damageBonus: 0.03 },
+    uniqueEffect: { type: "onHitStatus", statusId: "decay", chance: 0.25 },
+    lore: "먹물낭을 봉인한 반지. 닿은 자리가 썩어 들어간다."
+  },
+  venomFangRing: {
+    id: "venomFangRing", slot: "ring", legendary: true,
+    name: "거미독 반지",
+    materials: { spiderFang: 2, venomSac: 1 },
+    bonus: { damageBonus: 0.03 },
+    uniqueEffect: { type: "onHitStatus", statusId: "poison", chance: 0.3 },
+    lore: "독니를 물린 반지. 상처가 아물지 않는다."
+  },
+  oniBreakerRing: {
+    id: "oniBreakerRing", slot: "ring", legendary: true,
+    name: "오니 파괴반지",
+    materials: { oniHorn: 2, greatMandible: 1 },
+    bonus: { damageBonus: 0.05 },
+    // 방어 관통. 단단한 적일수록 이득이라 탱킹형 보스에 강하다.
+    uniqueEffect: { type: "armorPierce", amount: 0.12 },
+    lore: "오니의 뿔을 깎아 박은 반지. 갑주째 뚫는다."
+  },
+  dragonWardRing: {
+    id: "dragonWardRing", slot: "ring", legendary: true,
+    name: "고룡 수호반지",
+    materials: { dragonBone: 1, dragonScale: 2 },
+    bonus: { maxHpBonus: 0.09 },
+    // 체력이 낮을수록 단단해진다 — 두 반지 탱킹 빌드의 한 축.
+    uniqueEffect: { type: "lastStand", threshold: 0.4, armorBonus: 0.12 },
+    lore: "용의 뼈를 깎은 반지. 궁지에 몰릴수록 단단해진다."
+  },
+
+  // --- 목걸이 2종 (3종째는 문서상 미정) ---
+  foxCoreAmulet: {
+    id: "foxCoreAmulet", slot: "necklace", legendary: true,
+    name: "구미호 영핵 목걸이",
+    materials: { spiritCore: 2, foxTail: 1, shamanStone: 1 },
+    bonus: { maxHpBonus: 0.04, cooldownReduction: 0.03 },
+    uniqueEffect: { type: "statusShrug", reduceMs: 1200 },
+    lore: "영핵을 매단 목걸이. 몸에 붙은 것이 오래 머물지 못한다."
+  },
+  fallenRelicAmulet: {
+    id: "fallenRelicAmulet", slot: "necklace", legendary: true,
+    name: "몰락한 성유물 목걸이",
+    materials: { fallenRelic: 1, soulStone: 2, taintedTome: 1 },
+    bonus: { maxHpBonus: 0.05, manaRegenBonus: 0.3 },
+    // 위급할 때 한 번 스스로를 정화한다. 내부 재사용 대기시간이 있다.
+    uniqueEffect: { type: "desperateCleanse", threshold: 0.35, cooldownMs: 20000 },
+    lore: "제국의 성유물. 무너지기 직전에 한 번 몸을 씻어준다."
+  }
+};
+
 export const LEGENDARY_DEFS = {
+  ...LEGENDARY_GEAR_DEFS,
   durandal: {
     id: "durandal", slot: "weapon", legendary: true, regionId: "west",
     name: "뒤랑달", baseClassId: "crusader", weaponType: "bastardSword",

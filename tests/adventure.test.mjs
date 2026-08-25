@@ -1163,7 +1163,8 @@ test("모든 보스 패턴은 '보고 피할 수 있어야' 한다는 기준식�
   // 이 부등식이 깨지면 아무리 잘 피해도 못 빠져나오는 패턴이 된다.
   const PLAYER_SPEED = 17;
   for (const pattern of Object.values(BOSS_PATTERN_DEFS)) {
-    if (pattern.kind === "summon") continue; // 소환은 피할 대상이 아니다
+    // 소환·정화는 바닥 판정이 없어 "피하는" 패턴이 아니다.
+    if (pattern.kind === "summon" || pattern.kind === "cleanse") continue;
     const reach = PLAYER_SPEED * (pattern.telegraphMs / 1000);
 
     // "벗어나려면 최소 얼마를 가야 하는가"는 도형마다 다르다.
@@ -1399,6 +1400,145 @@ test("필드 보스는 지역마다 정의돼 있고 부산물이 모두 실재�
   }
 });
 
+test("전설 조합표는 전부 실제 보스 부산물로 만들어진다", () => {
+  // 전설 방어구·장신구는 지역 드랍이 아니라 보스 부산물 조합이다(§5).
+  const byproducts = new Set();
+  for (const enemy of Object.values(ENEMY_COMBATANTS)) {
+    for (const materialId of Object.keys(enemy.byproducts || {})) byproducts.add(materialId);
+  }
+
+  const bossGear = Object.values(LEGENDARY_DEFS).filter((entry) => !entry.regionId);
+  assert.ok(bossGear.length >= 14, "방어구 6 + 반지 6 + 목걸이 2");
+
+  for (const entry of bossGear) {
+    assert.ok(Object.keys(entry.materials).length >= 2, `${entry.id}는 여러 재료를 조합한다`);
+    for (const materialId of Object.keys(entry.materials)) {
+      assert.ok(MATERIAL_DEFS[materialId], `${entry.id}의 재료 ${materialId}가 정의돼야 한다`);
+      assert.ok(byproducts.has(materialId),
+        `${entry.id}의 재료 ${materialId}는 어떤 보스에서든 나와야 한다(못 만드는 레시피 방지)`);
+    }
+  }
+
+  // 계열별 구성이 문서(§10)와 맞는다.
+  const armor = bossGear.filter((entry) => entry.armorClass);
+  const byClass = {};
+  for (const entry of armor) byClass[entry.armorClass] = (byClass[entry.armorClass] || 0) + 1;
+  assert.deepEqual(byClass, { heavy: 2, light: 2, cloth: 2 }, "중갑2·경갑2·천2");
+
+  const rings = bossGear.filter((entry) => entry.slot === "ring");
+  const necklaces = bossGear.filter((entry) => entry.slot === "necklace");
+  assert.ok(rings.length >= 6, "반지 6종");
+  assert.ok(necklaces.length >= 2, "목걸이 2종(3종째는 문서상 미정)");
+});
+
+test("전설 고유효과는 장착했을 때만 전투에 반영된다", () => {
+  const equip = (defId) => {
+    const commander = createDefaultCommander();
+    if (!defId) return commander;
+    commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+    const definition = EQUIPMENT_DEFS[defId];
+    const slot = { chest: "chest", ring: "ring1", necklace: "necklace" }[definition.slot];
+    commander.equipped[slot] = "g0";
+    return commander;
+  };
+
+  // 맨몸에는 고유효과가 없다.
+  const bare = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242, commander: equip(null) });
+  assert.deepEqual(Object.keys(bare.legendary), [], "장착 없으면 고유효과도 없다");
+
+  // 장착하면 전투 시작 시 풀려서 등록된다.
+  for (const [defId, type] of [
+    ["dragonRampart", "damageBand"],
+    ["arcaneVeil", "manaShieldGear"],
+    ["phantomLeather", "phantomDodge"],
+    ["oniBreakerRing", "armorPierce"],
+    ["dragonWardRing", "lastStand"]
+  ]) {
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242, commander: equip(defId) });
+    assert.ok(battle.legendary[type], `${defId} 장착 시 ${type}가 등록된다`);
+  }
+});
+
+test("환영 경갑은 피격 자체를 확률로 무효화한다", () => {
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "phantomLeather", grade: "common", options: [] }];
+  commander.equipped.chest = "g0";
+
+  const measure = (withGear) => {
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {},
+      { rollSeed: 4242, commander: withGear ? commander : createDefaultCommander() });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 9999;
+    let dodges = 0;
+    for (let t = 0; t < 500; t += 1) {
+      tickAutoBattle(battle, 100);
+      dodges += battle.log.filter((line) => /회피했다/.test(line.text || line)).length;
+      battle.log = [];
+      player.hp = 9999;
+    }
+    return dodges;
+  };
+
+  assert.equal(measure(false), 0, "맨몸은 회피가 없다");
+  assert.ok(measure(true) > 0, "환영 경갑을 입으면 실제로 회피가 발동한다");
+});
+
+test("마도사의 장막은 피해를 체력 대신 마나로 치른다", () => {
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "arcaneVeil", grade: "common", options: [] }];
+  commander.equipped.chest = "g0";
+
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242, commander });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = 200; player.hp = 200;
+  player.maxMana = 200; player.mana = 200;
+
+  let taken = 0;
+  for (let t = 0; t < 300 && battle.status === "active"; t += 1) {
+    const before = player.hp;
+    tickAutoBattle(battle, 100);
+    if (player.hp < before) taken += before - player.hp;
+    player.hp = 200;
+  }
+  assert.ok(taken > 0, "피해는 받는다");
+  assert.ok(player.mana < 200, "마나가 실제로 소모된다(피해를 마나로 대신 치렀다)");
+});
+
+test("동부는 매화를, 북부는 아크메이지를 카운터하는 환경 효과를 가진다", () => {
+  // 몬스터 컨셉.txt의 지역별 카운터를 환경에도 일관되게 건다.
+  const north = WORLD_REGION_DEFS.north.hazard.counterEffect;
+  assert.equal(north.type, "manaDrain", "북부는 마나 고갈(아크메이지 카운터)");
+
+  const east = WORLD_REGION_DEFS.east.hazard.counterEffect;
+  assert.equal(east.type, "statusDecay", "동부는 상태이상 감쇠(매화 카운터)");
+
+  // 마나 고갈은 마나가 많은 직업일수록 크게 잃는다.
+  assert.ok(PLAYER_BASE_CLASS_DEFS.archmage.statProfile.base.maxMana
+    > PLAYER_BASE_CLASS_DEFS.maehwa.statProfile.base.maxMana * 3,
+    "아크메이지가 매화보다 마나 의존도가 훨씬 높다");
+});
+
+test("구미호는 걸어둔 상태이상을 스스로 씻어낸다", () => {
+  // 동부 카운터 컨셉의 핵심 - 상태이상 축적형(매화)의 주력을 무력화한다.
+  const battle = createAutoBattle("eastFoxLair", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 21 });
+  const fox = battle.enemies.find((enemy) => enemy.patterns?.includes("spiritCleanse"));
+  assert.ok(fox, "구미호는 정화 패턴을 가진다");
+
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+
+  let cleansed = 0;
+  for (let t = 0; t < 500; t += 1) {
+    // 계속 상태이상을 걸어준다.
+    fox.statuses = { ...fox.statuses, burn: { id: "burn", expiresAt: battle.elapsed + 9000, stacks: 1 } };
+    tickAutoBattle(battle, 100);
+    cleansed += battle.log.filter((line) => /정화: /.test(line.text || line)).length;
+    battle.log = [];
+    player.hp = 99999;
+  }
+  assert.ok(cleansed > 0, "정화가 실제로 발동한다");
+});
+
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {
   // 서부는 크루세이더·네크로맨서 두 직업의 출신지다.
   const first = dungeonClearRewards("west", 1, []);
@@ -1455,9 +1595,21 @@ test("전설 설계도는 일반 설계도를 다 받은 뒤 높은 회차에서
 });
 
 test("전설 장비는 지역별로 흩어져 있고 컬렉션 진행도로 집계된다", () => {
+  // 전설은 두 갈래다:
+  // - 지역 전설(regionId 있음): 지역 던전을 반복 클리어해 설계도를 얻는다
+  // - 보스 전설(regionId 없음): 필드 보스 부산물을 고정 조합표로 만든다(§5·§10·§11)
   const all = Object.values(LEGENDARY_DEFS);
-  const regions = new Set(all.map((entry) => entry.regionId));
-  assert.equal(regions.size, 5, "다섯 지역 전부에 전설이 하나 이상 있다");
+  const regional = all.filter((entry) => entry.regionId);
+  const bossCrafted = all.filter((entry) => !entry.regionId);
+  const regions = new Set(regional.map((entry) => entry.regionId));
+  assert.equal(regions.size, 5, "다섯 지역 전부에 지역 전설이 하나 이상 있다");
+  assert.ok(bossCrafted.length >= 10, "보스 부산물 전설도 충분히 있다");
+
+  // 보스 전설은 수치가 아니라 고유효과가 존재 이유다.
+  for (const entry of bossCrafted) {
+    assert.ok(entry.uniqueEffect || Object.keys(entry.bonus || {}).length >= 2,
+      `${entry.id}는 고유효과나 복합 보너스 중 하나는 있어야 한다`);
+  }
 
   // 전부 EQUIPMENT_DEFS에 합쳐져 있어야 제작·장착이 일반 장비와 같은 경로로 돈다.
   for (const entry of all) {
@@ -1482,7 +1634,9 @@ test("전설 장비는 수치가 아니라 보너스 '조합'으로 차별화된
   // 사용자 제약: 선택·수집으로 인한 성능 차이는 크게 나지 않게.
   // 그래서 전설은 개별 수치를 크게 올리는 대신, 일반 장비가 주지 않는
   // 두 종류 이상의 보너스를 함께 준다.
-  for (const entry of Object.values(LEGENDARY_DEFS)) {
+  // 고유효과가 없는 전설(지역 무기)만 대상이다 — 보스 전설은 수치가 아니라
+  // 고유효과로 차별화되므로 보너스가 하나여도 된다.
+  for (const entry of Object.values(LEGENDARY_DEFS).filter((item) => !item.uniqueEffect)) {
     const kinds = Object.keys(entry.bonus || {});
     assert.ok(kinds.length >= 2, `${entry.id}는 두 가지 이상의 보너스를 함께 준다`);
 

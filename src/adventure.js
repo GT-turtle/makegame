@@ -1,4 +1,4 @@
-import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
 export const DUNGEON_SIZE = 15;
@@ -260,6 +260,14 @@ export const BOSS_PATTERN_DEFS = {
     status: { id: "burn" }
   },
 
+  // 자가 정화 — 자신에게 걸린 해로운 상태이상을 전부 씻어낸다.
+  // 동부 카운터 컨셉(디버프를 스스로 씻어낸다)의 핵심이라 장판이 아니라 자기 대상이다.
+  // 예고가 있어서, 보고 나면 "지금 상태이상을 더 쌓아도 소용없다"를 알 수 있다.
+  spiritCleanse: {
+    id: "spiritCleanse", name: "정화", kind: "cleanse",
+    telegraphMs: 900, cooldownMs: 12000, aim: "self"
+  },
+
   // ── 지역 보스 전용 ──
   // 2페이즈 전용 광역기. 장갑이 무너진 뒤 핵이 노출되며 쓰는 큰 기술이라
   // 반경이 크고 예고도 길다.
@@ -365,6 +373,8 @@ function spawnBossZone(battle, actor, pattern, target) {
       angle: Math.atan2(target.y - actor.y, target.x - actor.x),
       halfAngle: (pattern.coneDegrees || 70) * Math.PI / 360
     });
+  } else if (pattern.kind === "cleanse") {
+    pushZone(battle, actor, pattern, { x: actor.x, y: actor.y, radius: 7 });
   } else if (pattern.kind === "summon") {
     pushZone(battle, actor, pattern, { x: actor.x, y: actor.y, radius: 6 });
   } else if (pattern.volleyCount > 1) {
@@ -585,7 +595,10 @@ export const WORLD_REGION_DEFS = {
     id: "north", direction: "북부", name: "북부 설산", subtitle: "북유럽과 루스풍의 눈 덮인 변경",
     description: "방패벽과 중무기, 혹한 생존술이 발달한 산악권. 눈보라 속 폐광의 빙맥 거상을 추적한다.",
     glyph: "❄", accent: "#79adc5", danger: "위험 2", pressure: "혹한", mapX: 51, mapY: 16,
-    hazard: { name: "혹한", glyph: "❄", description: "주기적으로 원정대의 체력을 깎는다.", techniqueId: "survival" },
+    hazard: { name: "혹한", glyph: "❄", description: "체력을 깎고 마력 순환을 굳혀 마나를 빼앗는다.", techniqueId: "survival",
+      // 북부는 아크메이지 카운터(몬스터 컨셉.txt). 몬스터는 높은 마법저항으로,
+      // 환경은 마나 고갈로 같은 방향의 압박을 건다.
+      counterEffect: { type: "manaDrain", ratio: 0.12, resistedAt: 4 } },
     enemyPool: ["frostWolves", "iceRaiders", "snowGolems"], fieldBossPool: ["northLichLair", "northWarbandLair"], villageName: "눈골 부락", dungeonName: "빙맥 폐광", dungeonGlyph: "◆",
     bossEncounterId: "frostColossusPack", defenseEncounterId: "iceRaiders", rewardMaterial: "frostIron", rewardAmount: 2,
     recruits: ["snow_guard", "winter_berserker", "snow_shaman"], techniqueId: "survival"
@@ -603,7 +616,10 @@ export const WORLD_REGION_DEFS = {
     id: "east", direction: "동부", name: "동부 산악권", subtitle: "단조와 무예, 산성의 문화권",
     description: "공방 도시와 문파, 산성국과 도국이 이어진다. 무예서와 단조 설계를 둘러싼 분쟁이 끊이지 않는다.",
     glyph: "山", accent: "#c18469", danger: "위험 2", pressure: "험로", mapX: 81, mapY: 51,
-    hazard: { name: "험로", glyph: "山", description: "거친 지형이 이동과 공격 주기를 방해한다.", techniqueId: "forging" },
+    hazard: { name: "험로", glyph: "山", description: "거친 기운이 걸어둔 이상을 씻어낸다.", techniqueId: "forging",
+      // 동부는 매화 카운터. 몬스터가 "디버프를 스스로 씻어낸다"는 컨셉과 같은 방향으로,
+      // 환경도 플레이어가 건 상태이상을 깎는다.
+      counterEffect: { type: "statusDecay", reduceMs: 1500, resistedAt: 4 } },
     enemyPool: ["mountainBandits", "ironGuard", "stoneApes"], fieldBossPool: ["eastFoxLair", "eastOniLair", "eastCentipedeLair"], villageName: "산성 아래 마을", dungeonName: "봉인된 단조성", dungeonGlyph: "炉",
     bossEncounterId: "forgeGuardianPack", defenseEncounterId: "ironGuard", rewardMaterial: "mountainIron", rewardAmount: 2,
     recruits: ["formation_officer", "duel_swordsman", "meridian_fighter"], techniqueId: "forging"
@@ -737,7 +753,9 @@ export const ENEMY_COMBATANTS = {
     name: "구미호", species: "fox", variant: "동부 필드 보스", glyph: "F",
     maxHp: 162, damage: 12, range: 22, speed: 10, attackMs: 1300, armor: 0.08,
     color: "#c98a6b", boss: true, preScaled: true,
-    patterns: ["foxfire", "groundSlam"],
+    // 매혹·정화 신수. 걸어둔 상태이상을 스스로 씻어내는 게 동부 카운터의 핵심이라
+    // 1페이즈부터 정화를 들고 나온다(몬스터 컨셉.txt).
+    patterns: ["foxfire", "spiritCleanse"],
     phase2Patterns: ["callPack", "quakeRoar"],
     byproducts: { foxTail: 1, spiritCore: 2 }
   },
@@ -781,6 +799,47 @@ export const ENEMY_COMBATANTS = {
     patterns: ["dragonBreath", "wingSweep"],
     phase2Patterns: ["quakeRoar", "chargeRush"],
     byproducts: { dragonBone: 1, dragonScale: 2 }
+  },
+
+  // ── 지역 보스 (몬스터 컨셉.txt) ──
+  // 필드 보스와 달리 HP 50%에서 패턴 풀이 **교체**되고 형태가 바뀐다.
+  // 전부 단독 전투다 — 기믹으로 싸우는 보스라 잡몹을 섞으면 뭘 봐야 할지 흐려진다.
+  southDeepOne: {
+    name: "딥원", species: "aberration", variant: "남부 지역 보스", glyph: "D",
+    maxHp: 300, damage: 15, range: 16, speed: 6, attackMs: 1700, armor: 0.16,
+    color: "#4f7382", boss: true, preScaled: true,
+    patterns: ["tentacleLash", "inkSpray", "coilCrush"],
+    phase2Patterns: ["coreBurst", "tentacleLash", "callPack"],
+    phaseMode: "replace", phase2Form: "risen",
+    byproducts: { tentacleRoot: 3, inkSac: 2 }
+  },
+  eastDragon: {
+    name: "동양용", species: "dragon", variant: "동부 지역 보스", glyph: "龍",
+    // 산봉우리 지형에서 패턴 회피 위주로 싸우는 보스라, 체력보다 패턴 밀도가 높다.
+    maxHp: 285, damage: 14, range: 15, speed: 9, attackMs: 1500, armor: 0.18,
+    color: "#6fa38c", boss: true, preScaled: true,
+    patterns: ["centipedeDash", "foxfire", "oniCleave"],
+    phase2Patterns: ["dragonBreath", "ruinCharge", "spiritCleanse"],
+    phaseMode: "replace", phase2Form: "ascended",
+    byproducts: { spiritCore: 3, dragonScale: 2 }
+  },
+  westFallenKing: {
+    name: "타락한 왕", species: "undead", variant: "서부 지역 보스", glyph: "K",
+    maxHp: 310, damage: 16, range: 12, speed: 7, attackMs: 1650, armor: 0.22,
+    color: "#8d7ba0", boss: true, preScaled: true,
+    patterns: ["wraithCharge", "curseWave", "relicBurst"],
+    phase2Patterns: ["coreBurst", "ruinCharge", "callPack"],
+    phaseMode: "replace", phase2Form: "cursed",
+    byproducts: { fallenRelic: 2, cursedPlate: 3 }
+  },
+  centralColossus: {
+    name: "거신병", species: "construct", variant: "중부 지역 보스", glyph: "G",
+    maxHp: 340, damage: 15, range: 13, speed: 4, attackMs: 1900, armor: 0.26,
+    color: "#b08a55", boss: true, preScaled: true,
+    patterns: ["groundSlam", "chargeRush", "quakeRoar"],
+    phase2Patterns: ["coreBurst", "ruinCharge", "callPack"],
+    phaseMode: "replace", phase2Form: "coreExposed",
+    byproducts: { glassSand: 4, sunShard: 2 }
   },
 
   // 북부 지역 보스(docs/BOSS_DESIGN.md §4 타이탄).
@@ -865,6 +924,10 @@ export const ENCOUNTER_DEFS = {
   duneTyrantPack: { name: "유리사의 사구 큰곰", glyph: "☠", enemies: ["centralBear", "centralOrc", "centralGoblin"], scrap: 11, boss: true },
   frostColossusPack: { name: "빙맥 큰곰", glyph: "☠", enemies: ["northBear", "northOrc", "northGoblin"], scrap: 13, boss: true },
   frostTitanLair: { name: "설산의 타이탄", glyph: "☠", enemies: ["northTitan"], scrap: 24, boss: true, regionBoss: true },
+  deepOneLair: { name: "딥원", glyph: "☠", enemies: ["southDeepOne"], scrap: 24, boss: true, regionBoss: true },
+  eastDragonLair: { name: "동양용", glyph: "☠", enemies: ["eastDragon"], scrap: 24, boss: true, regionBoss: true },
+  fallenKingLair: { name: "타락한 왕", glyph: "☠", enemies: ["westFallenKing"], scrap: 24, boss: true, regionBoss: true },
+  colossusLair: { name: "거신병", glyph: "☠", enemies: ["centralColossus"], scrap: 26, boss: true, regionBoss: true },
   // 필드 보스 조우. 보스 + 그 지역 잡몹 조합(단독은 지역 보스만).
   northLichLair: { name: "타락한 마탑 리치", glyph: "☠", enemies: ["northLich", "northGoblin"], scrap: 18, boss: true },
   northWarbandLair: { name: "오크 대전사", glyph: "☠", enemies: ["northWarchief", "northOrc"], scrap: 18, boss: true },
@@ -1424,6 +1487,15 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     playerBaseClassId: playerBaseClass.id,
     playerBasePassive: { ...playerBaseClass.passive },
     playerKitId: playerKit.id,
+    // 장착 중인 전설 장비의 고유효과를 전투 시작 시 한 번 풀어둔다.
+    // 매 tick 장비를 다시 훑으면 비싸고, 전투 중에는 장비가 바뀌지 않는다.
+    legendary: Object.fromEntries(
+      equippedUniqueEffects(options.commander || {}, playerKit.baseClassId).map((effect) => [effect.type, effect])
+    ),
+    // 반지를 둘 끼면 같은 종류가 둘일 수 있어 목록으로 따로 둔다.
+    legendaryOnHit: equippedUniqueEffects(options.commander || {}, playerKit.baseClassId)
+      .filter((effect) => effect.type === "onHitStatus"),
+    legendaryState: { lastPlayerHitAt: 0, lastCleanseAt: -999999 },
     playerSkillIds: playerSkills,
     playerPassive: { ...playerKit.passive },
     storedBoss: options.commander?.storedBoss ? { ...options.commander.storedBoss } : null,
@@ -1940,6 +2012,33 @@ export function tickAutoBattle(battle, deltaMs) {
     } else {
       pushBattleLog(battle, `${battle.hazard.name} 대응 성공`);
     }
+
+    // 지역 환경은 피해만이 아니라 **그 지역이 카운터하는 직업을 정확히 때리는**
+    // 효과를 함께 건다(몬스터 컨셉.txt 지역별 카운터).
+    // 대응 수치(hazardMitigation)가 높으면 아예 걸리지 않는다.
+    const counter = battle.hazard.counterEffect;
+    if (counter && (battle.hazardMitigation || 0) < (counter.resistedAt || 4)) {
+      if (counter.type === "manaDrain") {
+        // 북부 — 아크메이지 카운터. 마나가 많고 회복이 빠른 직업일수록 크게 잃는다.
+        for (const unit of living(battle.units)) {
+          if (!unit.maxMana) continue;
+          unit.mana = Math.max(0, unit.mana - Math.max(1, Math.round(unit.maxMana * counter.ratio)));
+        }
+        pushBattleLog(battle, `${battle.hazard.name}: 마력 순환이 굳어 마나가 빠져나간다`);
+      } else if (counter.type === "statusDecay") {
+        // 동부 — 매화 카운터. 적에게 걸어둔 상태이상이 씻겨 나간다.
+        let cleansed = 0;
+        for (const enemy of living(battle.enemies)) {
+          for (const [statusId, status] of Object.entries(enemy.statuses || {})) {
+            if (!status) continue;
+            status.expiresAt = (status.expiresAt || 0) - counter.reduceMs;
+            if (status.expiresAt <= battle.elapsed) { delete enemy.statuses[statusId]; cleansed += 1; }
+          }
+        }
+        if (cleansed) pushBattleLog(battle, `${battle.hazard.name}: 걸어둔 이상이 ${cleansed}건 씻겨 나갔다`);
+      }
+    }
+
     battle.nextHazardAt += 5200;
   }
   wakeNearbyFieldGroups(battle);
@@ -2028,7 +2127,17 @@ export function tickAutoBattle(battle, deltaMs) {
     // 회피 감소량은 직업별 회피 정의에서 온다(방패 막기가 이동기보다 더 줄여준다).
     const dodgeReduction = 1 - playerDodgeDefinition(battle.playerKitId).reduction;
     const guardReduction = (dodging ? dodgeReduction : target.team === "unit" && battle.command.guardUntil > battle.elapsed ? 0.5 : 1) * personalDefense;
-    const armorReduction = 1 - effectiveArmor(target);
+    // 오니 파괴반지: 플레이어가 때릴 때 적 방어력을 깎는다.
+    // 고룡 수호반지: 플레이어가 위급할 때 방어력이 올라간다.
+    let targetArmor = effectiveArmor(target);
+    if (actor.id === battle.playerId && battle.legendary?.armorPierce) {
+      targetArmor = Math.max(0, targetArmor - battle.legendary.armorPierce.amount);
+    }
+    if (target.id === battle.playerId && battle.legendary?.lastStand
+      && target.hp / target.maxHp <= battle.legendary.lastStand.threshold) {
+      targetArmor = Math.min(0.75, targetArmor + battle.legendary.lastStand.armorBonus);
+    }
+    const armorReduction = 1 - targetArmor;
     const activeBuffs = actor.team === "unit"
       ? [battle.command.chargeUntil, battle.command.guardUntil, battle.command.focusUntil].filter((until) => until > battle.elapsed).length
       : 0;
@@ -2039,7 +2148,9 @@ export function tickAutoBattle(battle, deltaMs) {
     const fullDamage = Math.max(1, Math.round(rawDamage * guardReduction * armorReduction));
     const isPlayerTarget = target.id === battle.playerId;
     const dodgeChance = (target.team === "unit" && target.basePassive?.effect === "dodgeChance" ? target.basePassive.chance || 0 : 0)
-      + (isPlayerTarget ? Math.min(0.3, (actor.maehwaMarks || 0) * 0.05) : 0);
+      + (isPlayerTarget ? Math.min(0.3, (actor.maehwaMarks || 0) * 0.05) : 0)
+      // 환영 경갑: 피격 자체를 확률로 무효화한다(docs/EQUIPMENT_DESIGN.md §10).
+      + (isPlayerTarget ? (battle.legendary?.phantomDodge?.chance || 0) : 0);
     const dodged = dodgeChance > 0 && battleRoll(battle) < dodgeChance;
     actor.cooldown = actor.attackMs;
     actor.telegraphTargetId = null;
@@ -2054,7 +2165,44 @@ export function tickAutoBattle(battle, deltaMs) {
         damage -= absorbed;
         if (shield.amount <= 0) delete target.positiveEffects.shield;
       }
+
+      // ── 전설 고유효과 ── (docs/EQUIPMENT_DESIGN.md §10·§11)
+      if (isPlayerTarget) {
+        // 고룡의 성벽: 중간급 피해만 바닥값으로 눌러준다. 상한을 넘는 대형 기믹은
+        // 그대로 맞으므로 "잡공격은 무시하되 큰 건 피해야 하는" 갑주가 된다.
+        const band = battle.legendary?.damageBand;
+        if (band) {
+          const floor = target.maxHp * band.floorRatio;
+          const cap = target.maxHp * band.capRatio;
+          if (damage > floor && damage <= cap) damage = floor;
+        }
+        // 마도사의 장막: 피해 일부를 체력 대신 마나로 치른다. 마나가 마르면 그대로 맞는다.
+        const veil = battle.legendary?.manaShieldGear;
+        if (veil && target.mana > 0) {
+          const payable = Math.min(damage * veil.ratio, target.mana / veil.manaPerDamage);
+          if (payable > 0) {
+            target.mana = Math.max(0, target.mana - payable * veil.manaPerDamage);
+            damage -= payable;
+          }
+        }
+        damage = Math.max(0, Math.round(damage));
+        battle.legendaryState.lastPlayerHitAt = battle.elapsed;
+      }
+      if (actor.id === battle.playerId) {
+        // 빙결 마도반지: 얼어붙은 적에게 추가 피해.
+        const execute = battle.legendary?.statusExecute;
+        if (execute && target.statuses?.[execute.statusId]) damage = Math.round(damage * (1 + execute.bonus));
+      }
+
       target.hp = Math.max(0, target.hp - damage);
+
+      // 반지의 적중 시 상태이상 부여(먹물·거미독). 반지를 둘 끼면 각각 굴린다.
+      if (actor.id === battle.playerId && target.hp > 0) {
+        for (const effect of battle.legendaryOnHit || []) {
+          if (battleRoll(battle) < effect.chance) applyCombatStatus(battle, target, effect.statusId, actor);
+        }
+      }
+
       actor.attackCount = (actor.attackCount || 0) + 1;
       if (target.hp > 0 && actor.poisonDamage) applyCombatStatus(battle, target, "poison", actor, { stacks: actor.poisonDamage });
       if (target.hp > 0 && actor.statusOnHit && actor.attackCount % (actor.statusEvery || 1) === 0) {
