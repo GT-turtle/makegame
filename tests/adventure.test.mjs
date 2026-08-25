@@ -1467,7 +1467,7 @@ test("전설 고유효과는 장착했을 때만 전투에 반영된다", () => 
     ["dragonRampart", "damageBand"],
     ["arcaneVeil", "manaShieldGear"],
     ["phantomLeather", "phantomDodge"],
-    ["oniBreakerRing", "armorPierce"],
+    ["oniBreakerRing", "armorPierceStack"],
     ["dragonWardRing", "lastStand"]
   ]) {
     const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242, commander: equip(defId) });
@@ -1726,6 +1726,137 @@ test("필드 보스가 살아 있어도 일반 무리만 정리하면 던전으�
   tickAutoBattle(battle, 100);
   assert.equal(battle.pendingTrigger?.type || battle.pendingTrigger, "dungeonEntrance",
     "필드 보스가 깨어 있어도 던전 입구는 막히지 않는다");
+});
+
+test("모든 패턴·전설이 참조하는 상태이상은 실재해야 한다", () => {
+  // 존재하지 않는 상태이상 id를 쓰면 조용히 아무 일도 일어나지 않는다.
+  // (실제로 "freeze"라고 쓴 곳이 있었는데 실제 id는 "frost"였다.)
+  const valid = new Set(Object.keys(STATUS_EFFECT_DEFS));
+
+  for (const pattern of Object.values(BOSS_PATTERN_DEFS)) {
+    if (pattern.status?.id) {
+      assert.ok(valid.has(pattern.status.id), `${pattern.name}의 상태이상 ${pattern.status.id}`);
+    }
+    if (pattern.linger?.statusId) {
+      assert.ok(valid.has(pattern.linger.statusId), `${pattern.name}의 잔류 상태이상 ${pattern.linger.statusId}`);
+    }
+  }
+  for (const entry of Object.values(LEGENDARY_DEFS)) {
+    const statusId = entry.uniqueEffect?.statusId;
+    if (statusId) assert.ok(valid.has(statusId), `${entry.name}의 상태이상 ${statusId}`);
+  }
+  for (const enemy of Object.values(ENEMY_COMBATANTS)) {
+    if (enemy.statusOnHit?.id) {
+      assert.ok(valid.has(enemy.statusOnHit.id), `${enemy.name}의 상태이상 ${enemy.statusOnHit.id}`);
+    }
+  }
+});
+
+test("전설 반지 효과는 플레이어의 기본 공격에도 적용된다", () => {
+  // 플레이어 기본 공격은 AI 유닛과 다른 경로다. 한쪽에만 붙이면 동료 공격에만
+  // 적용되어 사실상 동작하지 않는다.
+  const equip = (defId) => {
+    const commander = createDefaultCommander();
+    if (!defId) return commander;
+    commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+    commander.equipped.ring1 = "g0";
+    return commander;
+  };
+
+  // 오니 파괴반지: 같은 대상을 계속 때리면 관통이 쌓인다.
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 9, commander: equip("oniBreakerRing") });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 9999;
+  const foe = battle.enemies[0];
+  foe.dormant = false;
+  foe.maxHp = foe.hp = 99999;
+  for (let t = 0; t < 40; t += 1) {
+    player.x = foe.x - 3;
+    player.y = foe.y;
+    issuePlayerAction(battle, "attack");
+    tickAutoBattle(battle, 100);
+    player.hp = 9999;
+  }
+  const stack = battle.legendaryState.pierce;
+  assert.ok(stack, "중첩 상태가 기록된다");
+  assert.equal(stack.targetId, foe.id);
+  assert.equal(stack.stacks, LEGENDARY_DEFS.oniBreakerRing.uniqueEffect.maxStacks, "상한까지 쌓인다");
+
+  // 거미독 반지: 독 걸린 적에게 추가 피해 + 회복 감소.
+  const hitOnce = (defId) => {
+    const b = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 9, commander: equip(defId) });
+    const p = b.units.find((unit) => unit.id === b.playerId);
+    p.maxHp = p.hp = 9999;
+    const t = b.enemies[0];
+    t.dormant = false;
+    t.maxHp = t.hp = 99999;
+    p.x = t.x - 3;
+    p.y = t.y;
+    t.statuses.poison = { id: "poison", expiresAt: b.elapsed + 99000, stacks: 1 };
+    const before = t.hp;
+    issuePlayerAction(b, "attack");
+    return { damage: before - t.hp, statuses: Object.keys(t.statuses) };
+  };
+  const bare = hitOnce(null);
+  const ringed = hitOnce("venomFangRing");
+  assert.ok(ringed.damage > bare.damage, `독 걸린 적에게 더 아프다 (${bare.damage} -> ${ringed.damage})`);
+  assert.ok(ringed.statuses.includes("decay"), "회복 감소를 함께 건다");
+  assert.ok(!bare.statuses.includes("decay"), "반지가 없으면 걸리지 않는다");
+});
+
+test("동토 수호반지는 빙결만 빨리 털어낸다", () => {
+  const measure = (defId) => {
+    const commander = createDefaultCommander();
+    if (defId) {
+      commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+      commander.equipped.ring1 = "g0";
+    }
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 9999;
+    for (const enemy of battle.enemies) enemy.dormant = true;
+    player.statuses = { frost: { id: "frost", expiresAt: battle.elapsed + 8000, stacks: 1 } };
+
+    let ticks = 0;
+    while (player.statuses.frost && ticks < 200) {
+      tickAutoBattle(battle, 100);
+      player.hp = 9999;
+      delete player.statuses.stun;
+      ticks += 1;
+    }
+    return ticks;
+  };
+  const bare = measure(null);
+  const warded = measure("frostWardRing");
+  assert.ok(warded < bare, `빙결이 더 빨리 사라진다 (${bare} -> ${warded})`);
+});
+
+test("주술 공명반지는 스킬을 쓸 때 마나를 채워준다", () => {
+  // 문서는 "소모한 마나 환급"이지만 이 엔진의 플레이어 스킬은 마나를 쓰지 않는다.
+  // 마나는 마도사의 장막이 피해를 대신 치르는 자원이라, 스킬 사용 시 채워주는
+  // 쪽으로 옮겼다 - "스킬을 굴릴수록 버틸 여력이 생긴다"로 의도는 유지된다.
+  const measure = (defId) => {
+    const commander = createDefaultCommander();
+    if (defId) {
+      commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+      commander.equipped.ring1 = "g0";
+    }
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 5, commander });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 9999;
+    let refunds = 0;
+    for (let t = 0; t < 300; t += 1) {
+      issuePlayerAction(battle, "skill1");
+      issuePlayerAction(battle, "skill2");
+      tickAutoBattle(battle, 100);
+      refunds += battle.log.filter((line) => /주술 공명/.test(line.text || line)).length;
+      battle.log = [];
+      player.hp = 9999;
+    }
+    return refunds;
+  };
+  assert.equal(measure(null), 0, "반지가 없으면 발동하지 않는다");
+  assert.ok(measure("resonanceRing") > 0, "반지를 끼면 마나를 채워준다");
 });
 
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {

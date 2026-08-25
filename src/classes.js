@@ -969,20 +969,27 @@ const LEGENDARY_GEAR_DEFS = {
   },
 
   // --- 반지 6종 ---
-  frostArcaneRing: {
-    id: "frostArcaneRing", slot: "ring", legendary: true,
-    name: "빙결 마도반지",
-    materials: { frostCore: 2, taintedTome: 1 },
-    bonus: { damageBonus: 0.04, manaRegenBonus: 0.2 },
-    uniqueEffect: { type: "statusExecute", statusId: "freeze", bonus: 0.25 },
-    lore: "냉기 핵을 박은 반지. 얼어붙은 것을 더 아프게 때린다."
+  frostWardRing: {
+    id: "frostWardRing", slot: "ring", legendary: true,
+    name: "동토 수호반지",
+    materials: { frostCore: 2, bearSinew: 1 },
+    bonus: { maxHpBonus: 0.04, armorBonus: 0.02 },
+    // 북부 환경 대응용이 아니라 "냉기 적·빙결 상태이상"에 대한 전투 장신구다.
+    // 환경 패널티를 장비 하나로 우회하지 않는다는 원칙과 구분된다.
+    uniqueEffect: { type: "statusWard", statusId: "frost", reduceMs: 1400, resist: 0.4 },
+    lore: "냉기 핵을 얼음결정에 물린 반지. 얼어붙지 않는다."
   },
   resonanceRing: {
     id: "resonanceRing", slot: "ring", legendary: true,
     name: "주술 공명반지",
     materials: { shamanStone: 2, spiritCore: 1 },
-    bonus: { manaRegenBonus: 0.7, cooldownReduction: 0.03 },
-    lore: "주술사의 마력석을 물린 반지. 마력 순환이 매끄러워진다."
+    bonus: { manaRegenBonus: 0.3, cooldownReduction: 0.03 },
+    // 문서는 "소모한 마나 일부 환급"이지만 이 엔진의 플레이어 스킬은 마나를 쓰지
+    // 않는다(쿨다운만 있다). 대신 마나는 마도사의 장막이 피해를 대신 치르는
+    // **생존 자원**이라, 스킬을 쓸 때 최대 마나의 일부를 채워주는 쪽으로 옮겼다.
+    // 결과적으로 "스킬을 굴릴수록 버틸 여력이 생긴다"가 되어 의도는 살아 있다.
+    uniqueEffect: { type: "manaRefund", chance: 0.35, ratio: 0.08, cooldownMs: 4000 },
+    lore: "주술사의 마력석을 물린 반지. 흘러나간 마력이 되돌아온다."
   },
   abyssInkRing: {
     id: "abyssInkRing", slot: "ring", legendary: true,
@@ -997,17 +1004,19 @@ const LEGENDARY_GEAR_DEFS = {
     name: "거미독 반지",
     materials: { spiderFang: 2, venomSac: 1 },
     bonus: { damageBonus: 0.03 },
-    uniqueEffect: { type: "onHitStatus", statusId: "poison", chance: 0.3 },
-    lore: "독니를 물린 반지. 상처가 아물지 않는다."
+    // 독에 걸린 적에게만 강해진다 — 독을 거는 수단과 함께 써야 값을 한다.
+    uniqueEffect: { type: "statusExecute", statusId: "poison", bonus: 0.3, applyDecay: true },
+    lore: "독니를 물린 반지. 독이 도는 상처를 더 깊게 헤집는다."
   },
   oniBreakerRing: {
     id: "oniBreakerRing", slot: "ring", legendary: true,
     name: "오니 파괴반지",
     materials: { oniHorn: 2, greatMandible: 1 },
     bonus: { damageBonus: 0.05 },
-    // 방어 관통. 단단한 적일수록 이득이라 탱킹형 보스에 강하다.
-    uniqueEffect: { type: "armorPierce", amount: 0.12 },
-    lore: "오니의 뿔을 깎아 박은 반지. 갑주째 뚫는다."
+    // 같은 대상을 계속 때릴수록 관통이 쌓인다. 대상을 바꾸거나 손을 놓으면 초기화된다 —
+    // 한 놈을 물고 늘어지는 운용을 보상한다.
+    uniqueEffect: { type: "armorPierceStack", perStack: 0.03, maxStacks: 5, resetMs: 3000 },
+    lore: "오니의 뿔을 깎아 박은 반지. 두드릴수록 갑주가 벌어진다."
   },
   dragonWardRing: {
     id: "dragonWardRing", slot: "ring", legendary: true,

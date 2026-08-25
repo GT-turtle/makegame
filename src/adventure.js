@@ -137,7 +137,7 @@ export const BOSS_PATTERN_DEFS = {
     cooldownMs: 11000, aim: "scatter",
     // 시간차로 3발. 간격이 예고보다 짧아 앞발이 터지기 전에 뒷발이 깔린다.
     volleyCount: 3, volleyIntervalMs: 650, volleySpread: 20,
-    status: { id: "freeze" }
+    status: { id: "frost" }
   },
 
   // 광역 포효 — 보스 자신을 중심으로 크게. 붙어 있으면 맞으니 거리를 벌려야 한다.
@@ -500,6 +500,14 @@ function tickLegendaryEffects(battle, step) {
     }
   }
 
+  // 동토 수호반지: 지정한 상태이상만 빨리 털어낸다(구미호 목걸이는 전 상태이상 대상).
+  const ward = legendary.statusWard;
+  if (ward && player.statuses?.[ward.statusId]) {
+    const warded = player.statuses[ward.statusId];
+    warded.expiresAt -= ward.reduceMs * (step / 1000);
+    if (warded.expiresAt <= battle.elapsed) delete player.statuses[ward.statusId];
+  }
+
   // 구미호 영핵 목걸이: 몸에 붙은 해로운 것이 오래 머물지 못한다.
   const shrug = legendary.statusShrug;
   if (shrug) {
@@ -521,6 +529,48 @@ function tickLegendaryEffects(battle, step) {
       state.lastCleanseAt = battle.elapsed;
       pushBattleLog(battle, `몰락한 성유물: 무너지기 직전 ${ids[0]} 이상을 씻어냈다`);
     }
+  }
+}
+
+// 플레이어가 적을 때릴 때의 전설 고유효과. 기본 공격 경로와 AI 경로가 갈려 있어
+// 양쪽에서 같은 함수를 부르도록 모아뒀다.
+
+// 오니 파괴반지 등 방어 관통 계열을 반영한 적 방어력.
+function legendaryPiercedArmor(battle, target) {
+  let armor = effectiveArmor(target);
+  const flat = battle.legendary?.armorPierce;
+  if (flat) armor = Math.max(0, armor - flat.amount);
+  const stack = battle.legendary?.armorPierceStack;
+  if (stack) {
+    const state = battle.legendaryState.pierce;
+    const fresh = state && state.targetId === target.id && battle.elapsed - state.lastAt <= stack.resetMs;
+    const stacks = fresh ? Math.min(stack.maxStacks, state.stacks) : 0;
+    armor = Math.max(0, armor - stacks * stack.perStack);
+    battle.legendaryState.pierce = {
+      targetId: target.id,
+      stacks: fresh ? Math.min(stack.maxStacks, state.stacks + 1) : 1,
+      lastAt: battle.elapsed
+    };
+  }
+  return armor;
+}
+
+// 거미독 반지처럼 "특정 상태이상에 걸린 적에게 더 아프게"인 배율.
+function legendaryOutgoingMultiplier(battle, target) {
+  const execute = battle.legendary?.statusExecute;
+  if (execute && target.statuses?.[execute.statusId]) return 1 + execute.bonus;
+  return 1;
+}
+
+// 적중 시 붙는 것들(상태이상 부여·회복 감소).
+function applyLegendaryOnHit(battle, player, target) {
+  if (target.hp <= 0) return;
+  const execute = battle.legendary?.statusExecute;
+  if (execute?.applyDecay && target.statuses?.[execute.statusId]) {
+    applyCombatStatus(battle, target, "decay", player);
+  }
+  for (const effect of battle.legendaryOnHit || []) {
+    if (battleRoll(battle) < effect.chance) applyCombatStatus(battle, target, effect.statusId, player);
   }
 }
 
@@ -1285,6 +1335,9 @@ function maybeStartIrregularAmbush(run) {
     glyph: "!"
   };
   run.battle = createAutoBattle(encounterId, feature.id, "field", run.party, run.unitProgress, {
+    // 원정 전투도 결정적으로 굴린다 — 같은 저장에서 같은 결과가 나와야
+    // 재현·디버깅이 되고, 저장을 되돌려 결과를 다시 뽑는 것도 막힌다.
+    rollSeed: (run.seed || 1) + (run.battleSeq = (run.battleSeq || 0) + 1) * 7919,
     regionId: run.regionId,
     hazardMitigation: run.hazardMitigation,
     commander: run.commander,
@@ -1380,6 +1433,7 @@ export function moveRunPlayer(run, x, y) {
   }
   if (feature.type === "encounter" && !feature.cleared) {
     run.battle = createAutoBattle(feature.encounterId, feature.id, zone.kind, run.party, run.unitProgress, {
+      rollSeed: (run.seed || 1) + (run.battleSeq = (run.battleSeq || 0) + 1) * 7919,
       regionId: run.regionId,
       hazardMitigation: run.hazardMitigation,
       commander: run.commander,
@@ -1650,6 +1704,9 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
   const rng = mulberry32((options.seed || 1) + 5501);
 
   const battle = createAutoBattle(region.enemyPool[0], options.sourceFeatureId || `${regionId}-field`, "field", partyIds, unitProgress, {
+    // 광역 필드 전투도 시드로 굴린다 — 시드가 없으면 battleRoll이 Math.random으로
+    // 떨어져 같은 저장에서도 결과가 달라진다(재현·디버깅 불가).
+    rollSeed: options.rollSeed ?? ((options.seed || 1) + 104729),
     ...options,
     regionId,
     bounds,
@@ -2274,6 +2331,22 @@ export function tickAutoBattle(battle, deltaMs) {
     if (actor.id === battle.playerId && battle.legendary?.armorPierce) {
       targetArmor = Math.max(0, targetArmor - battle.legendary.armorPierce.amount);
     }
+    // 오니 파괴반지: 같은 대상을 연속으로 때릴수록 관통이 쌓인다.
+    // 대상을 바꾸거나 손을 놓으면 초기화되므로 한 놈을 물고 늘어지는 운용을 보상한다.
+    const pierceStack = battle.legendary?.armorPierceStack;
+    if (actor.id === battle.playerId && pierceStack) {
+      const stackState = battle.legendaryState.pierce;
+      const fresh = stackState
+        && stackState.targetId === target.id
+        && battle.elapsed - stackState.lastAt <= pierceStack.resetMs;
+      const stacks = fresh ? Math.min(pierceStack.maxStacks, stackState.stacks) : 0;
+      targetArmor = Math.max(0, targetArmor - stacks * pierceStack.perStack);
+      battle.legendaryState.pierce = {
+        targetId: target.id,
+        stacks: fresh ? Math.min(pierceStack.maxStacks, stackState.stacks + 1) : 1,
+        lastAt: battle.elapsed
+      };
+    }
     if (target.id === battle.playerId && battle.legendary?.lastStand
       && target.hp / target.maxHp <= battle.legendary.lastStand.threshold) {
       targetArmor = Math.min(0.75, targetArmor + battle.legendary.lastStand.armorBonus);
@@ -2341,9 +2414,13 @@ export function tickAutoBattle(battle, deltaMs) {
         battle.legendaryState.lastPlayerHitAt = battle.elapsed;
       }
       if (actor.id === battle.playerId) {
-        // 빙결 마도반지: 얼어붙은 적에게 추가 피해.
+        // 거미독 반지: 독에 걸린 적에게만 강해지고, 회복 감소도 함께 건다.
+        // 독을 거는 수단과 함께 써야 값을 하는 조건부 반지다.
         const execute = battle.legendary?.statusExecute;
-        if (execute && target.statuses?.[execute.statusId]) damage = Math.round(damage * (1 + execute.bonus));
+        if (execute && target.statuses?.[execute.statusId]) {
+          damage = Math.round(damage * (1 + execute.bonus));
+          if (execute.applyDecay) applyCombatStatus(battle, target, "decay", actor);
+        }
       }
 
       target.hp = Math.max(0, target.hp - damage);
@@ -3090,6 +3167,23 @@ function resolvePlayerSkill(battle, player, skill) {
   return true;
 }
 
+// 주술 공명반지: 스킬을 쓰면 일정 확률로 마나를 채워준다.
+// 이 엔진의 플레이어 스킬은 마나를 소모하지 않으므로 "환급"이 아니라 최대 마나
+// 기준으로 채운다. 마나는 마도사의 장막이 피해를 대신 치르는 자원이라,
+// 스킬을 굴릴수록 버틸 여력이 생기는 구조가 된다.
+function refundSkillMana(battle, player) {
+  const refund = battle.legendary?.manaRefund;
+  if (!refund || !player?.maxMana) return;
+  const state = battle.legendaryState;
+  if (battle.elapsed - (state.lastRefundAt || -999999) < refund.cooldownMs) return;
+  if (battleRoll(battle) >= refund.chance) return;
+  const amount = Math.round(player.maxMana * refund.ratio);
+  if (amount <= 0) return;
+  player.mana = Math.min(player.maxMana, player.mana + amount);
+  state.lastRefundAt = battle.elapsed;
+  pushBattleLog(battle, `주술 공명: 마나 ${amount} 환급`);
+}
+
 export function issuePlayerAction(battle, action) {
   if (!battle || battle.status !== "active") return false;
   battle.lastPlayerSkillId = null;
@@ -3127,10 +3221,17 @@ export function issuePlayerAction(battle, action) {
       return false;
     }
     const stealthy = Boolean(player.positiveEffects?.stealth);
-    const damage = Math.max(1, Math.round(player.damage * (player.passiveDamageMultiplier || 1) * (stealthy ? 1.8 : 1) * (1 - effectiveArmor(target))));
+    // 플레이어의 기본 공격은 AI 유닛과 다른 경로라, 전설 고유효과도 여기서 따로
+    // 적용해야 한다(여기 빠뜨리면 동료 공격에만 붙어 사실상 동작하지 않는다).
+    const damage = Math.max(1, Math.round(
+      player.damage * (player.passiveDamageMultiplier || 1) * (stealthy ? 1.8 : 1)
+      * legendaryOutgoingMultiplier(battle, target)
+      * (1 - legendaryPiercedArmor(battle, target))
+    ));
     target.hp = Math.max(0, target.hp - damage);
     target.lastHit = 260;
     if (stealthy) delete player.positiveEffects.stealth;
+    applyLegendaryOnHit(battle, player, target);
     if (target.hp > 0 && battle.playerKitId === "spiritBarbarian") applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
     if (target.hp > 0 && battle.playerKitId === "heavyTracker" && player.positiveEffects?.siegeMode?.endsAt > battle.elapsed) knockback(player, target, 5, battle);
     if (target.hp > 0 && player.positiveEffects?.decayOnHit?.endsAt > battle.elapsed) {
@@ -3154,6 +3255,7 @@ export function issuePlayerAction(battle, action) {
     const skill = playerSkillDefinition(battle.playerKitId, skillId);
     if (!skill || !resolvePlayerSkill(battle, player, skill)) return false;
     battle.playerReadyAt[action] = battle.elapsed + skill.cooldownMs * (player.cooldownMultiplier || 1);
+    refundSkillMana(battle, player);
     refreshBaseClassPassive(battle);
     return true;
   }
@@ -3161,6 +3263,7 @@ export function issuePlayerAction(battle, action) {
     const ultimate = playerUltimateDefinition(battle.playerKitId);
     if (!ultimate || !resolvePlayerSkill(battle, player, ultimate)) return false;
     battle.playerReadyAt.ultimate = battle.elapsed + ultimate.cooldownMs * (player.cooldownMultiplier || 1);
+    refundSkillMana(battle, player);
     refreshBaseClassPassive(battle);
     return true;
   }
