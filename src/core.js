@@ -20,7 +20,7 @@ import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState, creat
 import { createDefenseDeployments } from "./defense.js";
 import { EQUIPMENT_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, createEmptyEquipped, createEquipmentInstance, findEquipmentInstance, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 22;
+export const SAVE_VERSION = 23;
 
 // 영지 행복도(state.meta.estate.happiness)가 생산 속도에 미치는 배율.
 // 기준치(70, 신규 영지의 시작값)에서는 정확히 1.0배 — 기존 저장/테스트의 기준 생산량을 그대로 유지한다.
@@ -1379,6 +1379,21 @@ export function migrateState(rawState) {
     }
     commander.equipped = equipped;
     state.log.unshift({ text: "장비에 등급(일반~신화)과 랜덤 옵션이 붙는다. 대장장이 숙련도가 품질을 좌우한다.", tone: "item" });
+  }
+  if (previousVersion < 23) {
+    // 장신구를 반지 1 + 부적 1에서 반지 2 + 목걸이 1로 바꿨다
+    // (docs/EQUIPMENT_DESIGN.md §11 — 반지 두 개를 조합해 빌드를 만드는 방향).
+    const commander = state.adventure.commander;
+    const previous = commander.equipped || {};
+    const equipped = createEmptyEquipped();
+    for (const [slot, uid] of Object.entries(previous)) {
+      if (!uid) continue;
+      // ring → ring1, amulet → necklace. 나머지 부위는 이름이 그대로다.
+      const moved = slot === "ring" ? "ring1" : slot === "amulet" ? "necklace" : slot;
+      if (moved in equipped) equipped[moved] = uid;
+    }
+    commander.equipped = equipped;
+    state.log.unshift({ text: "장신구가 반지 두 칸과 목걸이로 나뉘었다.", tone: "item" });
   }
   state.adventure.party = state.adventure.party.slice(0, 2);
   state.adventure.commander.combatKitId = playerKitDefinition(state.adventure.commander.combatKitId).id;

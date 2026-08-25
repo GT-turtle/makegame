@@ -1999,7 +1999,8 @@ function commanderEquipmentSection(state, selectedKit) {
     const ownedCards = ownedInstances
       .filter((instance) => {
         const entry = equipmentDefinition(instance?.defId);
-        if (!entry || entry.slot !== slot) return false;
+        // 아이템의 slot은 장착 칸 id가 아니라 부위(itemSlot)다 — 반지는 ring1/ring2 두 칸.
+        if (!entry || entry.slot !== slotDef.itemSlot) return false;
         return !slotDef.classLocked || entry.baseClassId === selectedKit.baseClassId;
       })
       .map((instance) => {

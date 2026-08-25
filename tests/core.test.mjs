@@ -24,7 +24,7 @@ import {
   workerProficiency
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
-import { EQUIPMENT_DEFS, EQUIPMENT_GRADES, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions } from "../src/classes.js";
+import { EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -356,7 +356,7 @@ test("방어구·장신구는 직업 제한 없이 슬롯별로 하나씩 장착
   assert.equal(engine.equipEquipment(uidOf("heavyPlate")), true);
   assert.equal(engine.equipEquipment(uidOf("guardianCharm")), true);
   assert.equal(commander.equipped.chest, uidOf("heavyPlate"));
-  assert.equal(commander.equipped.amulet, uidOf("guardianCharm"));
+  assert.equal(commander.equipped.necklace, uidOf("guardianCharm"));
 
   // 방어구(체력+12%)와 장신구(체력+9%)가 함께 적용된다.
   const gearedStats = playerCombatStats(commander, commander.combatKitId);
@@ -367,13 +367,18 @@ test("방어구·장신구는 직업 제한 없이 슬롯별로 하나씩 장착
   assert.equal(engine.craftEquipment("scoutLeather"), true);
   assert.equal(engine.equipEquipment(uidOf("scoutLeather")), true);
   assert.equal(commander.equipped.chest, uidOf("scoutLeather"), "같은 부위(갑옷)는 교체된다");
-  assert.equal(commander.equipped.amulet, uidOf("guardianCharm"), "다른 부위는 그대로다");
+  assert.equal(commander.equipped.necklace, uidOf("guardianCharm"), "다른 부위는 그대로다");
 });
 
-test("장비 슬롯은 무기 1 · 방어구 5 · 장신구 2 계열로 구성된다", () => {
+test("장비 슬롯은 무기 1 · 방어구 5 · 장신구 3(반지2+목걸이) 계열로 구성된다", () => {
   assert.equal(equipmentSlotsByCategory("weapon").length, 1);
   assert.equal(equipmentSlotsByCategory("armor").length, 5, "방어구는 부위별 5칸");
-  assert.equal(equipmentSlotsByCategory("accessory").length, 2);
+  assert.equal(equipmentSlotsByCategory("accessory").length, 3, "반지 2 + 목걸이 1");
+
+  // 반지는 같은 종류가 두 칸이다 — 아이템의 slot("ring")과 장착 칸 id(ring1/ring2)가 다르다.
+  const ringSlots = slotsAcceptingItem("ring");
+  assert.deepEqual(ringSlots.map((slot) => slot.id), ["ring1", "ring2"]);
+  assert.deepEqual(slotsAcceptingItem("necklace").map((slot) => slot.id), ["necklace"]);
 
   // 직업 제한은 무기에만 있다 — 방어구·장신구까지 직업을 타면 "직업이 선택을
   // 강제"하게 되어 docs/CHOICE_DESIGN.md 원칙과 어긋난다.
@@ -384,9 +389,10 @@ test("장비 슬롯은 무기 1 · 방어구 5 · 장신구 2 계열로 구성�
   assert.deepEqual(Object.keys(createEmptyEquipped()).sort(), [...EQUIPMENT_SLOTS].sort());
   assert.ok(Object.values(createEmptyEquipped()).every((value) => value === null));
 
-  // 모든 장비는 실제로 존재하는 슬롯에 들어가야 한다.
+  // 모든 장비는 실제로 들어갈 칸이 있는 부위를 가리켜야 한다.
+  // (아이템의 slot은 장착 칸 id가 아니라 itemSlot이다 — 반지는 ring1/ring2 두 칸.)
   for (const entry of Object.values(EQUIPMENT_DEFS)) {
-    assert.ok(EQUIPMENT_SLOT_DEFS[entry.slot], `${entry.id}의 슬롯 ${entry.slot}이 정의돼 있어야 한다`);
+    assert.ok(slotsAcceptingItem(entry.slot).length > 0, `${entry.id}의 부위 ${entry.slot}에 들어갈 칸이 없다`);
   }
 });
 
@@ -406,7 +412,7 @@ test("v20 저장의 방어구·장신구 한 칸은 부위별 슬롯으로 옮�
   const defOf = (uid) => commander.equipmentOwned.find((entry) => entry.uid === uid)?.defId;
 
   assert.equal(defOf(equipped.chest), "heavyPlate", "방어구는 그 아이템의 부위(갑옷)로 간다");
-  assert.equal(defOf(equipped.amulet), "guardianCharm", "장신구는 부적 칸으로 간다");
+  assert.equal(defOf(equipped.necklace), "guardianCharm", "장신구는 부적 칸으로 간다");
   assert.equal(defOf(equipped.weapon), "crusaderBastardSword", "무기는 그대로다");
 
   // 옛 키가 남아 있으면 UI가 유령 장비를 그린다.
@@ -592,7 +598,7 @@ test("구형 층제 원정 저장은 영구 성장만 보존하고 안전하게 
   const migrated = new GameEngine(storage);
   assert.equal(migrated.state.expedition, null);
   assert.equal(migrated.state.meta.scrap, 19);
-  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구|투구·갑옷·장갑|등급\(일반~신화\)/);
+  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구|투구·갑옷·장갑|등급\(일반~신화\)|반지 두 칸/);
 });
 
 test("방어구 세트를 완성하면 세트 보너스가 추가로 붙는다", () => {
@@ -752,6 +758,64 @@ test("제작 굴림은 저장 시드를 이어 쓰므로 되돌려 다시 굴릴
   const second = make();
   assert.equal(first.grade, second.grade, "같은 시드면 같은 결과가 나온다");
   assert.deepEqual(first.options, second.options);
+});
+
+test("반지는 두 칸이고, 같은 물건이 두 칸을 동시에 차지하지 않는다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const commander = engine.state.adventure.commander;
+  engine.state.meta.materials.ore = 50;
+  engine.state.meta.materials.herb = 50;
+  engine.state.meta.materials.ingot = 50;
+  commander.unlockedBlueprints.push("sagesBand", "guardianCharm");
+
+  // 같은 반지를 두 개 만든다(굴림이 달라 서로 다른 물건이다).
+  assert.equal(engine.craftEquipment("sagesBand"), true);
+  assert.equal(engine.craftEquipment("sagesBand"), true);
+  const [ringA, ringB] = commander.equipmentOwned.filter((e) => e.defId === "sagesBand");
+
+  // 칸을 지정하지 않으면 빈 칸부터 채운다.
+  assert.equal(engine.equipEquipment(ringA.uid), true);
+  assert.equal(commander.equipped.ring1, ringA.uid);
+  assert.equal(engine.equipEquipment(ringB.uid), true);
+  assert.equal(commander.equipped.ring2, ringB.uid, "두 번째 반지는 빈 ring2로 간다");
+
+  // 두 반지의 보너스가 함께 들어간다.
+  const both = equippedBonuses(commander);
+  const onlyOne = equippedBonuses({ ...commander, equipped: { ...commander.equipped, ring2: null } });
+  assert.ok(both.cooldownReduction > onlyOne.cooldownReduction, "반지 두 개가 모두 반영된다");
+
+  // 같은 물건을 다른 칸에 끼면 옮겨 끼는 것이지 복제가 아니다.
+  assert.equal(engine.equipEquipment(ringA.uid, "ring2"), true);
+  assert.equal(commander.equipped.ring2, ringA.uid);
+  assert.equal(commander.equipped.ring1, null, "원래 칸은 비워진다");
+
+  const moved = equippedBonuses(commander);
+  assert.equal(moved.cooldownReduction, onlyOne.cooldownReduction, "한 개만 낀 것과 같아야 한다(중복 합산 없음)");
+
+  // 목걸이는 반지 칸에 들어가지 않는다.
+  assert.equal(engine.craftEquipment("guardianCharm"), true);
+  const charm = commander.equipmentOwned.find((e) => e.defId === "guardianCharm");
+  assert.equal(engine.equipEquipment(charm.uid, "ring1"), true, "잘못된 칸을 넘겨도 제 부위로 간다");
+  assert.equal(commander.equipped.necklace, charm.uid);
+  assert.equal(commander.equipped.ring1, null);
+});
+
+test("v22 저장의 반지·부적은 반지1·목걸이로 옮겨진다", () => {
+  const state = createInitialState();
+  state.version = 22;
+  state.adventure.commander.equipmentOwned = [
+    { uid: "eq1", defId: "sagesBand", grade: "common", options: [] },
+    { uid: "eq2", defId: "guardianCharm", grade: "common", options: [] }
+  ];
+  state.adventure.commander.equipped = { weapon: null, helmet: null, chest: null, gloves: null,
+    boots: null, cloak: null, ring: "eq1", amulet: "eq2" };
+
+  const commander = migrateState(JSON.parse(JSON.stringify(state))).adventure.commander;
+  assert.equal(commander.equipped.ring1, "eq1", "반지는 반지1로");
+  assert.equal(commander.equipped.necklace, "eq2", "부적은 목걸이로");
+  assert.equal(commander.equipped.ring2, null, "새로 생긴 반지2는 비어 있다");
+  assert.deepEqual(Object.keys(commander.equipped).sort(), [...EQUIPMENT_SLOTS].sort());
+  assert.equal(commander.equipped.amulet, undefined, "옛 키는 남지 않는다");
 });
 
 test("던전을 정복하면 개방되고, 개척 주기마다 영지에 정기 수익이 들어온다", () => {

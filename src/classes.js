@@ -635,28 +635,45 @@ export function runeDefinition(runeId) {
 // 슬롯은 세 계열로 나뉜다:
 // - weapon    : 직업 전용(classLocked). 직업 정체성을 표현한다.
 // - armor     : 부위별 5칸. 직업 제한 없음.
-// - accessory : 2칸. 직업 제한 없음.
+// - accessory : 반지 2 + 목걸이 1. 직업 제한 없음(docs/EQUIPMENT_DESIGN.md §11).
 //
-// 어떤 아이템을 어느 부위에 채울지는 아직 정하는 중이라 지금은 **구조만** 잡아둔다.
+// **id와 itemSlot을 구분한다.** 반지처럼 같은 종류를 두 칸 끼는 부위가 있어서다.
+// 아이템은 `slot: "ring"`(= itemSlot)이라고만 선언하고, 그게 ring1에 들어갈지
+// ring2에 들어갈지는 장착할 때 정한다.
+//
 // 슬롯을 늘리거나 줄이려면 이 표만 고치면 된다 — 보너스 합산(equippedBonuses),
 // 세트 판정, 저장 마이그레이션, UI가 전부 이 표를 순회하므로 다른 곳은 손댈 게 없다.
 export const EQUIPMENT_SLOT_DEFS = {
-  weapon: { id: "weapon", category: "weapon", name: "무기", classLocked: true },
+  weapon: { id: "weapon", itemSlot: "weapon", category: "weapon", name: "무기", classLocked: true },
 
-  helmet: { id: "helmet", category: "armor", name: "투구" },
-  chest: { id: "chest", category: "armor", name: "갑옷" },
-  gloves: { id: "gloves", category: "armor", name: "장갑" },
-  boots: { id: "boots", category: "armor", name: "신발" },
-  cloak: { id: "cloak", category: "armor", name: "망토" },
+  helmet: { id: "helmet", itemSlot: "helmet", category: "armor", name: "투구" },
+  chest: { id: "chest", itemSlot: "chest", category: "armor", name: "갑옷" },
+  gloves: { id: "gloves", itemSlot: "gloves", category: "armor", name: "장갑" },
+  boots: { id: "boots", itemSlot: "boots", category: "armor", name: "신발" },
+  cloak: { id: "cloak", itemSlot: "cloak", category: "armor", name: "망토" },
 
-  ring: { id: "ring", category: "accessory", name: "반지" },
-  amulet: { id: "amulet", category: "accessory", name: "부적" }
+  ring1: { id: "ring1", itemSlot: "ring", category: "accessory", name: "반지 1" },
+  ring2: { id: "ring2", itemSlot: "ring", category: "accessory", name: "반지 2" },
+  necklace: { id: "necklace", itemSlot: "necklace", category: "accessory", name: "목걸이" }
 };
+
+// 아이템의 slot 값(itemSlot)이 들어갈 수 있는 장착 칸들.
+export function slotsAcceptingItem(itemSlot) {
+  return Object.values(EQUIPMENT_SLOT_DEFS).filter((slot) => slot.itemSlot === itemSlot);
+}
 
 export const EQUIPMENT_SLOT_CATEGORY_LABELS = {
   weapon: "무기",
   armor: "방어구",
   accessory: "장신구"
+};
+
+// 방어구 계열. 전설 방어구는 부위(투구·갑옷…)보다 이 계열 단위로 설계된다
+// (docs/EQUIPMENT_DESIGN.md §10 — "세부 부위화는 추후 구현 단계에서 결정").
+export const ARMOR_CLASS_DEFS = {
+  heavy: { id: "heavy", name: "중갑" },
+  light: { id: "light", name: "경갑" },
+  cloth: { id: "cloth", name: "천" }
 };
 
 // 선언 순서가 곧 화면 표시 순서다.
@@ -823,14 +840,14 @@ export const EQUIPMENT_DEFS = {
   // --- 방어구: 직업 제한 없음. 셋 다 "버티기 / 굴리기 / 마력" 방향이 갈린다 ---
   // 지금은 셋 다 몸통(chest)이다. 투구·장갑·신발·망토 슬롯은 구조만 열어두고
   // 채울 아이템은 아직 설계 중이다.
-  heavyPlate: { id: "heavyPlate", slot: "chest", setId: "ironbound", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorBonus: 0.04 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
-  scoutLeather: { id: "scoutLeather", slot: "chest", setId: "ranger", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorBonus: 0.02, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
-  wardenRobe: { id: "wardenRobe", slot: "chest", setId: "warden", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorBonus: 0.02, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
+  heavyPlate: { id: "heavyPlate", slot: "chest", armorClass: "heavy", setId: "ironbound", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorBonus: 0.04 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
+  scoutLeather: { id: "scoutLeather", slot: "chest", armorClass: "light", setId: "ranger", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorBonus: 0.02, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
+  wardenRobe: { id: "wardenRobe", slot: "chest", armorClass: "cloth", setId: "warden", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorBonus: 0.02, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
 
   // --- 장신구: 직업 제한 없음. 각각 방어구 하나와 세트를 이룬다 ---
-  guardianCharm: { id: "guardianCharm", slot: "amulet", setId: "ironbound", name: "수호의 부적", materials: { herb: 3, ingot: 1 }, bonus: { maxHpBonus: 0.09 }, description: "낡은 수호 부적. 최대 체력이 오른다." },
+  guardianCharm: { id: "guardianCharm", slot: "necklace", setId: "ironbound", name: "수호의 부적", materials: { herb: 3, ingot: 1 }, bonus: { maxHpBonus: 0.09 }, description: "낡은 수호 부적. 최대 체력이 오른다." },
   sagesBand: { id: "sagesBand", slot: "ring", setId: "ranger", name: "현자의 고리", materials: { ore: 2, herb: 2 }, bonus: { cooldownReduction: 0.05 }, description: "사색을 돕는 고리. 스킬 재사용 대기시간이 감소한다." },
-  runeSigil: { id: "runeSigil", slot: "amulet", setId: "warden", name: "룬 각인 인장", materials: { ore: 3, ingot: 1 }, bonus: { damageBonus: 0.05 }, description: "각인된 인장. 공격력이 오른다." }
+  runeSigil: { id: "runeSigil", slot: "necklace", setId: "warden", name: "룬 각인 인장", materials: { ore: 3, ingot: 1 }, bonus: { damageBonus: 0.05 }, description: "각인된 인장. 공격력이 오른다." }
 };
 
 // 방어구 세트. 설계도는 낱개가 아니라 "세트 단위"로 습득한다 — 하나를 얻으면
@@ -946,8 +963,10 @@ export function equipmentDefinition(equipmentId) {
   return EQUIPMENT_DEFS[equipmentId] || null;
 }
 
-export function equipmentForSlot(slot) {
-  return Object.values(EQUIPMENT_DEFS).filter((entry) => entry.slot === slot);
+// 장착 칸 id를 받아 거기 들어갈 수 있는 장비를 돌려준다(반지 1/2는 같은 목록).
+export function equipmentForSlot(slotId) {
+  const itemSlot = EQUIPMENT_SLOT_DEFS[slotId]?.itemSlot || slotId;
+  return Object.values(EQUIPMENT_DEFS).filter((entry) => entry.slot === itemSlot);
 }
 
 // 장착 중인 장비의 보너스를 합산한다. 무기는 직업이 일치할 때만 계산에 들어간다
@@ -959,22 +978,30 @@ export function equippedBonuses(commander = {}, baseClassId = null) {
   // 정의 id만으로는 어느 물건인지 특정할 수 없다).
   const equippedInstance = (slot) => findEquipmentInstance(commander, equipped[slot]);
 
-  for (const slot of EQUIPMENT_SLOTS) {
-    const instance = equippedInstance(slot);
+  // 같은 물건이 두 칸에 동시에 잡히면 보너스가 두 번 더해진다(반지 1/2처럼 같은
+  // 종류가 두 칸인 부위에서 생길 수 있다). uid 기준으로 한 번만 센다.
+  const counted = new Set();
+
+  for (const slotId of EQUIPMENT_SLOTS) {
+    const slotDef = EQUIPMENT_SLOT_DEFS[slotId];
+    const instance = equippedInstance(slotId);
     const definition = EQUIPMENT_DEFS[instance?.defId];
-    if (!definition || definition.slot !== slot) continue;
-    if (definition.slot === "weapon" && baseClassId && definition.baseClassId !== baseClassId) continue;
+    if (!definition || definition.slot !== slotDef.itemSlot) continue;
+    if (counted.has(instance.uid)) continue;
+    if (slotDef.classLocked && baseClassId && definition.baseClassId !== baseClassId) continue;
+    counted.add(instance.uid);
     for (const [key, value] of Object.entries(instanceBonuses(instance))) {
       if (totals[key] === undefined) continue;
       totals[key] += Number(value) || 0;
     }
   }
+
   // 세트 보너스: 한 세트의 조각을 전부 장착했을 때만 붙는다.
+  const equippedDefIds = new Set(EQUIPMENT_SLOTS
+    .map((slotId) => equippedInstance(slotId)?.defId)
+    .filter(Boolean));
   for (const set of Object.values(ARMOR_SET_DEFS)) {
-    const complete = set.pieces.every((pieceId) => {
-      const piece = EQUIPMENT_DEFS[pieceId];
-      return piece && equippedInstance(piece.slot)?.defId === pieceId;
-    });
+    const complete = set.pieces.every((pieceId) => equippedDefIds.has(pieceId));
     if (!complete) continue;
     for (const [key, value] of Object.entries(set.setBonus || {})) {
       if (totals[key] === undefined) continue;

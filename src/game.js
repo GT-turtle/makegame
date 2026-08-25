@@ -1,5 +1,5 @@
 import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
-import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, equipmentGradeDefinition, findEquipmentInstance, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions } from "./classes.js";
+import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, equipmentGradeDefinition, findEquipmentInstance, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem } from "./classes.js";
 import {
   activeWorkerCount,
   addMaterial,
@@ -2347,13 +2347,28 @@ export class GameEngine {
     const instance = findEquipmentInstance(commander, uid);
     const definition = EQUIPMENT_DEFS[instance?.defId];
     if (!definition) return false;
+
+    // 들어갈 칸을 정한다. 반지처럼 같은 종류가 두 칸이면 호출자가 지정하고,
+    // 지정이 없으면 빈 칸을 먼저 채운다.
+    const candidates = slotsAcceptingItem(definition.slot);
+    if (!candidates.length) return false;
+    const target = slot && candidates.some((entry) => entry.id === slot)
+      ? slot
+      : (candidates.find((entry) => !commander.equipped[entry.id]) || candidates[0]).id;
+
     // 무기만 직업 제한이 있다. 방어구·장신구는 어떤 직업이든 자유롭게 고를 수 있어
     // 직업이 선택을 강제하지 않는다(docs/CHOICE_DESIGN.md).
-    if (definition.slot === "weapon") {
+    if (EQUIPMENT_SLOT_DEFS[target].classLocked) {
       const kit = playerKitDefinition(commander.combatKitId);
       if (definition.baseClassId !== kit.baseClassId) return false;
     }
-    commander.equipped[definition.slot] = uid;
+
+    // 같은 물건을 두 칸에 동시에 끼면 보너스가 두 번 더해진다. 옮겨 끼는 것으로 본다.
+    for (const slotId of EQUIPMENT_SLOTS) {
+      if (slotId !== target && commander.equipped[slotId] === uid) commander.equipped[slotId] = null;
+    }
+
+    commander.equipped[target] = uid;
     this.addLog(`${definition.name} 장착.`, "item");
     this.emit();
     return true;
