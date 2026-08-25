@@ -664,15 +664,30 @@ export const EQUIPMENT_DEFS = {
   archmageStaff: { id: "archmageStaff", slot: "weapon", name: "현자의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { wood: 3, ingot: 2 }, bonus: { cooldownReduction: 0.1 }, description: "마력 순환을 돕는 대형 지팡이. 스킬 재사용 대기시간이 크게 감소한다." },
 
   // --- 방어구: 직업 제한 없음. 셋 다 "버티기 / 굴리기 / 마력" 방향이 갈린다 ---
-  heavyPlate: { id: "heavyPlate", slot: "armor", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorBonus: 0.04 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
-  scoutLeather: { id: "scoutLeather", slot: "armor", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorBonus: 0.02, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
-  wardenRobe: { id: "wardenRobe", slot: "armor", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorBonus: 0.02, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
+  heavyPlate: { id: "heavyPlate", slot: "armor", setId: "ironbound", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorBonus: 0.04 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
+  scoutLeather: { id: "scoutLeather", slot: "armor", setId: "ranger", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorBonus: 0.02, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
+  wardenRobe: { id: "wardenRobe", slot: "armor", setId: "warden", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorBonus: 0.02, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
 
-  // --- 장신구: 직업 제한 없음 ---
-  runeSigil: { id: "runeSigil", slot: "accessory", name: "룬 각인 인장", materials: { ore: 3, ingot: 1 }, bonus: { damageBonus: 0.05 }, description: "각인된 인장. 공격력이 오른다." },
-  guardianCharm: { id: "guardianCharm", slot: "accessory", name: "수호의 부적", materials: { herb: 3, ingot: 1 }, bonus: { maxHpBonus: 0.09 }, description: "낡은 수호 부적. 최대 체력이 오른다." },
-  sagesBand: { id: "sagesBand", slot: "accessory", name: "현자의 고리", materials: { ore: 2, herb: 2 }, bonus: { cooldownReduction: 0.05 }, description: "사색을 돕는 고리. 스킬 재사용 대기시간이 감소한다." }
+  // --- 장신구: 직업 제한 없음. 각각 방어구 하나와 세트를 이룬다 ---
+  guardianCharm: { id: "guardianCharm", slot: "accessory", setId: "ironbound", name: "수호의 부적", materials: { herb: 3, ingot: 1 }, bonus: { maxHpBonus: 0.09 }, description: "낡은 수호 부적. 최대 체력이 오른다." },
+  sagesBand: { id: "sagesBand", slot: "accessory", setId: "ranger", name: "현자의 고리", materials: { ore: 2, herb: 2 }, bonus: { cooldownReduction: 0.05 }, description: "사색을 돕는 고리. 스킬 재사용 대기시간이 감소한다." },
+  runeSigil: { id: "runeSigil", slot: "accessory", setId: "warden", name: "룬 각인 인장", materials: { ore: 3, ingot: 1 }, bonus: { damageBonus: 0.05 }, description: "각인된 인장. 공격력이 오른다." }
 };
+
+// 방어구 세트. 설계도는 낱개가 아니라 "세트 단위"로 습득한다 — 하나를 얻으면
+// 방어구와 짝 장신구를 둘 다 만들 수 있다(제작은 여전히 각각 재료를 쓴다).
+// 둘 다 장착하면 작은 세트 보너스가 붙어, 세트를 맞출지 다른 세트끼리 섞을지가
+// 하나의 선택이 된다. 보너스를 작게 둔 건 "선택이 강함이 아니라 방향을 바꾼다"는
+// 원칙(docs/CHOICE_DESIGN.md) 때문이다.
+export const ARMOR_SET_DEFS = {
+  ironbound: { id: "ironbound", name: "층철 세트", pieces: ["heavyPlate", "guardianCharm"], setBonus: { armorBonus: 0.02 }, description: "버티는 방향. 세트 완성 시 방어력이 조금 더 오른다." },
+  ranger: { id: "ranger", name: "순찰자 세트", pieces: ["scoutLeather", "sagesBand"], setBonus: { cooldownReduction: 0.03 }, description: "굴리는 방향. 세트 완성 시 기술 회전이 조금 더 빨라진다." },
+  warden: { id: "warden", name: "감시자 세트", pieces: ["wardenRobe", "runeSigil"], setBonus: { manaRegenBonus: 0.4 }, description: "마력 방향. 세트 완성 시 마나 회복이 조금 더 빨라진다." }
+};
+
+export function armorSetDefinition(setId) {
+  return ARMOR_SET_DEFS[setId] || null;
+}
 
 export function equipmentDefinition(equipmentId) {
   return EQUIPMENT_DEFS[equipmentId] || null;
@@ -692,6 +707,18 @@ export function equippedBonuses(commander = {}, baseClassId = null) {
     if (!definition || definition.slot !== slot) continue;
     if (definition.slot === "weapon" && baseClassId && definition.baseClassId !== baseClassId) continue;
     for (const [key, value] of Object.entries(definition.bonus || {})) {
+      if (totals[key] === undefined) continue;
+      totals[key] += Number(value) || 0;
+    }
+  }
+  // 세트 보너스: 한 세트의 조각을 전부 장착했을 때만 붙는다.
+  for (const set of Object.values(ARMOR_SET_DEFS)) {
+    const complete = set.pieces.every((pieceId) => {
+      const piece = EQUIPMENT_DEFS[pieceId];
+      return piece && equipped[piece.slot] === pieceId;
+    });
+    if (!complete) continue;
+    for (const [key, value] of Object.entries(set.setBonus || {})) {
       if (totals[key] === undefined) continue;
       totals[key] += Number(value) || 0;
     }

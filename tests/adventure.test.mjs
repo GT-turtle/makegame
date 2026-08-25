@@ -28,7 +28,7 @@ import {
   moveBattlePlayer,
   steerBattlePlayer,
   moveRunPlayer,
-  rollWeaponBlueprintDrop,
+  dungeonClearRewards,
   selectPlayerTarget,
   tickAutoBattle,
   ARENA_BOUNDS,
@@ -37,9 +37,9 @@ import {
   consumeFieldTrigger,
   resolveObstacles,
   createFieldBattle,
-  WEAPON_BLUEPRINT_DROP_CHANCE
+  REGION_ARMOR_SET
 } from "../src/adventure.js";
-import { EQUIPMENT_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, playerCombatStats } from "../src/classes.js";
+import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
 
 class MemoryStorage {
@@ -1028,33 +1028,27 @@ test("직업과 일치하는 무기는 보너스를 주지만, 다른 직업 무
   assert.equal(necroStats.cooldownMultiplier, 1 - necroStats.cooldownReduction);
 });
 
-test("던전 최심부 상자는 보스를 잡아야 열리고, 무기 설계도를 낮은 확률로 준다", () => {
-  // 평균 3회 파밍을 의도한 수치.
-  assert.ok(Math.abs(WEAPON_BLUEPRINT_DROP_CHANCE - 1 / 3) < 1e-9);
+test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {
+  // 서부는 크루세이더·네크로맨서 두 직업의 출신지다.
+  const first = dungeonClearRewards("west", 1, []);
+  assert.deepEqual(first, ["crusaderBastardSword"], "1회차는 무기 설계도");
 
-  const makeRun = () => ({
-    regionId: "west", // 크루세이더·네크로맨서 출신지
-    commander: { unlockedBlueprints: [] },
-    cargo: { scrap: 0, materials: {}, weaponBlueprints: [] }
-  });
+  const second = dungeonClearRewards("west", 2, ["crusaderBastardSword"]);
+  const westSet = ARMOR_SET_DEFS[REGION_ARMOR_SET.west];
+  assert.deepEqual(second, westSet.pieces, "2회차는 방어구 세트 전체(방어구+장신구)");
+  assert.equal(second.length, 2, "세트 설계도 하나로 두 조각이 함께 해금된다");
 
-  // 확률 굴림에 실패하면 아무것도 안 나온다.
-  assert.equal(rollWeaponBlueprintDrop(makeRun(), () => 0.9), null);
+  const third = dungeonClearRewards("west", 3, ["crusaderBastardSword", ...westSet.pieces]);
+  assert.deepEqual(third, ["necromancerArmorSword"], "3회차는 두 번째 직업 무기");
 
-  // 성공하면 그 지역 출신 직업의 무기 설계도가 나온다.
-  const dropped = rollWeaponBlueprintDrop(makeRun(), () => 0);
-  assert.ok(["crusaderBastardSword", "necromancerArmorSword"].includes(dropped));
+  // 다 받은 뒤에는 더 나오지 않는다(무한 반복해도 중복이 안 쌓인다).
+  const exhausted = dungeonClearRewards("west", 4,
+    ["crusaderBastardSword", "necromancerArmorSword", ...westSet.pieces]);
+  assert.deepEqual(exhausted, [], "전부 습득 후에는 설계도 보상 없음");
 
-  // 이미 가진 설계도는 후보에서 빠지고, 전부 가졌으면 null.
-  const fullRun = makeRun();
-  fullRun.commander.unlockedBlueprints = ["crusaderBastardSword", "necromancerArmorSword"];
-  assert.equal(rollWeaponBlueprintDrop(fullRun, () => 0), null);
-
-  // 다른 지역(북부=바바리안·아크메이지) 던전은 그 지역 무기만 준다.
-  const northRun = makeRun();
-  northRun.regionId = "north";
-  const northDrop = rollWeaponBlueprintDrop(northRun, () => 0);
-  assert.ok(["barbarianGreataxe", "archmageStaff"].includes(northDrop));
+  // 지역마다 나오는 방어구 세트가 다르다.
+  const centralSecond = dungeonClearRewards("central", 2, []);
+  assert.notDeepEqual(centralSecond, westSet.pieces, "중부는 서부와 다른 세트를 준다");
 });
 
 test("던전 상자는 보스를 쓰러뜨리기 전에는 잠겨 있다", () => {

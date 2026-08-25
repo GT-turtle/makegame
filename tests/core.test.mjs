@@ -513,3 +513,56 @@ test("구형 층제 원정 저장은 영구 성장만 보존하고 안전하게 
   assert.equal(migrated.state.meta.scrap, 19);
   assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구/);
 });
+
+test("방어구 세트를 완성하면 세트 보너스가 추가로 붙는다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const commander = engine.state.adventure.commander;
+  engine.state.meta.materials.ingot = 30;
+  engine.state.meta.materials.blackSteel = 10;
+  engine.state.meta.materials.herb = 30;
+
+  commander.unlockedBlueprints.push("heavyPlate", "guardianCharm");
+  assert.equal(engine.craftEquipment("heavyPlate"), true);
+  assert.equal(engine.craftEquipment("guardianCharm"), true);
+
+  // 방어구만 착용
+  assert.equal(engine.equipEquipment("heavyPlate"), true);
+  const armorOnly = playerCombatStats(commander, commander.combatKitId);
+
+  // 짝 장신구까지 착용해 세트 완성 → 방어력에 세트 보너스가 더 붙는다
+  assert.equal(engine.equipEquipment("guardianCharm"), true);
+  const fullSet = playerCombatStats(commander, commander.combatKitId);
+
+  assert.ok(fullSet.armor > armorOnly.armor, "세트 완성 시 방어력이 더 오른다");
+  assert.ok(fullSet.maxHp > armorOnly.maxHp, "장신구 자체 체력 보너스도 함께 적용된다");
+});
+
+test("던전을 정복하면 개방되고, 개척 주기마다 영지에 정기 수익이 들어온다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const records = engine.state.adventure.records;
+  assert.equal(records.north.dungeonOpened, false, "처음엔 어느 던전도 개방돼 있지 않다");
+
+  // 개방 전에는 던전 수익이 없다.
+  const scrapBefore = engine.state.meta.scrap;
+  engine.collectOpenedDungeonIncome();
+  assert.equal(engine.state.meta.scrap, scrapBefore, "개방 전에는 수익 없음");
+
+  // 개방 후에는 주기마다 고철과 그 지역 재료가 들어온다.
+  records.north.dungeonOpened = true;
+  records.north.victories = 1;
+  const frostIronBefore = engine.state.meta.materials.frostIron || 0;
+  engine.collectOpenedDungeonIncome();
+  assert.ok(engine.state.meta.scrap > scrapBefore, "개방된 던전이 고철을 벌어온다");
+  assert.ok((engine.state.meta.materials.frostIron || 0) > frostIronBefore, "그 지역 재료도 들어온다");
+
+  // 반복 공략할수록 수익이 오르지만 상한이 있다(무한 증가 방지).
+  const oneClear = engine.state.meta.scrap;
+  engine.collectOpenedDungeonIncome();
+  const secondTick = engine.state.meta.scrap - oneClear;
+  records.north.victories = 99;
+  const beforeCapped = engine.state.meta.scrap;
+  engine.collectOpenedDungeonIncome();
+  const cappedTick = engine.state.meta.scrap - beforeCapped;
+  assert.ok(cappedTick > secondTick, "클리어를 쌓으면 수익이 오른다");
+  assert.ok(cappedTick <= 7, `회차 보너스에 상한이 있다 (실제 ${cappedTick})`);
+});

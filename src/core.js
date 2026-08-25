@@ -300,11 +300,11 @@ export function createInitialState() {
       },
       unlockedTechniques: ["survival", "poison", "forging", "oath", "mobility"],
       records: {
-        north: { visits: 0, victories: 0 },
-        south: { visits: 0, victories: 0 },
-        east: { visits: 0, victories: 0 },
-        west: { visits: 0, victories: 0 },
-        central: { visits: 0, victories: 0 }
+        north: { visits: 0, victories: 0, dungeonOpened: false },
+        south: { visits: 0, victories: 0, dungeonOpened: false },
+        east: { visits: 0, victories: 0, dungeonOpened: false },
+        west: { visits: 0, victories: 0, dungeonOpened: false },
+        central: { visits: 0, victories: 0, dungeonOpened: false }
       },
       run: null
     },

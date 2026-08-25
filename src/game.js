@@ -265,7 +265,13 @@ export class GameEngine {
     // 필드를 돌아다니며 무리와 싸우고 던전 입구까지 걸어간다. 던전에 들어가면
     // 그때부터는 기존 격자 던전이 그대로 이어받는다.
     // (개척지 세부 원정은 아직 격자 흐름 그대로 — 습격 주기가 칸 이동 수에 묶여 있어서 별도 작업 필요)
-    const run = createRegionRun(regionId, seed, party, adventure.unitProgress, adventure.commander, { fieldBattle: true });
+    // clearCount는 던전 상자의 확정 보상 단계를 정한다(1회차 무기 → 2회차 방어구
+    // 세트 → 3회차 두 번째 무기). 이번 시도가 몇 번째인지이므로 기존 승리 수 + 1.
+    const clearCount = (adventure.records[regionId]?.victories || 0) + 1;
+    const run = createRegionRun(regionId, seed, party, adventure.unitProgress, adventure.commander, {
+      fieldBattle: true,
+      clearCount
+    });
     if (!run) return false;
     adventure.selectedRegionId = regionId;
     adventure.run = run;
@@ -894,6 +900,7 @@ export class GameEngine {
 
     this.advanceEstateHappiness();
     this.advanceFrontierPopulationGrowth();
+    this.collectOpenedDungeonIncome();
     stepMerchantCycle(frontier, this.state.meta.merchant);
 
     const incursion = Object.entries(frontier.zones).find(([zoneId, zone]) => occupiedZone(frontier, zoneId) && zone.threat >= 80);
@@ -912,6 +919,30 @@ export class GameEngine {
     this.addFrontierEvent(`개척 주기 종료 · 가용 노동 ${availableFrontierPopulation(frontier)}/${frontier.population.total} · 영지 만족도 ${satisfaction.overall} · 영지 행복도 ${this.state.meta.estate.happiness}.`);
     this.emit();
     return true;
+  }
+
+  // 개방된 던전은 매 개척 주기마다 영지에 고정 수익을 낸다.
+  // 반복 공략이 "동료 숙련"만이 아니라 영지 경영과도 이어지게 하는 고리다 —
+  // 한 번 뚫어둔 던전이 이후 계속 벌어주므로, 새 지역을 여는 동기가 생긴다.
+  //
+  // 수익은 클리어 횟수에 따라 완만히 오르되 상한을 둔다. 같은 던전만 무한히
+  // 돌아서 경제가 터지지 않도록, 회차 보너스는 5회에서 멈춘다.
+  collectOpenedDungeonIncome() {
+    const adventure = this.state.adventure;
+    if (!adventure?.records) return;
+    const earned = [];
+    for (const [regionId, record] of Object.entries(adventure.records)) {
+      if (!record?.dungeonOpened) continue;
+      const region = WORLD_REGION_DEFS[regionId];
+      if (!region) continue;
+      const depth = Math.min(5, Math.max(1, record.victories || 1));
+      const scrap = 2 + depth;
+      const materialAmount = 1 + Math.floor(depth / 3);
+      this.state.meta.scrap += scrap;
+      addMaterial(this.state.meta.materials, region.rewardMaterial, materialAmount);
+      earned.push(`${region.dungeonName} 고철 ${scrap}·${MATERIAL_DEFS[region.rewardMaterial]?.name || region.rewardMaterial} ${materialAmount}`);
+    }
+    if (earned.length) this.addFrontierEvent(`개방 던전 정기 수익: ${earned.join(" · ")}.`, "good");
   }
 
   // 원정/토벌 실패 손실 규칙: 병력은 중상(N주기 후 자동 복귀) 또는 사망(영구 손실) 중 판정하고,
@@ -1200,6 +1231,13 @@ export class GameEngine {
       adventure.records[run.regionId].victories += 1;
       this.state.meta.victories += 1;
       this.state.meta.essence += 1;
+      // 던전을 처음 정복하면 그 지역 던전이 "개방"된다. 개방된 던전은 이후
+      // 반복해서 돌 수 있고(동료 숙련), 동시에 매 개척 주기마다 영지 수익을 낸다
+      // — 한 번 뚫어놓은 길을 상단이 오가며 벌어들이는 개념.
+      if (!adventure.records[run.regionId].dungeonOpened) {
+        adventure.records[run.regionId].dungeonOpened = true;
+        this.addLog(`${WORLD_REGION_DEFS[run.regionId].dungeonName} 개방. 이제 반복 공략과 정기 수익이 가능하다.`, "good");
+      }
       const region = WORLD_REGION_DEFS[run.regionId];
       recruited = region.recruits.find((unitId) => !adventure.roster.includes(unitId)) || null;
       if (recruited) {

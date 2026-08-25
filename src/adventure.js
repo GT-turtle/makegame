@@ -1,4 +1,4 @@
-import { EQUIPMENT_DEFS, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
 export const DUNGEON_SIZE = 15;
@@ -466,6 +466,8 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
     seed,
     regionId,
     subregionId: options.subregionId || null,
+    // 이번 원정이 이 지역의 몇 번째 클리어 시도인지 — 던전 상자 확정 보상 단계에 쓴다.
+    clearCount: Math.max(1, Number(options.clearCount) || 1),
     purpose: options.purpose || "exploration",
     bossEncounterId: options.bossEncounterId || null,
     location: "field",
@@ -533,22 +535,52 @@ export function revealCurrentZone(run) {
   if (zone) reveal(zone, run.player, zone.kind === "field" ? 5 : 4);
 }
 
-// 던전 최심부 상자의 무기 설계도 드랍 확률. 1/3이라 기대 시행 횟수가 평균 3회 —
-// "가끔 나오지만 확정은 아닌" 파밍 목표로 의도된 수치다.
-export const WEAPON_BLUEPRINT_DROP_CHANCE = 1 / 3;
+// 지역별로 어느 방어구 세트가 나오는지. 지역 성격에 맞춰 배정했다.
+export const REGION_ARMOR_SET = {
+  north: "ironbound",   // 설산 — 버티는 중장
+  west: "ironbound",    // 신성 제국·몰락 왕국 — 중장
+  east: "ranger",       // 산악 문파 — 경량·회전
+  south: "ranger",      // 우림 추적 — 경량
+  central: "warden"     // 사막 마탑권 — 마력
+};
 
-// 그 지역이 출신지인 직업의 무기 설계도만 드랍한다(부락 친목도 보상과 같은
-// 지역↔직업 매핑). 이미 가진 설계도는 후보에서 빠지고, 후보가 없거나 확률에
-// 실패하면 null — 상자는 열렸지만 설계도는 안 나온 상태가 된다.
-export function rollWeaponBlueprintDrop(run, random = Math.random) {
-  if (random() >= WEAPON_BLUEPRINT_DROP_CHANCE) return null;
-  const owned = run.commander?.unlockedBlueprints || [];
-  const candidates = Object.values(PLAYER_BASE_CLASS_DEFS)
-    .filter((baseClass) => baseClass.originRegionId === run.regionId)
-    .map((baseClass) => Object.values(EQUIPMENT_DEFS).find((entry) => entry.slot === "weapon" && entry.baseClassId === baseClass.id))
-    .filter((weapon) => weapon && !owned.includes(weapon.id) && !run.cargo.weaponBlueprints.includes(weapon.id));
-  if (candidates.length === 0) return null;
-  return candidates[Math.floor(random() * candidates.length) % candidates.length].id;
+// 던전 상자 보상. 확률 드랍이 아니라 **클리어 횟수에 따른 확정 보상**이다.
+// (예전엔 1/3 확률로 굴렸는데, 반복 던전 방향을 잡으면서 운빨을 걷어냈다 —
+//  docs/CHOICE_DESIGN.md. "평균 3회 파밍" 요구는 회차 단계로 그대로 유지된다.)
+//
+//   1회차 → 그 지역 출신 직업의 무기 설계도
+//   2회차 → 그 지역 방어구 세트 설계도 (방어구 + 짝 장신구를 한 번에 해금)
+//   3회차 → 그 지역 출신 두 번째 직업의 무기 설계도 (있는 경우)
+//
+// 이미 가진 설계도는 건너뛰고 다음 후보로 넘어가므로 같은 던전을 계속 돌아도
+// 중복 보상이 쌓이지 않는다. 다 받은 뒤에는 빈 배열(설계도 보상 없음)이 된다.
+export function dungeonClearRewards(regionId, clearCount, ownedBlueprints = []) {
+  const owned = new Set(ownedBlueprints);
+  const weapons = Object.values(PLAYER_BASE_CLASS_DEFS)
+    .filter((baseClass) => baseClass.originRegionId === regionId)
+    .map((baseClass) => Object.values(EQUIPMENT_DEFS)
+      .find((entry) => entry.slot === "weapon" && entry.baseClassId === baseClass.id))
+    .filter(Boolean);
+
+  const armorSet = ARMOR_SET_DEFS[REGION_ARMOR_SET[regionId]];
+  const schedule = [
+    weapons[0] ? [weapons[0].id] : [],
+    armorSet ? [...armorSet.pieces] : [],
+    weapons[1] ? [weapons[1].id] : []
+  ];
+
+  // 해당 회차 칸부터 훑고, 그래도 없으면 앞 회차 미수령분을 채워준다
+  // (순서를 건너뛰었거나 이미 다른 경로로 얻은 경우 대비).
+  const stage = Math.max(1, Number(clearCount) || 1);
+  const order = [
+    ...schedule.slice(Math.min(stage, schedule.length) - 1),
+    ...schedule.slice(0, Math.min(stage, schedule.length) - 1)
+  ];
+  for (const group of order) {
+    const remaining = group.filter((id) => !owned.has(id));
+    if (remaining.length) return remaining;
+  }
+  return [];
 }
 
 export function moveRunPlayer(run, x, y) {
@@ -597,9 +629,15 @@ export function moveRunPlayer(run, x, y) {
     const bossCleared = Object.values(zone.features).some((entry) => entry.boss && entry.cleared);
     if (!bossCleared) return { moved: true, type: "treasureLocked", feature };
     feature.opened = true;
-    const drop = rollWeaponBlueprintDrop(run);
-    if (drop) run.cargo.weaponBlueprints.push(drop);
-    return { moved: true, type: "treasure", feature, blueprintId: drop };
+    // 이번이 몇 번째 클리어인지에 따라 확정 보상이 정해진다(run.clearCount는
+    // 게임 엔진이 런 생성 시 넣어준다 — 없으면 첫 클리어로 본다).
+    const rewards = dungeonClearRewards(
+      run.regionId,
+      run.clearCount || 1,
+      [...(run.commander?.unlockedBlueprints || []), ...run.cargo.weaponBlueprints]
+    );
+    for (const id of rewards) run.cargo.weaponBlueprints.push(id);
+    return { moved: true, type: "treasure", feature, blueprintIds: rewards };
   }
   if (feature.type === "landmark" && !feature.visited) {
     feature.visited = true;
