@@ -20,7 +20,7 @@ import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState, creat
 import { createDefenseDeployments } from "./defense.js";
 import { PLAYER_KIT_DEFS, createDefaultCommander, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 19;
+export const SAVE_VERSION = 20;
 
 // 영지 행복도(state.meta.estate.happiness)가 생산 속도에 미치는 배율.
 // 기준치(70, 신규 영지의 시작값)에서는 정확히 1.0배 — 기존 저장/테스트의 기준 생산량을 그대로 유지한다.
@@ -1297,6 +1297,28 @@ export function migrateState(rawState) {
   }
   if (previousVersion < 18) {
     state.log.unshift({ text: "분대 병력·영지 행복도·행상인·지역 부락 친목도 체계가 열렸다.", tone: "item" });
+  }
+  if (previousVersion < 20) {
+    // 무기 전용이던 구조를 슬롯 기반 장비(무기/방어구/장신구)로 일반화했다.
+    // v19 저장에 남아 있는 무기 필드를 새 필드로 옮긴다.
+    const commander = state.adventure.commander;
+    commander.unlockedBlueprints = [...new Set([
+      ...(commander.unlockedBlueprints || []),
+      ...(commander.unlockedWeaponBlueprints || [])
+    ])];
+    commander.equipmentOwned = [...new Set([
+      ...(commander.equipmentOwned || []),
+      ...(commander.weaponsOwned || [])
+    ])];
+    commander.equipped = {
+      weapon: commander.equipped?.weapon ?? commander.equippedWeaponId ?? null,
+      armor: commander.equipped?.armor ?? null,
+      accessory: commander.equipped?.accessory ?? null
+    };
+    delete commander.unlockedWeaponBlueprints;
+    delete commander.weaponsOwned;
+    delete commander.equippedWeaponId;
+    state.log.unshift({ text: "장비가 무기·방어구·장신구 세 칸으로 나뉘었다.", tone: "item" });
   }
   state.adventure.party = state.adventure.party.slice(0, 2);
   state.adventure.commander.combatKitId = playerKitDefinition(state.adventure.commander.combatKitId).id;

@@ -1,5 +1,5 @@
 import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
-import { PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, WEAPON_DEFS, normalizedPlayerLoadout, playerKitDefinition } from "./classes.js";
+import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, normalizedPlayerLoadout, playerKitDefinition } from "./classes.js";
 import {
   activeWorkerCount,
   addMaterial,
@@ -686,9 +686,10 @@ export class GameEngine {
     const matchingClasses = Object.values(PLAYER_BASE_CLASS_DEFS).filter((def) => def.originRegionId === regionId);
     const newlyUnlocked = [];
     for (const baseClass of matchingClasses) {
-      const weapon = Object.values(WEAPON_DEFS).find((def) => def.baseClassId === baseClass.id);
-      if (weapon && !commander.unlockedWeaponBlueprints.includes(weapon.id)) {
-        commander.unlockedWeaponBlueprints.push(weapon.id);
+      const weapon = Object.values(EQUIPMENT_DEFS)
+        .find((def) => def.slot === "weapon" && def.baseClassId === baseClass.id);
+      if (weapon && !commander.unlockedBlueprints.includes(weapon.id)) {
+        commander.unlockedBlueprints.push(weapon.id);
         newlyUnlocked.push(weapon.name);
       }
     }
@@ -1169,9 +1170,9 @@ export class GameEngine {
     const blueprintText = [];
     for (const weaponId of run.cargo.weaponBlueprints || []) {
       const commanderRef = adventure.commander;
-      if (commanderRef.unlockedWeaponBlueprints.includes(weaponId)) continue;
-      commanderRef.unlockedWeaponBlueprints.push(weaponId);
-      blueprintText.push(WEAPON_DEFS[weaponId]?.name || weaponId);
+      if (commanderRef.unlockedBlueprints.includes(weaponId)) continue;
+      commanderRef.unlockedBlueprints.push(weaponId);
+      blueprintText.push(EQUIPMENT_DEFS[weaponId]?.name || weaponId);
     }
     const levelMessages = [];
     for (const [unitId, earnedXp] of Object.entries(run.unitXp || {})) {
@@ -2236,39 +2237,50 @@ export class GameEngine {
     return true;
   }
 
-  // 설계도(unlockedWeaponBlueprints)를 지역 부락 친목도로 습득한 뒤, 재료를
-  // 소모해 실제로 제작(weaponsOwned)하는 단계. 룬은 고철로 바로 구매하지만
-  // 무기는 설계도 선행 습득이 필요하다는 점만 다르고 나머지 습득/장착 2단계
-  // 구조는 룬과 동일하다.
-  craftWeapon(weaponId) {
-    const definition = WEAPON_DEFS[weaponId];
+  // 설계도(unlockedBlueprints) 습득 → 재료 소모 제작(equipmentOwned) → 슬롯 장착.
+  // 룬은 고철로 바로 구매하지만 장비는 설계도 선행 습득이 필요하다는 점만 다르고,
+  // 나머지 습득/장착 구조는 룬과 같다.
+  craftEquipment(equipmentId) {
+    const definition = EQUIPMENT_DEFS[equipmentId];
     const commander = this.state.adventure.commander;
     if (this.state.adventure?.run || this.state.estateDefense?.campaign || !definition) return false;
-    if (!commander.unlockedWeaponBlueprints.includes(weaponId)) return false;
-    if (commander.weaponsOwned.includes(weaponId)) return false;
+    if (!commander.unlockedBlueprints.includes(equipmentId)) return false;
+    if (commander.equipmentOwned.includes(equipmentId)) return false;
     for (const [materialId, amount] of Object.entries(definition.materials)) {
       if ((this.state.meta.materials[materialId] || 0) < amount) return false;
     }
     for (const [materialId, amount] of Object.entries(definition.materials)) {
       this.state.meta.materials[materialId] -= amount;
     }
-    commander.weaponsOwned.push(weaponId);
+    commander.equipmentOwned.push(equipmentId);
     this.addLog(`${definition.name} 제작 완료.`, "item");
     this.emit();
     return true;
   }
 
-  equipWeapon(weaponId) {
+  // equipmentId가 null이면 slot을 비운다(그때는 slot을 반드시 넘겨야 한다).
+  equipEquipment(equipmentId, slot = null) {
     const commander = this.state.adventure.commander;
     if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
-    if (weaponId !== null) {
-      const definition = WEAPON_DEFS[weaponId];
-      if (!definition || !commander.weaponsOwned.includes(weaponId)) return false;
+
+    if (equipmentId === null) {
+      if (!EQUIPMENT_SLOTS.includes(slot)) return false;
+      commander.equipped[slot] = null;
+      this.addLog(`${EQUIPMENT_SLOT_LABELS[slot]} 해제.`, "item");
+      this.emit();
+      return true;
+    }
+
+    const definition = EQUIPMENT_DEFS[equipmentId];
+    if (!definition || !commander.equipmentOwned.includes(equipmentId)) return false;
+    // 무기만 직업 제한이 있다. 방어구·장신구는 어떤 직업이든 자유롭게 고를 수 있어
+    // 직업이 선택을 강제하지 않는다(docs/CHOICE_DESIGN.md).
+    if (definition.slot === "weapon") {
       const kit = playerKitDefinition(commander.combatKitId);
       if (definition.baseClassId !== kit.baseClassId) return false;
     }
-    commander.equippedWeaponId = weaponId;
-    this.addLog(weaponId ? `${WEAPON_DEFS[weaponId].name} 장착.` : "무기 해제.", "item");
+    commander.equipped[definition.slot] = equipmentId;
+    this.addLog(`${definition.name} 장착.`, "item");
     this.emit();
     return true;
   }

@@ -630,17 +630,73 @@ export function runeDefinition(runeId) {
 // 시스템 이전부터). 치명타는 지금은 매화 등 일부 스킬 이펙트에서 개별
 // Math.random() 굴림으로만 처리된다 — 직업 공통 치명타 스탯 도입은 이번 범위
 // 밖이라 별도 논의 필요.
-export const WEAPON_DEFS = {
-  crusaderBastardSword: { id: "crusaderBastardSword", name: "성광의 바스타드 소드", baseClassId: "crusader", weaponType: "bastardSword", materials: { ingot: 4, blackSteel: 1 }, bonus: { damageBonus: 0.08 }, description: "한손·양손을 모두 쓰는 바스타드 소드. 공격력이 증가한다." },
-  barbarianGreataxe: { id: "barbarianGreataxe", name: "심연의 대부", baseClassId: "barbarian", weaponType: "greataxe", materials: { ingot: 5, blackSteel: 1 }, bonus: { damageBonus: 0.12 }, description: "무게 자체가 무기인 특대 도끼. 공격력이 크게 증가한다." },
-  necromancerArmorSword: { id: "necromancerArmorSword", name: "귀곡의 아머 소드", baseClassId: "necromancer", weaponType: "armorSword", materials: { ingot: 3, herb: 2 }, bonus: { cooldownReduction: 0.06 }, description: "갑주째 베어내는 아머 소드. 스킬 재사용 대기시간이 감소한다." },
-  trackerShortBow: { id: "trackerShortBow", name: "초원의 단궁", baseClassId: "tracker", weaponType: "shortBow", materials: { wood: 4, ingot: 2 }, bonus: { damageBonus: 0.08 }, description: "달리면서도 쏘기 좋은 몽고풍 단궁. 공격력이 증가한다." },
-  maehwaSabre: { id: "maehwaSabre", name: "일섬의 매화도", baseClassId: "maehwa", weaponType: "sabre", materials: { ingot: 3, wood: 1 }, bonus: { cooldownReduction: 0.06 }, description: "정교하게 벼려낸 매화도. 스킬 재사용 대기시간이 감소한다." },
-  archmageStaff: { id: "archmageStaff", name: "현자의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { wood: 3, ingot: 2 }, bonus: { cooldownReduction: 0.1 }, description: "마력 순환을 돕는 대형 지팡이. 스킬 재사용 대기시간이 크게 감소한다." }
+// 장비 슬롯. 한 슬롯에 하나씩만 장착된다.
+export const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"];
+
+export const EQUIPMENT_SLOT_LABELS = {
+  weapon: "무기",
+  armor: "방어구",
+  accessory: "장신구"
 };
 
-export function weaponDefinition(weaponId) {
-  return WEAPON_DEFS[weaponId] || null;
+// 장비 정의. 습득 흐름은 룬과 같은 2단계(설계도 습득 → 제작 → 장착)다.
+//
+// 슬롯별 성격:
+// - weapon: 직업 전용(baseClassId 일치해야 장착). 직업 정체성을 표현한다.
+// - armor / accessory: 직업 제한 없음. 어떤 직업이든 원하는 방향으로 고를 수 있게
+//   해서 "직업에 따라 선택이 강제되지" 않도록 한다(docs/CHOICE_DESIGN.md 원칙).
+//
+// 보너스는 playerCombatStats가 실제로 소비하는 값만 쓴다:
+// damageBonus / cooldownReduction / maxHpBonus / armorBonus / manaRegenBonus.
+// criticalChance는 넣지 않았다 — 현재 어떤 기본 직업도 statProfile.base.criticalChance를
+// 정의하지 않아 playerCombatStats가 항상 null을 반환하는 죽은 경로다(무기 시스템
+// 이전부터 그랬다). 직업 공통 치명타 스탯 도입은 별도 논의 필요.
+//
+// 수치는 의도적으로 작게 잡았다 — 선택이 "얼마나 강해지냐"가 아니라 "어떤 방향으로
+// 굴리냐"를 바꾸는 쪽이어야 한다(docs/CHOICE_DESIGN.md).
+export const EQUIPMENT_DEFS = {
+  // --- 무기: 직업 전용 ---
+  crusaderBastardSword: { id: "crusaderBastardSword", slot: "weapon", name: "성광의 바스타드 소드", baseClassId: "crusader", weaponType: "bastardSword", materials: { ingot: 4, blackSteel: 1 }, bonus: { damageBonus: 0.08 }, description: "한손·양손을 모두 쓰는 바스타드 소드. 공격력이 증가한다." },
+  barbarianGreataxe: { id: "barbarianGreataxe", slot: "weapon", name: "심연의 대부", baseClassId: "barbarian", weaponType: "greataxe", materials: { ingot: 5, blackSteel: 1 }, bonus: { damageBonus: 0.12 }, description: "무게 자체가 무기인 특대 도끼. 공격력이 크게 증가한다." },
+  necromancerArmorSword: { id: "necromancerArmorSword", slot: "weapon", name: "귀곡의 아머 소드", baseClassId: "necromancer", weaponType: "armorSword", materials: { ingot: 3, herb: 2 }, bonus: { cooldownReduction: 0.06 }, description: "갑주째 베어내는 아머 소드. 스킬 재사용 대기시간이 감소한다." },
+  trackerShortBow: { id: "trackerShortBow", slot: "weapon", name: "초원의 단궁", baseClassId: "tracker", weaponType: "shortBow", materials: { wood: 4, ingot: 2 }, bonus: { damageBonus: 0.08 }, description: "달리면서도 쏘기 좋은 몽고풍 단궁. 공격력이 증가한다." },
+  maehwaSabre: { id: "maehwaSabre", slot: "weapon", name: "일섬의 매화도", baseClassId: "maehwa", weaponType: "sabre", materials: { ingot: 3, wood: 1 }, bonus: { cooldownReduction: 0.06 }, description: "정교하게 벼려낸 매화도. 스킬 재사용 대기시간이 감소한다." },
+  archmageStaff: { id: "archmageStaff", slot: "weapon", name: "현자의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { wood: 3, ingot: 2 }, bonus: { cooldownReduction: 0.1 }, description: "마력 순환을 돕는 대형 지팡이. 스킬 재사용 대기시간이 크게 감소한다." },
+
+  // --- 방어구: 직업 제한 없음. 셋 다 "버티기 / 굴리기 / 마력" 방향이 갈린다 ---
+  heavyPlate: { id: "heavyPlate", slot: "armor", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorBonus: 0.04 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
+  scoutLeather: { id: "scoutLeather", slot: "armor", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorBonus: 0.02, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
+  wardenRobe: { id: "wardenRobe", slot: "armor", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorBonus: 0.02, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
+
+  // --- 장신구: 직업 제한 없음 ---
+  runeSigil: { id: "runeSigil", slot: "accessory", name: "룬 각인 인장", materials: { ore: 3, ingot: 1 }, bonus: { damageBonus: 0.05 }, description: "각인된 인장. 공격력이 오른다." },
+  guardianCharm: { id: "guardianCharm", slot: "accessory", name: "수호의 부적", materials: { herb: 3, ingot: 1 }, bonus: { maxHpBonus: 0.09 }, description: "낡은 수호 부적. 최대 체력이 오른다." },
+  sagesBand: { id: "sagesBand", slot: "accessory", name: "현자의 고리", materials: { ore: 2, herb: 2 }, bonus: { cooldownReduction: 0.05 }, description: "사색을 돕는 고리. 스킬 재사용 대기시간이 감소한다." }
+};
+
+export function equipmentDefinition(equipmentId) {
+  return EQUIPMENT_DEFS[equipmentId] || null;
+}
+
+export function equipmentForSlot(slot) {
+  return Object.values(EQUIPMENT_DEFS).filter((entry) => entry.slot === slot);
+}
+
+// 장착 중인 장비의 보너스를 합산한다. 무기는 직업이 일치할 때만 계산에 들어간다
+// (킷을 바꾼 뒤 장착 해제를 안 한 저장 상태가 있을 수 있어 여기서도 방어적으로 확인).
+export function equippedBonuses(commander = {}, baseClassId = null) {
+  const totals = { damageBonus: 0, cooldownReduction: 0, maxHpBonus: 0, armorBonus: 0, manaRegenBonus: 0 };
+  const equipped = commander.equipped || {};
+  for (const slot of EQUIPMENT_SLOTS) {
+    const definition = EQUIPMENT_DEFS[equipped[slot]];
+    if (!definition || definition.slot !== slot) continue;
+    if (definition.slot === "weapon" && baseClassId && definition.baseClassId !== baseClassId) continue;
+    for (const [key, value] of Object.entries(definition.bonus || {})) {
+      if (totals[key] === undefined) continue;
+      totals[key] += Number(value) || 0;
+    }
+  }
+  return totals;
 }
 
 function grownValue(profile, key, level) {
@@ -660,24 +716,24 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
   const defense = grownValue(profile, "defense", level);
   const divineAffinity = grownValue(profile, "divineAffinity", level);
   const natureAffinity = grownValue(profile, "natureAffinity", level);
-  // 무기는 자기 직업(baseClassId)과 일치할 때만 보너스가 적용된다 — kitId를
-  // 바꾼 뒤 equipWeapon을 다시 안 거친 상태로 남아있을 수 있어 여기서도 방어적으로 재확인.
-  const weapon = weaponDefinition(commander.equippedWeaponId);
-  const weaponBonus = weapon?.baseClassId === kit.baseClassId ? weapon.bonus : null;
+  // 장착 중인 무기·방어구·장신구 보너스를 합산한다. 무기는 자기 직업과 일치할 때만
+  // 계산에 들어간다(킷을 바꾼 뒤 장착 해제를 안 한 저장 상태 대비).
+  const gear = equippedBonuses(commander, kit.baseClassId);
   const itemCooldownReduction = Math.max(0, Math.min(0.35,
-    Number(commander.itemBonuses?.cooldownReduction || 0) + Number(weaponBonus?.cooldownReduction || 0)));
+    Number(commander.itemBonuses?.cooldownReduction || 0) + gear.cooldownReduction));
   const criticalChance = baseClass.statProfile.base.criticalChance == null
     ? null
     : Math.max(0, grownValue(profile, "criticalChance", level)
-        + Number(commander.itemBonuses?.criticalChance || 0)
-        + Number(weaponBonus?.criticalChance || 0));
+        + Number(commander.itemBonuses?.criticalChance || 0));
   const rune = runeDefinition(commander.equippedRuneId);
-  const maxHp = Math.round(kit.stats.maxHp + Math.max(0, level - 1) * (2.2 + strength * 0.055)) * (rune?.id === "redRune" ? 1.08 : 1);
+  const maxHp = Math.round(kit.stats.maxHp + Math.max(0, level - 1) * (2.2 + strength * 0.055))
+    * (rune?.id === "redRune" ? 1.08 : 1) * (1 + gear.maxHpBonus);
   const damage = Math.round(kit.stats.damage + Math.max(0, level - 1) * (0.26 + strength * 0.012 + intelligence * 0.01))
-    * (rune?.id === "greenRune" ? 1.08 : 1) * (1 + Number(weaponBonus?.damageBonus || 0));
-  const armor = Math.min(0.58, kit.stats.armor + Math.max(0, level - 1) * 0.0025 + (rune?.id === "yellowRune" ? 0.03 : 0));
+    * (rune?.id === "greenRune" ? 1.08 : 1) * (1 + gear.damageBonus);
+  const armor = Math.min(0.58, kit.stats.armor + Math.max(0, level - 1) * 0.0025
+    + (rune?.id === "yellowRune" ? 0.03 : 0) + gear.armorBonus);
   const attackMs = Math.max(280, Math.round(kit.stats.attackMs * (rune?.id === "purpleRune" ? 0.94 : 1)));
-  const manaRegen = grownValue(profile, "manaRegen", level) + (rune?.id === "blueRune" ? 0.6 : 0);
+  const manaRegen = grownValue(profile, "manaRegen", level) + (rune?.id === "blueRune" ? 0.6 : 0) + gear.manaRegenBonus;
   return {
     ...kit.stats,
     level,
@@ -702,7 +758,12 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
     cooldownMultiplier: 1 - itemCooldownReduction,
     cooldownReduction: itemCooldownReduction,
     equippedRuneId: rune?.id || null,
-    equippedWeaponId: weaponBonus ? weapon.id : null
+    // 실제로 보너스가 적용된 무기만 돌려준다(직업 불일치 무기는 null).
+    equippedWeaponId: (() => {
+      const weapon = equipmentDefinition(commander.equipped?.weapon);
+      return weapon && weapon.baseClassId === kit.baseClassId ? weapon.id : null;
+    })(),
+    equipped: { ...(commander.equipped || {}) }
   };
 }
 
@@ -716,9 +777,10 @@ export function createDefaultCommander() {
     itemBonuses: {},
     runesOwned: [],
     equippedRuneId: null,
-    unlockedWeaponBlueprints: [],
-    weaponsOwned: [],
-    equippedWeaponId: null,
+    // 설계도 → 제작 → 장착 3단계. 슬롯당 하나만 장착된다.
+    unlockedBlueprints: [],
+    equipmentOwned: [],
+    equipped: { weapon: null, armor: null, accessory: null },
     skillLoadouts: Object.fromEntries(Object.values(PLAYER_KIT_DEFS).map((kit) => [kit.id, [...kit.defaultLoadout]]))
   };
 }

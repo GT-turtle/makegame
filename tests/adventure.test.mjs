@@ -39,7 +39,7 @@ import {
   createFieldBattle,
   WEAPON_BLUEPRINT_DROP_CHANCE
 } from "../src/adventure.js";
-import { PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, WEAPON_DEFS, createDefaultCommander, playerCombatStats } from "../src/classes.js";
+import { EQUIPMENT_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
 
 class MemoryStorage {
@@ -1009,19 +1009,19 @@ test("직업과 일치하는 무기는 보너스를 주지만, 다른 직업 무
   const bareStats = playerCombatStats(bare, bare.combatKitId);
 
   const withOwnWeapon = createDefaultCommander();
-  withOwnWeapon.equippedWeaponId = "crusaderBastardSword";
+  withOwnWeapon.equipped = { weapon: "crusaderBastardSword" };
   const ownWeaponStats = playerCombatStats(withOwnWeapon, withOwnWeapon.combatKitId);
   assert.ok(ownWeaponStats.damage > bareStats.damage, "크루세이더가 크루세이더 무기를 들면 공격력이 오른다");
   assert.equal(ownWeaponStats.equippedWeaponId, "crusaderBastardSword");
 
   const withWrongWeapon = createDefaultCommander();
-  withWrongWeapon.equippedWeaponId = "barbarianGreataxe"; // 바바리안 전용 무기
+  withWrongWeapon.equipped = { weapon: "barbarianGreataxe" }; // 바바리안 전용 무기
   const wrongWeaponStats = playerCombatStats(withWrongWeapon, withWrongWeapon.combatKitId);
   assert.equal(wrongWeaponStats.damage, bareStats.damage, "직업이 안 맞는 무기는 보너스가 적용되지 않는다");
   assert.equal(wrongWeaponStats.equippedWeaponId, null);
 
   const necroCommander = createDefaultCommander();
-  necroCommander.equippedWeaponId = "necromancerArmorSword";
+  necroCommander.equipped = { weapon: "necromancerArmorSword" };
   const necroStats = playerCombatStats(necroCommander, "heavyNecromancer");
   const necroBareStats = playerCombatStats(createDefaultCommander(), "heavyNecromancer");
   assert.ok(necroStats.cooldownReduction > necroBareStats.cooldownReduction, "네크로맨서 무기는 스킬 재사용 대기시간을 줄인다");
@@ -1034,7 +1034,7 @@ test("던전 최심부 상자는 보스를 잡아야 열리고, 무기 설계도
 
   const makeRun = () => ({
     regionId: "west", // 크루세이더·네크로맨서 출신지
-    commander: { unlockedWeaponBlueprints: [] },
+    commander: { unlockedBlueprints: [] },
     cargo: { scrap: 0, materials: {}, weaponBlueprints: [] }
   });
 
@@ -1047,7 +1047,7 @@ test("던전 최심부 상자는 보스를 잡아야 열리고, 무기 설계도
 
   // 이미 가진 설계도는 후보에서 빠지고, 전부 가졌으면 null.
   const fullRun = makeRun();
-  fullRun.commander.unlockedWeaponBlueprints = ["crusaderBastardSword", "necromancerArmorSword"];
+  fullRun.commander.unlockedBlueprints = ["crusaderBastardSword", "necromancerArmorSword"];
   assert.equal(rollWeaponBlueprintDrop(fullRun, () => 0), null);
 
   // 다른 지역(북부=바바리안·아크메이지) 던전은 그 지역 무기만 준다.
@@ -1063,7 +1063,7 @@ test("던전 상자는 보스를 쓰러뜨리기 전에는 잠겨 있다", () =>
   assert.ok(chest, "던전에는 보물 상자가 하나 있다");
   assert.equal(chest.opened, false);
 
-  const run = createRegionRun("west", 4242, STARTING_PARTY, {}, { unlockedWeaponBlueprints: [] });
+  const run = createRegionRun("west", 4242, STARTING_PARTY, {}, { unlockedBlueprints: [] });
   run.dungeon = dungeon;
   run.location = "dungeon";
   run.player = { ...dungeon.start };

@@ -24,6 +24,7 @@ import {
   workerProficiency
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
+import { playerCombatStats } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -272,52 +273,83 @@ test("룬은 고철로 획득하고 한 번에 하나만 장착할 수 있다", 
 test("지역 부락 친목도 60 달성 시 출신 지역이 일치하는 직업의 무기 설계도를 습득한다", () => {
   const engine = new GameEngine(new MemoryStorage());
   const commander = engine.state.adventure.commander;
-  assert.deepEqual(commander.unlockedWeaponBlueprints, []);
+  assert.deepEqual(commander.unlockedBlueprints, []);
 
   engine.state.meta.villageFriendship.west = 60;
   const summary = engine.checkVillageMilestones("west");
   // 크루세이더·네크로맨서 둘 다 출신 지역이 west라 한 번에 같이 습득된다.
-  assert.ok(commander.unlockedWeaponBlueprints.includes("crusaderBastardSword"));
-  assert.ok(commander.unlockedWeaponBlueprints.includes("necromancerArmorSword"));
+  assert.ok(commander.unlockedBlueprints.includes("crusaderBastardSword"));
+  assert.ok(commander.unlockedBlueprints.includes("necromancerArmorSword"));
   assert.ok(summary.includes("무기 설계도 습득"));
 
   // 이미 습득한 설계도는 다시 안 늘어난다.
-  const before = commander.unlockedWeaponBlueprints.length;
+  const before = commander.unlockedBlueprints.length;
   engine.state.meta.villageMilestones.west = [30, 60]; // 재확인해도 threshold 60을 다시 못 밟도록
   engine.checkVillageMilestones("west");
-  assert.equal(commander.unlockedWeaponBlueprints.length, before);
+  assert.equal(commander.unlockedBlueprints.length, before);
 });
 
 test("무기는 설계도 습득 후 재료로 제작해야 하고, 자기 직업과 일치해야 장착된다", () => {
   const engine = new GameEngine(new MemoryStorage());
   const commander = engine.state.adventure.commander; // 기본 combatKitId = spiritCrusader -> baseClassId crusader
 
-  assert.equal(engine.craftWeapon("crusaderBastardSword"), false, "설계도 미습득 상태에서는 제작 불가");
+  assert.equal(engine.craftEquipment("crusaderBastardSword"), false, "설계도 미습득 상태에서는 제작 불가");
 
-  commander.unlockedWeaponBlueprints.push("crusaderBastardSword");
+  commander.unlockedBlueprints.push("crusaderBastardSword");
   engine.state.meta.materials.ingot = 1;
   engine.state.meta.materials.blackSteel = 0;
-  assert.equal(engine.craftWeapon("crusaderBastardSword"), false, "재료 부족하면 제작 불가");
+  assert.equal(engine.craftEquipment("crusaderBastardSword"), false, "재료 부족하면 제작 불가");
 
   engine.state.meta.materials.ingot = 4;
   engine.state.meta.materials.blackSteel = 1;
-  assert.equal(engine.craftWeapon("crusaderBastardSword"), true);
+  assert.equal(engine.craftEquipment("crusaderBastardSword"), true);
   assert.equal(engine.state.meta.materials.ingot, 0);
   assert.equal(engine.state.meta.materials.blackSteel, 0);
-  assert.ok(commander.weaponsOwned.includes("crusaderBastardSword"));
-  assert.equal(engine.craftWeapon("crusaderBastardSword"), false, "중복 제작 불가");
+  assert.ok(commander.equipmentOwned.includes("crusaderBastardSword"));
+  assert.equal(engine.craftEquipment("crusaderBastardSword"), false, "중복 제작 불가");
 
-  assert.equal(engine.equipWeapon("barbarianGreataxe"), false, "미보유 무기는 장착 불가");
-  assert.equal(engine.equipWeapon("crusaderBastardSword"), true);
-  assert.equal(commander.equippedWeaponId, "crusaderBastardSword");
+  assert.equal(engine.equipEquipment("barbarianGreataxe"), false, "미보유 무기는 장착 불가");
+  assert.equal(engine.equipEquipment("crusaderBastardSword"), true);
+  assert.equal(commander.equipped.weapon, "crusaderBastardSword");
 
   // 바바리안 무기를 억지로 보유시켜도, 지금 직업(크루세이더)과 안 맞으면 장착 거부.
-  commander.weaponsOwned.push("barbarianGreataxe");
-  assert.equal(engine.equipWeapon("barbarianGreataxe"), false, "직업이 다른 무기는 장착 불가");
-  assert.equal(commander.equippedWeaponId, "crusaderBastardSword", "장착 상태는 그대로 유지된다");
+  commander.equipmentOwned.push("barbarianGreataxe");
+  assert.equal(engine.equipEquipment("barbarianGreataxe"), false, "직업이 다른 무기는 장착 불가");
+  assert.equal(commander.equipped.weapon, "crusaderBastardSword", "장착 상태는 그대로 유지된다");
 
-  assert.equal(engine.equipWeapon(null), true);
-  assert.equal(commander.equippedWeaponId, null);
+  assert.equal(engine.equipEquipment(null, "weapon"), true);
+  assert.equal(commander.equipped.weapon, null);
+});
+
+test("방어구·장신구는 직업 제한 없이 슬롯별로 하나씩 장착되고 보너스가 합산된다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const commander = engine.state.adventure.commander;
+  const baseStats = playerCombatStats(commander, commander.combatKitId);
+
+  // 방어구는 크루세이더든 누구든 자유롭게 고를 수 있다(직업 제한 없음).
+  commander.unlockedBlueprints.push("heavyPlate", "guardianCharm", "scoutLeather");
+  engine.state.meta.materials.ingot = 20;
+  engine.state.meta.materials.blackSteel = 5;
+  engine.state.meta.materials.herb = 20;
+  engine.state.meta.materials.wood = 20;
+
+  assert.equal(engine.craftEquipment("heavyPlate"), true);
+  assert.equal(engine.craftEquipment("guardianCharm"), true);
+  assert.equal(engine.equipEquipment("heavyPlate"), true);
+  assert.equal(engine.equipEquipment("guardianCharm"), true);
+  assert.equal(commander.equipped.armor, "heavyPlate");
+  assert.equal(commander.equipped.accessory, "guardianCharm");
+
+  // 방어구(체력+12%)와 장신구(체력+9%)가 함께 적용된다.
+  const gearedStats = playerCombatStats(commander, commander.combatKitId);
+  assert.ok(gearedStats.maxHp > baseStats.maxHp, "체력 보너스가 실제 스탯에 반영된다");
+  assert.ok(gearedStats.armor > baseStats.armor, "방어력 보너스도 반영된다");
+
+  // 같은 슬롯에 다른 장비를 끼면 교체된다(둘 다 장착되지 않는다).
+  assert.equal(engine.craftEquipment("scoutLeather"), true);
+  assert.equal(engine.equipEquipment("scoutLeather"), true);
+  assert.equal(commander.equipped.armor, "scoutLeather", "방어구 슬롯이 교체된다");
+  assert.equal(commander.equipped.accessory, "guardianCharm", "다른 슬롯은 그대로다");
 });
 
 test("작업자는 실제로 생산한 시간만 쌓아 초심자에서 장인까지 숙련된다", () => {
@@ -479,5 +511,5 @@ test("구형 층제 원정 저장은 영구 성장만 보존하고 안전하게 
   const migrated = new GameEngine(storage);
   assert.equal(migrated.state.expedition, null);
   assert.equal(migrated.state.meta.scrap, 19);
-  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력/);
+  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구/);
 });

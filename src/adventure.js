@@ -1,4 +1,4 @@
-import { PLAYER_BASE_CLASS_DEFS, WEAPON_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { EQUIPMENT_DEFS, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
 export const DUNGEON_SIZE = 15;
@@ -542,10 +542,10 @@ export const WEAPON_BLUEPRINT_DROP_CHANCE = 1 / 3;
 // 실패하면 null — 상자는 열렸지만 설계도는 안 나온 상태가 된다.
 export function rollWeaponBlueprintDrop(run, random = Math.random) {
   if (random() >= WEAPON_BLUEPRINT_DROP_CHANCE) return null;
-  const owned = run.commander?.unlockedWeaponBlueprints || [];
+  const owned = run.commander?.unlockedBlueprints || [];
   const candidates = Object.values(PLAYER_BASE_CLASS_DEFS)
     .filter((baseClass) => baseClass.originRegionId === run.regionId)
-    .map((baseClass) => Object.values(WEAPON_DEFS).find((weapon) => weapon.baseClassId === baseClass.id))
+    .map((baseClass) => Object.values(EQUIPMENT_DEFS).find((entry) => entry.slot === "weapon" && entry.baseClassId === baseClass.id))
     .filter((weapon) => weapon && !owned.includes(weapon.id) && !run.cargo.weaponBlueprints.includes(weapon.id));
   if (candidates.length === 0) return null;
   return candidates[Math.floor(random() * candidates.length) % candidates.length].id;
