@@ -418,6 +418,46 @@ function zoneCovers(zone, unit) {
   return distanceBetween(zone, unit) <= zone.radius;
 }
 
+// 자동 동료가 활성 예고 장판 안에 있으면 밖으로 빠져나간다.
+// 밟고 있는 장판 중 가장 먼저 터지는 것을 기준으로 삼고, 그 중심의 반대쪽으로 달린다.
+// 피했으면 true를 돌려주고, 그 tick에는 공격·추격을 하지 않는다.
+function dodgeDangerZone(battle, actor, step) {
+  if (!battle.zones?.length) return false;
+  const standing = battle.zones
+    .filter((zone) => zone.kind !== "summon" && battle.elapsed >= zone.bornAt && zoneCovers(zone, actor))
+    .sort((a, b) => a.fireAt - b.fireAt)[0];
+  if (!standing) return false;
+
+  // 직선은 중심선에서 옆으로, 나머지는 중심에서 바깥으로.
+  let dx;
+  let dy;
+  if (standing.kind === "line") {
+    const angle = Math.atan2(standing.y2 - standing.y, standing.x2 - standing.x);
+    const side = Math.sin(Math.atan2(actor.y - standing.y, actor.x - standing.x) - angle) >= 0 ? 1 : -1;
+    dx = Math.cos(angle + (Math.PI / 2) * side);
+    dy = Math.sin(angle + (Math.PI / 2) * side);
+  } else {
+    dx = actor.x - standing.x;
+    dy = actor.y - standing.y;
+    const length = Math.hypot(dx, dy);
+    // 정중앙에 서 있으면 방향이 정해지지 않는다 — 유닛마다 다른 쪽으로 흩어지게 한다.
+    if (length < 0.001) {
+      const spread = (actor.id.length % 8) * (Math.PI / 4);
+      dx = Math.cos(spread);
+      dy = Math.sin(spread);
+    } else {
+      dx /= length;
+      dy /= length;
+    }
+  }
+
+  const travel = actor.speed * speedDebuffMultiplier(actor) * (step / 1000);
+  const moved = resolveMove(battle, actor.x + dx * travel, actor.y + dy * travel);
+  actor.x = moved.x;
+  actor.y = moved.y;
+  return true;
+}
+
 // 촉수처럼 끌어당기는 패턴. knockback의 반대 방향이다.
 function pullToward(source, target, distance, battle) {
   const dx = source.x - target.x;
@@ -1928,6 +1968,14 @@ export function tickAutoBattle(battle, deltaMs) {
       actor.telegraphTargetId = null;
       continue;
     }
+
+    // 자동 동료도 예고 장판을 피한다. 안 피하면 보스 광역기가 파티 전원에게
+    // 무조건 적중해서, 플레이어가 아무리 잘 피해도 동료가 먼저 쓰러진다.
+    if (actor.team === "unit" && dodgeDangerZone(battle, actor, step)) {
+      actor.telegraphTargetId = null;
+      continue;
+    }
+
     const targets = living(actor.team === "unit" ? battle.enemies : battle.units).filter((entry) => !entry.invulnerable);
     if (!targets.length) {
       actor.telegraphTargetId = null;

@@ -289,8 +289,20 @@ test("필드 조우부터 던전 우두머리와 영지 정산까지 한 원정�
       const player = battle.units.find((unit) => unit.controlled && unit.hp > 0);
       const target = battle.enemies.find((enemy) => enemy.hp > 0);
       if (player && target) {
-        player.x = target.x - 5;
-        player.y = target.y;
+        // 보스 예고 장판 위에 있으면 먼저 빠져나온다. 붙어서 때리기만 하면 광역기를
+        // 전부 맞는 게 설계 의도라, 안 피하게 두면 이 통합 테스트가 전투 난이도에
+        // 따라 들쭉날쭉해진다(원정 흐름을 보는 테스트지 밸런스 테스트가 아니다).
+        const danger = (battle.zones || []).find((zone) => zone.kind !== "summon"
+          && battle.elapsed >= zone.bornAt
+          && Math.hypot(player.x - zone.x, player.y - zone.y) <= (zone.radius || zone.width || 12) + 2);
+        if (danger) {
+          const angle = Math.atan2(player.y - danger.y, player.x - danger.x) || 0;
+          player.x = danger.x + Math.cos(angle) * ((danger.radius || 12) + 10);
+          player.y = danger.y + Math.sin(angle) * ((danger.radius || 12) + 10);
+        } else {
+          player.x = target.x - 5;
+          player.y = target.y;
+        }
         engine.playerRealtimeAction("attack");
         engine.playerRealtimeAction("skill1");
         engine.playerRealtimeAction("skill2");
