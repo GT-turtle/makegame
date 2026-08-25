@@ -24,7 +24,7 @@ import {
   workerProficiency
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
-import { playerCombatStats } from "../src/classes.js";
+import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, playerCombatStats } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -337,8 +337,8 @@ test("방어구·장신구는 직업 제한 없이 슬롯별로 하나씩 장착
   assert.equal(engine.craftEquipment("guardianCharm"), true);
   assert.equal(engine.equipEquipment("heavyPlate"), true);
   assert.equal(engine.equipEquipment("guardianCharm"), true);
-  assert.equal(commander.equipped.armor, "heavyPlate");
-  assert.equal(commander.equipped.accessory, "guardianCharm");
+  assert.equal(commander.equipped.chest, "heavyPlate");
+  assert.equal(commander.equipped.amulet, "guardianCharm");
 
   // 방어구(체력+12%)와 장신구(체력+9%)가 함께 적용된다.
   const gearedStats = playerCombatStats(commander, commander.combatKitId);
@@ -348,8 +348,51 @@ test("방어구·장신구는 직업 제한 없이 슬롯별로 하나씩 장착
   // 같은 슬롯에 다른 장비를 끼면 교체된다(둘 다 장착되지 않는다).
   assert.equal(engine.craftEquipment("scoutLeather"), true);
   assert.equal(engine.equipEquipment("scoutLeather"), true);
-  assert.equal(commander.equipped.armor, "scoutLeather", "방어구 슬롯이 교체된다");
-  assert.equal(commander.equipped.accessory, "guardianCharm", "다른 슬롯은 그대로다");
+  assert.equal(commander.equipped.chest, "scoutLeather", "같은 부위(갑옷)는 교체된다");
+  assert.equal(commander.equipped.amulet, "guardianCharm", "다른 부위는 그대로다");
+});
+
+test("장비 슬롯은 무기 1 · 방어구 5 · 장신구 2 계열로 구성된다", () => {
+  assert.equal(equipmentSlotsByCategory("weapon").length, 1);
+  assert.equal(equipmentSlotsByCategory("armor").length, 5, "방어구는 부위별 5칸");
+  assert.equal(equipmentSlotsByCategory("accessory").length, 2);
+
+  // 직업 제한은 무기에만 있다 — 방어구·장신구까지 직업을 타면 "직업이 선택을
+  // 강제"하게 되어 docs/CHOICE_DESIGN.md 원칙과 어긋난다.
+  const locked = EQUIPMENT_SLOTS.filter((slot) => EQUIPMENT_SLOT_DEFS[slot].classLocked);
+  assert.deepEqual(locked, ["weapon"]);
+
+  // 빈 장착표는 모든 슬롯을 빠짐없이 가진다(저장·UI가 이걸 기준으로 돈다).
+  assert.deepEqual(Object.keys(createEmptyEquipped()).sort(), [...EQUIPMENT_SLOTS].sort());
+  assert.ok(Object.values(createEmptyEquipped()).every((value) => value === null));
+
+  // 모든 장비는 실제로 존재하는 슬롯에 들어가야 한다.
+  for (const entry of Object.values(EQUIPMENT_DEFS)) {
+    assert.ok(EQUIPMENT_SLOT_DEFS[entry.slot], `${entry.id}의 슬롯 ${entry.slot}이 정의돼 있어야 한다`);
+  }
+});
+
+test("v20 저장의 방어구·장신구 한 칸은 부위별 슬롯으로 옮겨진다", () => {
+  const state = createInitialState();
+  state.version = 20;
+  // v20 모양: armor / accessory 한 칸씩.
+  state.adventure.commander.equipped = {
+    weapon: "crusaderBastardSword",
+    armor: "heavyPlate",
+    accessory: "guardianCharm"
+  };
+  const migrated = migrateState(JSON.parse(JSON.stringify(state)));
+  const equipped = migrated.adventure.commander.equipped;
+
+  assert.equal(equipped.chest, "heavyPlate", "방어구는 그 아이템의 부위(갑옷)로 간다");
+  assert.equal(equipped.amulet, "guardianCharm", "장신구는 부적 칸으로 간다");
+  assert.equal(equipped.weapon, "crusaderBastardSword", "무기는 그대로다");
+
+  // 옛 키가 남아 있으면 UI가 유령 장비를 그린다.
+  assert.deepEqual(Object.keys(equipped).sort(), [...EQUIPMENT_SLOTS].sort());
+  assert.equal(equipped.armor, undefined);
+  assert.equal(equipped.accessory, undefined);
+  assert.equal(equipped.helmet, null, "새로 생긴 칸은 비어 있다");
 });
 
 test("작업자는 실제로 생산한 시간만 쌓아 초심자에서 장인까지 숙련된다", () => {
@@ -511,7 +554,7 @@ test("구형 층제 원정 저장은 영구 성장만 보존하고 안전하게 
   const migrated = new GameEngine(storage);
   assert.equal(migrated.state.expedition, null);
   assert.equal(migrated.state.meta.scrap, 19);
-  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구/);
+  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구|투구·갑옷·장갑/);
 });
 
 test("방어구 세트를 완성하면 세트 보너스가 추가로 붙는다", () => {

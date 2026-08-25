@@ -631,13 +631,53 @@ export function runeDefinition(runeId) {
 // Math.random() 굴림으로만 처리된다 — 직업 공통 치명타 스탯 도입은 이번 범위
 // 밖이라 별도 논의 필요.
 // 장비 슬롯. 한 슬롯에 하나씩만 장착된다.
-export const EQUIPMENT_SLOTS = ["weapon", "armor", "accessory"];
+//
+// 슬롯은 세 계열로 나뉜다:
+// - weapon    : 직업 전용(classLocked). 직업 정체성을 표현한다.
+// - armor     : 부위별 5칸. 직업 제한 없음.
+// - accessory : 2칸. 직업 제한 없음.
+//
+// 어떤 아이템을 어느 부위에 채울지는 아직 정하는 중이라 지금은 **구조만** 잡아둔다.
+// 슬롯을 늘리거나 줄이려면 이 표만 고치면 된다 — 보너스 합산(equippedBonuses),
+// 세트 판정, 저장 마이그레이션, UI가 전부 이 표를 순회하므로 다른 곳은 손댈 게 없다.
+export const EQUIPMENT_SLOT_DEFS = {
+  weapon: { id: "weapon", category: "weapon", name: "무기", classLocked: true },
 
-export const EQUIPMENT_SLOT_LABELS = {
+  helmet: { id: "helmet", category: "armor", name: "투구" },
+  chest: { id: "chest", category: "armor", name: "갑옷" },
+  gloves: { id: "gloves", category: "armor", name: "장갑" },
+  boots: { id: "boots", category: "armor", name: "신발" },
+  cloak: { id: "cloak", category: "armor", name: "망토" },
+
+  ring: { id: "ring", category: "accessory", name: "반지" },
+  amulet: { id: "amulet", category: "accessory", name: "부적" }
+};
+
+export const EQUIPMENT_SLOT_CATEGORY_LABELS = {
   weapon: "무기",
   armor: "방어구",
   accessory: "장신구"
 };
+
+// 선언 순서가 곧 화면 표시 순서다.
+export const EQUIPMENT_SLOTS = Object.keys(EQUIPMENT_SLOT_DEFS);
+
+export const EQUIPMENT_SLOT_LABELS = Object.fromEntries(
+  Object.values(EQUIPMENT_SLOT_DEFS).map((slot) => [slot.id, slot.name])
+);
+
+export function equipmentSlotsByCategory(category) {
+  return Object.values(EQUIPMENT_SLOT_DEFS).filter((slot) => slot.category === category);
+}
+
+export function equipmentSlotDefinition(slotId) {
+  return EQUIPMENT_SLOT_DEFS[slotId] || null;
+}
+
+// 빈 장착표. 새 지휘관 생성과 저장 마이그레이션이 같은 모양을 쓰도록 한 곳에 둔다.
+export function createEmptyEquipped() {
+  return Object.fromEntries(EQUIPMENT_SLOTS.map((slot) => [slot, null]));
+}
 
 // 장비 정의. 습득 흐름은 룬과 같은 2단계(설계도 습득 → 제작 → 장착)다.
 //
@@ -664,14 +704,16 @@ export const EQUIPMENT_DEFS = {
   archmageStaff: { id: "archmageStaff", slot: "weapon", name: "현자의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { wood: 3, ingot: 2 }, bonus: { cooldownReduction: 0.1 }, description: "마력 순환을 돕는 대형 지팡이. 스킬 재사용 대기시간이 크게 감소한다." },
 
   // --- 방어구: 직업 제한 없음. 셋 다 "버티기 / 굴리기 / 마력" 방향이 갈린다 ---
-  heavyPlate: { id: "heavyPlate", slot: "armor", setId: "ironbound", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorBonus: 0.04 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
-  scoutLeather: { id: "scoutLeather", slot: "armor", setId: "ranger", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorBonus: 0.02, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
-  wardenRobe: { id: "wardenRobe", slot: "armor", setId: "warden", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorBonus: 0.02, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
+  // 지금은 셋 다 몸통(chest)이다. 투구·장갑·신발·망토 슬롯은 구조만 열어두고
+  // 채울 아이템은 아직 설계 중이다.
+  heavyPlate: { id: "heavyPlate", slot: "chest", setId: "ironbound", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorBonus: 0.04 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
+  scoutLeather: { id: "scoutLeather", slot: "chest", setId: "ranger", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorBonus: 0.02, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
+  wardenRobe: { id: "wardenRobe", slot: "chest", setId: "warden", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorBonus: 0.02, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
 
   // --- 장신구: 직업 제한 없음. 각각 방어구 하나와 세트를 이룬다 ---
-  guardianCharm: { id: "guardianCharm", slot: "accessory", setId: "ironbound", name: "수호의 부적", materials: { herb: 3, ingot: 1 }, bonus: { maxHpBonus: 0.09 }, description: "낡은 수호 부적. 최대 체력이 오른다." },
-  sagesBand: { id: "sagesBand", slot: "accessory", setId: "ranger", name: "현자의 고리", materials: { ore: 2, herb: 2 }, bonus: { cooldownReduction: 0.05 }, description: "사색을 돕는 고리. 스킬 재사용 대기시간이 감소한다." },
-  runeSigil: { id: "runeSigil", slot: "accessory", setId: "warden", name: "룬 각인 인장", materials: { ore: 3, ingot: 1 }, bonus: { damageBonus: 0.05 }, description: "각인된 인장. 공격력이 오른다." }
+  guardianCharm: { id: "guardianCharm", slot: "amulet", setId: "ironbound", name: "수호의 부적", materials: { herb: 3, ingot: 1 }, bonus: { maxHpBonus: 0.09 }, description: "낡은 수호 부적. 최대 체력이 오른다." },
+  sagesBand: { id: "sagesBand", slot: "ring", setId: "ranger", name: "현자의 고리", materials: { ore: 2, herb: 2 }, bonus: { cooldownReduction: 0.05 }, description: "사색을 돕는 고리. 스킬 재사용 대기시간이 감소한다." },
+  runeSigil: { id: "runeSigil", slot: "amulet", setId: "warden", name: "룬 각인 인장", materials: { ore: 3, ingot: 1 }, bonus: { damageBonus: 0.05 }, description: "각인된 인장. 공격력이 오른다." }
 };
 
 // 방어구 세트. 설계도는 낱개가 아니라 "세트 단위"로 습득한다 — 하나를 얻으면
@@ -744,7 +786,7 @@ export const LEGENDARY_DEFS = {
     lore: "천 년을 시위가 늘어지지 않는 활. 남방 서사시의 대궁."
   },
   solomonSeal: {
-    id: "solomonSeal", slot: "accessory", legendary: true, regionId: "central",
+    id: "solomonSeal", slot: "ring", legendary: true, regionId: "central",
     name: "솔로몬의 인장", baseClassId: null,
     materials: { glassSand: 5, ore: 4, herb: 4 },
     bonus: { maxHpBonus: 0.06, damageBonus: 0.04, manaRegenBonus: 0.3 },
@@ -901,7 +943,7 @@ export function createDefaultCommander() {
     // 설계도 → 제작 → 장착 3단계. 슬롯당 하나만 장착된다.
     unlockedBlueprints: [],
     equipmentOwned: [],
-    equipped: { weapon: null, armor: null, accessory: null },
+    equipped: createEmptyEquipped(),
     skillLoadouts: Object.fromEntries(Object.values(PLAYER_KIT_DEFS).map((kit) => [kit.id, [...kit.defaultLoadout]]))
   };
 }

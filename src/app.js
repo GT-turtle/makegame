@@ -1,7 +1,7 @@
 import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
 import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency } from "./core.js";
 import { GameEngine } from "./game.js";
-import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, equipmentDefinition, equipmentForSlot, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, equipmentDefinition, equipmentForSlot, equipmentSlotsByCategory, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 import {
   DUNGEON_VIEW_SIZE,
   FIELD_VIEW_SIZE,
@@ -1961,12 +1961,19 @@ function commanderEquipmentSection(state, selectedKit) {
   const equipped = commander.equipped || {};
   const collection = legendaryCollection(commander);
 
-  const slots = EQUIPMENT_SLOTS.map((slot) => {
+  const renderSlot = (slotDef) => {
+    const slot = slotDef.id;
     // 무기만 직업 제한이 있다. 설계도를 받은 것만 노출해서 미획득 스포일러를 줄인다.
     const candidates = equipmentForSlot(slot).filter((entry) => {
       if (!unlocked.has(entry.id)) return false;
-      return slot !== "weapon" || entry.baseClassId === selectedKit.baseClassId;
+      return !slotDef.classLocked || entry.baseClassId === selectedKit.baseClassId;
     });
+
+    // 아직 채울 아이템이 없는 부위는 한 줄로 접어둔다 — 슬롯이 여덟 개라
+    // 빈 칸마다 큰 안내문을 깔면 화면이 안내문으로 뒤덮인다.
+    if (!candidates.length) {
+      return `<div class="equipment-slot-empty"><span>${slotDef.name}</span><small>설계도 없음</small></div>`;
+    }
 
     const cards = candidates.map((entry) => {
       const isOwned = owned.has(entry.id);
@@ -1994,17 +2001,28 @@ function commanderEquipmentSection(state, selectedKit) {
 
     return `
       <div class="equipment-slot">
-        <div class="section-heading"><h2>${EQUIPMENT_SLOT_LABELS[slot]}</h2><span>${
+        <div class="section-heading"><h2>${slotDef.name}</h2><span>${
           equipped[slot] ? escapeHtml(equipmentDefinition(equipped[slot])?.name || "") : "미장착"
         }</span></div>
-        <div class="equipment-grid">${cards || '<p class="facility-note">아직 이 부위의 설계도가 없다. 지역 던전을 정복하면 얻는다.</p>'}</div>
+        <div class="equipment-grid">${cards}</div>
+      </div>`;
+  };
+
+  // 계열(무기 / 방어구 / 장신구)로 묶어서 보여준다.
+  const groups = Object.entries(EQUIPMENT_SLOT_CATEGORY_LABELS).map(([category, label]) => {
+    const slotDefs = equipmentSlotsByCategory(category);
+    const filled = slotDefs.filter((slotDef) => equipped[slotDef.id]).length;
+    return `
+      <div class="equipment-category">
+        <div class="section-heading"><h2>${label}</h2><span>${filled}/${slotDefs.length} 착용</span></div>
+        ${slotDefs.map(renderSlot).join("")}
       </div>`;
   }).join("");
 
   return `
     <div class="section-heading"><h2>장비</h2><span>전설 컬렉션 ${collection.collectedCount}/${collection.total}</span></div>
-    ${slots}
-    <p class="facility-note">무기는 직업 전용이고 방어구·장신구는 공용이다. 같은 세트의 방어구와 장신구를 함께 차면 세트 효과가 붙는다. 전설 장비는 지역 던전을 ${5}회 이상 정복하면 설계도가 나오며, 수치를 크게 올리는 대신 일반 장비가 함께 주지 않는 조합을 준다.</p>
+    ${groups}
+    <p class="facility-note">무기는 직업 전용이고 방어구·장신구는 공용이다. 같은 세트를 맞춰 차면 세트 효과가 붙는다. 부위별 슬롯은 열려 있고 채울 장비는 계속 추가된다.</p>
   `;
 }
 

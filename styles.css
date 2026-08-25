@@ -1858,6 +1858,22 @@ button:disabled {
 }
 
 .equipment-slot + .equipment-slot { margin-top: 4px; }
+.equipment-category + .equipment-category { margin-top: 10px; }
+
+/* 아직 채울 장비가 없는 부위. 슬롯이 여덟 개라 한 줄로 접어 구조만 보이게 한다. */
+.equipment-slot-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  margin-top: 4px;
+  border: 1px dashed var(--line);
+  border-radius: 9px;
+  color: var(--muted);
+}
+
+.equipment-slot-empty span { font-size: 11px; }
+.equipment-slot-empty small { font-size: 9px; opacity: 0.75; }
 
 .inventory-tray {
   display: grid;

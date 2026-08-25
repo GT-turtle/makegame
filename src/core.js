@@ -18,9 +18,9 @@ import {
 } from "./data.js";
 import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState, createInitialMerchantState } from "./frontier.js";
 import { createDefenseDeployments } from "./defense.js";
-import { PLAYER_KIT_DEFS, createDefaultCommander, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
+import { EQUIPMENT_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, createEmptyEquipped, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 20;
+export const SAVE_VERSION = 21;
 
 // 영지 행복도(state.meta.estate.happiness)가 생산 속도에 미치는 배율.
 // 기준치(70, 신규 영지의 시작값)에서는 정확히 1.0배 — 기존 저장/테스트의 기준 생산량을 그대로 유지한다.
@@ -1319,6 +1319,20 @@ export function migrateState(rawState) {
     delete commander.weaponsOwned;
     delete commander.equippedWeaponId;
     state.log.unshift({ text: "장비가 무기·방어구·장신구 세 칸으로 나뉘었다.", tone: "item" });
+  }
+  if (previousVersion < 21) {
+    // 방어구/장신구 한 칸씩이던 걸 부위별 슬롯(투구·갑옷·장갑·신발·망토 / 반지·부적)으로
+    // 쪼갰다. 기존에 끼고 있던 장비는 그 아이템의 새 슬롯으로 그대로 옮겨준다.
+    const commander = state.adventure.commander;
+    const previous = commander.equipped || {};
+    const equipped = createEmptyEquipped();
+    for (const equipmentId of Object.values(previous)) {
+      const definition = EQUIPMENT_DEFS[equipmentId];
+      // 정의가 사라진 아이템(이름이 바뀐 경우 등)은 조용히 해제한다.
+      if (definition && equipped[definition.slot] === null) equipped[definition.slot] = equipmentId;
+    }
+    commander.equipped = equipped;
+    state.log.unshift({ text: "방어구가 투구·갑옷·장갑·신발·망토로, 장신구가 반지·부적으로 나뉘었다.", tone: "item" });
   }
   state.adventure.party = state.adventure.party.slice(0, 2);
   state.adventure.commander.combatKitId = playerKitDefinition(state.adventure.commander.combatKitId).id;
