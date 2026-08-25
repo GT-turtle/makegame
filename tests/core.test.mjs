@@ -24,7 +24,7 @@ import {
   workerProficiency
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
-import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, playerCombatStats } from "../src/classes.js";
+import { EQUIPMENT_DEFS, EQUIPMENT_GRADES, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -39,6 +39,21 @@ class MemoryStorage {
   setItem(key, value) {
     this.values.set(key, value);
   }
+}
+
+
+// 장비를 끼운 지휘관을 만든다. 장비가 인스턴스(uid)로 바뀌면서 픽스처가
+// 장황해져서, 정의 id만 넘기면 인스턴스를 만들어 장착까지 해주는 헬퍼를 둔다.
+function gearUp(commander, bySlot, grade = "common") {
+  let n = 0;
+  for (const [slot, defId] of Object.entries(bySlot)) {
+    if (!defId) continue;
+    n += 1;
+    const uid = "fixture" + n;
+    commander.equipmentOwned.push({ uid, defId, grade, options: [] });
+    commander.equipped[slot] = uid;
+  }
+  return commander;
 }
 
 test("L자 아이템 회전은 점유 칸을 정확히 바꾼다", () => {
@@ -305,17 +320,18 @@ test("무기는 설계도 습득 후 재료로 제작해야 하고, 자기 직�
   assert.equal(engine.craftEquipment("crusaderBastardSword"), true);
   assert.equal(engine.state.meta.materials.ingot, 0);
   assert.equal(engine.state.meta.materials.blackSteel, 0);
-  assert.ok(commander.equipmentOwned.includes("crusaderBastardSword"));
-  assert.equal(engine.craftEquipment("crusaderBastardSword"), false, "중복 제작 불가");
+  const sword = commander.equipmentOwned.find((entry) => entry.defId === "crusaderBastardSword");
+  assert.ok(sword, "보유 목록에는 인스턴스가 들어간다");
+  assert.ok(sword.uid, "인스턴스는 고유 uid를 갖는다");
 
-  assert.equal(engine.equipEquipment("barbarianGreataxe"), false, "미보유 무기는 장착 불가");
-  assert.equal(engine.equipEquipment("crusaderBastardSword"), true);
-  assert.equal(commander.equipped.weapon, "crusaderBastardSword");
+  assert.equal(engine.equipEquipment("없는uid"), false, "미보유 무기는 장착 불가");
+  assert.equal(engine.equipEquipment(sword.uid), true);
+  assert.equal(commander.equipped.weapon, sword.uid, "장착표에는 uid가 들어간다");
 
   // 바바리안 무기를 억지로 보유시켜도, 지금 직업(크루세이더)과 안 맞으면 장착 거부.
-  commander.equipmentOwned.push("barbarianGreataxe");
-  assert.equal(engine.equipEquipment("barbarianGreataxe"), false, "직업이 다른 무기는 장착 불가");
-  assert.equal(commander.equipped.weapon, "crusaderBastardSword", "장착 상태는 그대로 유지된다");
+  commander.equipmentOwned.push({ uid: "axe1", defId: "barbarianGreataxe", grade: "common", options: [] });
+  assert.equal(engine.equipEquipment("axe1"), false, "직업이 다른 무기는 장착 불가");
+  assert.equal(commander.equipped.weapon, sword.uid, "장착 상태는 그대로 유지된다");
 
   assert.equal(engine.equipEquipment(null, "weapon"), true);
   assert.equal(commander.equipped.weapon, null);
@@ -333,12 +349,14 @@ test("방어구·장신구는 직업 제한 없이 슬롯별로 하나씩 장착
   engine.state.meta.materials.herb = 20;
   engine.state.meta.materials.wood = 20;
 
+  const uidOf = (defId) => commander.equipmentOwned.find((entry) => entry.defId === defId).uid;
+
   assert.equal(engine.craftEquipment("heavyPlate"), true);
   assert.equal(engine.craftEquipment("guardianCharm"), true);
-  assert.equal(engine.equipEquipment("heavyPlate"), true);
-  assert.equal(engine.equipEquipment("guardianCharm"), true);
-  assert.equal(commander.equipped.chest, "heavyPlate");
-  assert.equal(commander.equipped.amulet, "guardianCharm");
+  assert.equal(engine.equipEquipment(uidOf("heavyPlate")), true);
+  assert.equal(engine.equipEquipment(uidOf("guardianCharm")), true);
+  assert.equal(commander.equipped.chest, uidOf("heavyPlate"));
+  assert.equal(commander.equipped.amulet, uidOf("guardianCharm"));
 
   // 방어구(체력+12%)와 장신구(체력+9%)가 함께 적용된다.
   const gearedStats = playerCombatStats(commander, commander.combatKitId);
@@ -347,9 +365,9 @@ test("방어구·장신구는 직업 제한 없이 슬롯별로 하나씩 장착
 
   // 같은 슬롯에 다른 장비를 끼면 교체된다(둘 다 장착되지 않는다).
   assert.equal(engine.craftEquipment("scoutLeather"), true);
-  assert.equal(engine.equipEquipment("scoutLeather"), true);
-  assert.equal(commander.equipped.chest, "scoutLeather", "같은 부위(갑옷)는 교체된다");
-  assert.equal(commander.equipped.amulet, "guardianCharm", "다른 부위는 그대로다");
+  assert.equal(engine.equipEquipment(uidOf("scoutLeather")), true);
+  assert.equal(commander.equipped.chest, uidOf("scoutLeather"), "같은 부위(갑옷)는 교체된다");
+  assert.equal(commander.equipped.amulet, uidOf("guardianCharm"), "다른 부위는 그대로다");
 });
 
 test("장비 슬롯은 무기 1 · 방어구 5 · 장신구 2 계열로 구성된다", () => {
@@ -381,18 +399,38 @@ test("v20 저장의 방어구·장신구 한 칸은 부위별 슬롯으로 옮�
     armor: "heavyPlate",
     accessory: "guardianCharm"
   };
+  state.adventure.commander.equipmentOwned = ["crusaderBastardSword", "heavyPlate", "guardianCharm"];
   const migrated = migrateState(JSON.parse(JSON.stringify(state)));
-  const equipped = migrated.adventure.commander.equipped;
+  const commander = migrated.adventure.commander;
+  const equipped = commander.equipped;
+  const defOf = (uid) => commander.equipmentOwned.find((entry) => entry.uid === uid)?.defId;
 
-  assert.equal(equipped.chest, "heavyPlate", "방어구는 그 아이템의 부위(갑옷)로 간다");
-  assert.equal(equipped.amulet, "guardianCharm", "장신구는 부적 칸으로 간다");
-  assert.equal(equipped.weapon, "crusaderBastardSword", "무기는 그대로다");
+  assert.equal(defOf(equipped.chest), "heavyPlate", "방어구는 그 아이템의 부위(갑옷)로 간다");
+  assert.equal(defOf(equipped.amulet), "guardianCharm", "장신구는 부적 칸으로 간다");
+  assert.equal(defOf(equipped.weapon), "crusaderBastardSword", "무기는 그대로다");
 
   // 옛 키가 남아 있으면 UI가 유령 장비를 그린다.
   assert.deepEqual(Object.keys(equipped).sort(), [...EQUIPMENT_SLOTS].sort());
   assert.equal(equipped.armor, undefined);
   assert.equal(equipped.accessory, undefined);
   assert.equal(equipped.helmet, null, "새로 생긴 칸은 비어 있다");
+
+  // 보유 목록도 인스턴스로 바뀐다.
+  assert.ok(commander.equipmentOwned.every((entry) => entry.uid && entry.defId && entry.grade));
+});
+
+test("끼고 있지만 보유 목록에 없던 장비는 마이그레이션에서 살려준다", () => {
+  // 구버전 저장에서 equipped와 equipmentOwned가 어긋나 있는 경우가 있다.
+  // 그냥 버리면 장비가 조용히 사라진다.
+  const state = createInitialState();
+  state.version = 20;
+  state.adventure.commander.equipmentOwned = [];
+  state.adventure.commander.equipped = { weapon: "crusaderBastardSword", armor: null, accessory: null };
+
+  const commander = migrateState(JSON.parse(JSON.stringify(state))).adventure.commander;
+  assert.equal(commander.equipmentOwned.length, 1, "인스턴스를 만들어 보유 목록에 넣는다");
+  assert.equal(commander.equipmentOwned[0].defId, "crusaderBastardSword");
+  assert.equal(commander.equipped.weapon, commander.equipmentOwned[0].uid, "장착도 유지된다");
 });
 
 test("작업자는 실제로 생산한 시간만 쌓아 초심자에서 장인까지 숙련된다", () => {
@@ -554,7 +592,7 @@ test("구형 층제 원정 저장은 영구 성장만 보존하고 안전하게 
   const migrated = new GameEngine(storage);
   assert.equal(migrated.state.expedition, null);
   assert.equal(migrated.state.meta.scrap, 19);
-  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구|투구·갑옷·장갑/);
+  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구|투구·갑옷·장갑|등급\(일반~신화\)/);
 });
 
 test("방어구 세트를 완성하면 세트 보너스가 추가로 붙는다", () => {
@@ -568,16 +606,152 @@ test("방어구 세트를 완성하면 세트 보너스가 추가로 붙는다",
   assert.equal(engine.craftEquipment("heavyPlate"), true);
   assert.equal(engine.craftEquipment("guardianCharm"), true);
 
+  const uidOf = (defId) => commander.equipmentOwned.find((entry) => entry.defId === defId).uid;
+
   // 방어구만 착용
-  assert.equal(engine.equipEquipment("heavyPlate"), true);
+  assert.equal(engine.equipEquipment(uidOf("heavyPlate")), true);
   const armorOnly = playerCombatStats(commander, commander.combatKitId);
 
   // 짝 장신구까지 착용해 세트 완성 → 방어력에 세트 보너스가 더 붙는다
-  assert.equal(engine.equipEquipment("guardianCharm"), true);
+  assert.equal(engine.equipEquipment(uidOf("guardianCharm")), true);
   const fullSet = playerCombatStats(commander, commander.combatKitId);
 
   assert.ok(fullSet.armor > armorOnly.armor, "세트 완성 시 방어력이 더 오른다");
   assert.ok(fullSet.maxHp > armorOnly.maxHp, "장신구 자체 체력 보너스도 함께 적용된다");
+});
+
+test("장비 등급은 5단계이고 제작으로는 희귀까지만 나온다", () => {
+  assert.deepEqual(EQUIPMENT_GRADES, ["common", "fine", "rare", "legendary", "mythic"]);
+
+  // 전설·신화는 보스 부산물이 있어야 한다(docs/EQUIPMENT_DESIGN.md §1).
+  const craftable = EQUIPMENT_GRADES.filter((id) => EQUIPMENT_GRADE_DEFS[id].craftable);
+  assert.deepEqual(craftable, ["common", "fine", "rare"]);
+
+  // 등급이 오르면 기본 배율과 랜덤 옵션 칸이 함께 오른다.
+  let previous = null;
+  for (const id of EQUIPMENT_GRADES) {
+    const grade = EQUIPMENT_GRADE_DEFS[id];
+    if (previous) {
+      assert.ok(grade.baseScale > previous.baseScale, `${id} 배율이 더 높아야 한다`);
+      assert.ok(grade.optionCount > previous.optionCount, `${id} 옵션 칸이 더 많아야 한다`);
+    }
+    previous = grade;
+  }
+  // 랜덤 옵션은 모든 장비에 붙는다 — 일반도 한 칸은 갖는다.
+  assert.equal(EQUIPMENT_GRADE_DEFS.common.optionCount, 1);
+
+  // 어떤 굴림이 나와도 제작 등급은 제작 가능 범위를 벗어나지 않는다.
+  for (let i = 0; i <= 20; i += 1) {
+    for (let level = 0; level <= 3; level += 1) {
+      assert.ok(craftable.includes(rollCraftGrade(level, i / 20)));
+    }
+  }
+});
+
+test("대장장이 숙련도가 높을수록 좋은 등급과 높은 옵션 수치가 나온다", () => {
+  // 같은 굴림값이라도 숙련도가 높으면 등급이 같거나 더 좋다.
+  for (const roll of [0.05, 0.3, 0.6, 0.8, 0.95]) {
+    const order = EQUIPMENT_GRADES.indexOf(rollCraftGrade(0, roll));
+    const masterOrder = EQUIPMENT_GRADES.indexOf(rollCraftGrade(3, roll));
+    assert.ok(masterOrder >= order, `굴림 ${roll}에서 장인이 초심자보다 나쁘면 안 된다`);
+  }
+
+  // 옵션 수치는 숙련도가 올라가면 최저값이 올라간다(상한은 그대로).
+  const worst = () => 0;
+  const noviceOptions = rollEquipmentOptions("chest", "rare", 0, worst);
+  const masterOptions = rollEquipmentOptions("chest", "rare", 3, worst);
+  assert.equal(noviceOptions.length, masterOptions.length);
+  for (let i = 0; i < noviceOptions.length; i += 1) {
+    assert.equal(noviceOptions[i].key, masterOptions[i].key, "같은 굴림이면 같은 옵션이 뽑힌다");
+    assert.ok(masterOptions[i].value > noviceOptions[i].value, "장인이 만들면 바닥값이 덜 나온다");
+  }
+
+  const best = () => 0.999;
+  const noviceBest = rollEquipmentOptions("chest", "rare", 0, best);
+  const masterBest = rollEquipmentOptions("chest", "rare", 3, best);
+  for (let i = 0; i < noviceBest.length; i += 1) {
+    assert.ok(masterBest[i].value - noviceBest[i].value < 0.002, "최대값은 숙련도와 무관하게 공평하다");
+  }
+});
+
+test("랜덤 옵션은 부위 계열별 풀에서만 나오고 같은 스탯이 중복되지 않는다", () => {
+  const armorKeys = EQUIPMENT_OPTION_POOLS.armor.map((entry) => entry.key);
+  const weaponKeys = EQUIPMENT_OPTION_POOLS.weapon.map((entry) => entry.key);
+
+  let seed = 7;
+  const rng = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+
+  for (let i = 0; i < 40; i += 1) {
+    const armor = rollEquipmentOptions("chest", "rare", 1, rng);
+    assert.ok(armor.every((entry) => armorKeys.includes(entry.key)), "방어구 옵션은 방어구 풀에서만 나온다");
+    assert.equal(new Set(armor.map((e) => e.key)).size, armor.length, "같은 스탯이 두 번 붙지 않는다");
+
+    const weapon = rollEquipmentOptions("weapon", "fine", 1, rng);
+    assert.ok(weapon.every((entry) => weaponKeys.includes(entry.key)));
+
+    for (const entry of [...armor, ...weapon]) {
+      const pool = [...EQUIPMENT_OPTION_POOLS.armor, ...EQUIPMENT_OPTION_POOLS.weapon]
+        .find((option) => option.key === entry.key);
+      assert.ok(entry.value >= pool.min - 1e-9 && entry.value <= pool.max + 1e-9,
+        `${entry.key}=${entry.value}가 ${pool.min}~${pool.max} 범위를 벗어난다`);
+    }
+  }
+
+  // 풀보다 옵션 칸이 많으면 붙일 수 있는 만큼만 붙는다(방어구 풀은 2개뿐).
+  assert.equal(rollEquipmentOptions("chest", "mythic", 0, rng).length, EQUIPMENT_OPTION_POOLS.armor.length);
+});
+
+test("같은 설계도로 여러 번 만들면 각각 다른 굴림의 장비가 쌓인다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const commander = engine.state.adventure.commander;
+  engine.state.meta.craftSeed = 12345; // 굴림 고정
+  engine.state.meta.materials.ingot = 100;
+  engine.state.meta.materials.blackSteel = 100;
+  commander.unlockedBlueprints.push("heavyPlate");
+
+  for (let i = 0; i < 5; i += 1) assert.equal(engine.craftEquipment("heavyPlate"), true);
+  assert.equal(commander.equipmentOwned.length, 5, "같은 설계도도 반복 제작된다");
+  assert.equal(new Set(commander.equipmentOwned.map((e) => e.uid)).size, 5, "uid는 서로 다르다");
+
+  // 굴림이 실제로 갈린다(등급이든 옵션 수치든).
+  const shapes = new Set(commander.equipmentOwned.map((e) =>
+    e.grade + ":" + e.options.map((o) => o.key + o.value).join(",")));
+  assert.ok(shapes.size > 1, "다섯 개가 전부 똑같이 나오면 랜덤이 아니다");
+
+  // 굴림 결과가 실제 전투 스탯에 반영된다.
+  const ranked = commander.equipmentOwned
+    .map((e) => ({ e, hp: instanceBonuses(e).maxHpBonus || 0 }))
+    .sort((a, b) => b.hp - a.hp);
+  assert.ok(ranked[0].hp > 0.12, "등급 배율·랜덤 옵션이 기본값(0.12) 위에 얹힌다");
+
+  engine.equipEquipment(ranked[0].e.uid);
+  const strong = playerCombatStats(commander, commander.combatKitId);
+  engine.equipEquipment(ranked[ranked.length - 1].e.uid);
+  const weak = playerCombatStats(commander, commander.combatKitId);
+  assert.ok(strong.maxHp >= weak.maxHp, "더 좋은 굴림이 더 높은 체력을 준다");
+
+  // 안 쓰는 굴림은 버릴 수 있고, 버리면 장착도 해제된다.
+  const discarded = ranked[ranked.length - 1].e.uid;
+  assert.equal(engine.discardEquipment(discarded), true);
+  assert.equal(commander.equipmentOwned.length, 4);
+  assert.equal(commander.equipped.chest, null, "장착 중이던 걸 버리면 슬롯이 비워진다");
+  assert.equal(engine.discardEquipment(discarded), false, "이미 버린 건 다시 못 버린다");
+});
+
+test("제작 굴림은 저장 시드를 이어 쓰므로 되돌려 다시 굴릴 수 없다", () => {
+  const make = () => {
+    const engine = new GameEngine(new MemoryStorage());
+    engine.state.meta.craftSeed = 999;
+    engine.state.meta.materials.ingot = 100;
+    engine.state.meta.materials.blackSteel = 100;
+    engine.state.adventure.commander.unlockedBlueprints.push("heavyPlate");
+    engine.craftEquipment("heavyPlate");
+    return engine.state.adventure.commander.equipmentOwned[0];
+  };
+  const first = make();
+  const second = make();
+  assert.equal(first.grade, second.grade, "같은 시드면 같은 결과가 나온다");
+  assert.deepEqual(first.options, second.options);
 });
 
 test("던전을 정복하면 개방되고, 개척 주기마다 영지에 정기 수익이 들어온다", () => {

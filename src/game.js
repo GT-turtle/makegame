@@ -1,5 +1,5 @@
 import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
-import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, normalizedPlayerLoadout, playerKitDefinition } from "./classes.js";
+import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, equipmentGradeDefinition, findEquipmentInstance, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions } from "./classes.js";
 import {
   activeWorkerCount,
   addMaterial,
@@ -21,6 +21,7 @@ import {
   masteryGainMultiplier,
   masteryLevel,
   migrateState,
+  workerProficiency,
   pathStepToward,
   placeItem,
   removeItem,
@@ -2278,30 +2279,64 @@ export class GameEngine {
   // 설계도(unlockedBlueprints) 습득 → 재료 소모 제작(equipmentOwned) → 슬롯 장착.
   // 룬은 고철로 바로 구매하지만 장비는 설계도 선행 습득이 필요하다는 점만 다르고,
   // 나머지 습득/장착 구조는 룬과 같다.
+  // 제작 굴림용 시드. 저장에 남겨 이어 쓰므로 결과가 재현되고(제작 결과가 마음에
+  // 안 든다고 저장을 되돌려 다시 굴리는 걸 막는다) 테스트에서도 고정할 수 있다.
+  nextCraftRoll() {
+    const meta = this.state.meta;
+    meta.craftSeed = (Math.imul(meta.craftSeed || 1, 1664525) + 1013904223) >>> 0;
+    return meta.craftSeed / 4294967296;
+  }
+
   craftEquipment(equipmentId) {
     const definition = EQUIPMENT_DEFS[equipmentId];
     const commander = this.state.adventure.commander;
     if (this.state.adventure?.run || this.state.estateDefense?.campaign || !definition) return false;
     if (!commander.unlockedBlueprints.includes(equipmentId)) return false;
-    if (commander.equipmentOwned.includes(equipmentId)) return false;
     for (const [materialId, amount] of Object.entries(definition.materials)) {
       if ((this.state.meta.materials[materialId] || 0) < amount) return false;
     }
     for (const [materialId, amount] of Object.entries(definition.materials)) {
       this.state.meta.materials[materialId] -= amount;
     }
-    commander.equipmentOwned.push(equipmentId);
-    this.addLog(`${definition.name} 제작 완료.`, "item");
+
+    // 대장장이 숙련도가 등급 확률과 옵션 최저값을 함께 올린다.
+    const proficiencyLevel = workerProficiency(this.state, "blacksmith").level;
+    const grade = rollCraftGrade(proficiencyLevel, this.nextCraftRoll());
+    const options = rollEquipmentOptions(definition.slot, grade, proficiencyLevel, () => this.nextCraftRoll());
+
+    // 같은 설계도로 여러 번 만들 수 있다 — 옵션이 매번 다르므로 더 좋은 굴림을
+    // 노리고 반복 제작하는 게 디아블로식 파밍의 핵심이다.
+    commander.nextEquipmentUid = (commander.nextEquipmentUid || 0) + 1;
+    commander.equipmentOwned.push(createEquipmentInstance(
+      `eq${commander.nextEquipmentUid}`, equipmentId, grade, options
+    ));
+
+    this.addLog(`${equipmentGradeDefinition(grade).name} ${definition.name} 제작 완료.`, "item");
     this.emit();
     return true;
   }
 
-  // equipmentId가 null이면 slot을 비운다(그때는 slot을 반드시 넘겨야 한다).
-  equipEquipment(equipmentId, slot = null) {
+  // 장비를 버린다. 반복 제작을 하면 안 쓰는 굴림이 쌓이므로 정리 수단이 필요하다.
+  discardEquipment(uid) {
+    const commander = this.state.adventure.commander;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    const index = (commander.equipmentOwned || []).findIndex((entry) => entry?.uid === uid);
+    if (index < 0) return false;
+    const [instance] = commander.equipmentOwned.splice(index, 1);
+    for (const slot of EQUIPMENT_SLOTS) {
+      if (commander.equipped[slot] === uid) commander.equipped[slot] = null;
+    }
+    this.addLog(`${EQUIPMENT_DEFS[instance.defId]?.name || "장비"} 폐기.`, "item");
+    this.emit();
+    return true;
+  }
+
+  // uid가 null이면 slot을 비운다(그때는 slot을 반드시 넘겨야 한다).
+  equipEquipment(uid, slot = null) {
     const commander = this.state.adventure.commander;
     if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
 
-    if (equipmentId === null) {
+    if (uid === null) {
       if (!EQUIPMENT_SLOTS.includes(slot)) return false;
       commander.equipped[slot] = null;
       this.addLog(`${EQUIPMENT_SLOT_LABELS[slot]} 해제.`, "item");
@@ -2309,15 +2344,16 @@ export class GameEngine {
       return true;
     }
 
-    const definition = EQUIPMENT_DEFS[equipmentId];
-    if (!definition || !commander.equipmentOwned.includes(equipmentId)) return false;
+    const instance = findEquipmentInstance(commander, uid);
+    const definition = EQUIPMENT_DEFS[instance?.defId];
+    if (!definition) return false;
     // 무기만 직업 제한이 있다. 방어구·장신구는 어떤 직업이든 자유롭게 고를 수 있어
     // 직업이 선택을 강제하지 않는다(docs/CHOICE_DESIGN.md).
     if (definition.slot === "weapon") {
       const kit = playerKitDefinition(commander.combatKitId);
       if (definition.baseClassId !== kit.baseClassId) return false;
     }
-    commander.equipped[definition.slot] = equipmentId;
+    commander.equipped[definition.slot] = uid;
     this.addLog(`${definition.name} 장착.`, "item");
     this.emit();
     return true;

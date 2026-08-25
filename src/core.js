@@ -18,9 +18,9 @@ import {
 } from "./data.js";
 import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState, createInitialMerchantState } from "./frontier.js";
 import { createDefenseDeployments } from "./defense.js";
-import { EQUIPMENT_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, createEmptyEquipped, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
+import { EQUIPMENT_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, createEmptyEquipped, createEquipmentInstance, findEquipmentInstance, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 21;
+export const SAVE_VERSION = 22;
 
 // 영지 행복도(state.meta.estate.happiness)가 생산 속도에 미치는 배율.
 // 기준치(70, 신규 영지의 시작값)에서는 정확히 1.0배 — 기존 저장/테스트의 기준 생산량을 그대로 유지한다.
@@ -235,6 +235,9 @@ export function createInitialState() {
       classId: "knight",
       traitId: "duneBorn",
       skillMastery: {},
+      // 장비 제작 굴림용 시드. 저장에 남아 이어지므로 되돌려 다시 굴릴 수 없다.
+      // 플레이마다 다른 결과가 나오도록 시작값을 흩어둔다(테스트는 직접 지정).
+      craftSeed: (Date.now() ^ 0x9e3779b9) >>> 0,
       blueprints: ["frontierMantle"],
       materials: {
         wood: 4, food: 4,
@@ -1333,6 +1336,49 @@ export function migrateState(rawState) {
     }
     commander.equipped = equipped;
     state.log.unshift({ text: "방어구가 투구·갑옷·장갑·신발·망토로, 장신구가 반지·부적으로 나뉘었다.", tone: "item" });
+  }
+  if (previousVersion < 22) {
+    // 장비에 등급과 랜덤 옵션이 붙으면서, 보유 목록이 "설계도 id 배열"에서
+    // "인스턴스 배열"로 바뀌었다. 같은 설계도로 만든 장비도 굴림이 제각각이라
+    // id만으로는 어느 물건인지 특정할 수 없기 때문이다.
+    const commander = state.adventure.commander;
+    const previousOwned = commander.equipmentOwned || [];
+    const previousEquipped = commander.equipped || {};
+    const uidByDefId = new Map();
+
+    commander.equipmentOwned = previousOwned
+      .map((entry) => {
+        // 이미 인스턴스면 그대로 둔다(중복 실행 안전).
+        if (entry && typeof entry === "object") return entry;
+        if (!EQUIPMENT_DEFS[entry]) return null;
+        const uid = `eq${uidByDefId.size + 1}`;
+        uidByDefId.set(entry, uid);
+        // 기존 장비는 등급 체계가 생기기 전에 만든 것이라 일반 등급 · 옵션 없음으로
+        // 둔다. 마이그레이션에서 굴림을 돌리면 저장을 열 때마다 결과가 흔들린다.
+        return createEquipmentInstance(uid, entry, "common", []);
+      })
+      .filter(Boolean);
+    commander.nextEquipmentUid = commander.equipmentOwned.length;
+
+    const equipped = createEmptyEquipped();
+    for (const [slot, value] of Object.entries(previousEquipped)) {
+      if (!(slot in equipped) || !value) continue;
+      // 이미 uid로 옮겨진 저장이면 그대로 둔다(중복 실행 안전).
+      if (findEquipmentInstance(commander, value)) { equipped[slot] = value; continue; }
+      // v21까지는 정의 id가 들어 있었다 — 대응하는 인스턴스의 uid로 바꾼다.
+      if (uidByDefId.has(value)) { equipped[slot] = uidByDefId.get(value); continue; }
+      // 끼고 있는데 보유 목록에 없는 경우(구버전 저장에서 종종 어긋나 있다).
+      // 그냥 버리면 장비가 조용히 사라지므로 인스턴스를 만들어 살려준다.
+      if (EQUIPMENT_DEFS[value]) {
+        commander.nextEquipmentUid += 1;
+        const uid = `eq${commander.nextEquipmentUid}`;
+        commander.equipmentOwned.push(createEquipmentInstance(uid, value, "common", []));
+        uidByDefId.set(value, uid);
+        equipped[slot] = uid;
+      }
+    }
+    commander.equipped = equipped;
+    state.log.unshift({ text: "장비에 등급(일반~신화)과 랜덤 옵션이 붙는다. 대장장이 숙련도가 품질을 좌우한다.", tone: "item" });
   }
   state.adventure.party = state.adventure.party.slice(0, 2);
   state.adventure.commander.combatKitId = playerKitDefinition(state.adventure.commander.combatKitId).id;

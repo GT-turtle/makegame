@@ -679,6 +679,123 @@ export function createEmptyEquipped() {
   return Object.fromEntries(EQUIPMENT_SLOTS.map((slot) => [slot, null]));
 }
 
+// 장비 등급 5단계(docs/EQUIPMENT_DESIGN.md §1).
+//
+// 등급이 올리는 건 두 가지다: 기본 수치 배율(baseScale)과 **랜덤 옵션 칸 수**.
+// 랜덤 옵션은 모든 장비에 붙으므로 일반도 한 칸은 갖는다.
+//
+// 제작으로 도달할 수 있는 건 희귀까지다. 전설·신화는 보스 부산물이 있어야 하는데
+// 그 설계가 아직 회의 중이라(docs/EQUIPMENT_DESIGN.md §1) 등급 정의만 넣어두고
+// 획득 경로는 비워뒀다.
+export const EQUIPMENT_GRADE_DEFS = {
+  common: { id: "common", name: "일반", optionCount: 1, baseScale: 1, craftable: true, color: "#9a9384" },
+  fine: { id: "fine", name: "고급", optionCount: 2, baseScale: 1.08, craftable: true, color: "#6fa8dc" },
+  rare: { id: "rare", name: "희귀", optionCount: 3, baseScale: 1.16, craftable: true, color: "#b07fd8" },
+  legendary: { id: "legendary", name: "전설", optionCount: 4, baseScale: 1.26, craftable: false, color: "#e0a648" },
+  mythic: { id: "mythic", name: "신화", optionCount: 5, baseScale: 1.38, craftable: false, color: "#e06a5a" }
+};
+
+export const EQUIPMENT_GRADES = Object.keys(EQUIPMENT_GRADE_DEFS);
+
+export function equipmentGradeDefinition(gradeId) {
+  return EQUIPMENT_GRADE_DEFS[gradeId] || EQUIPMENT_GRADE_DEFS.common;
+}
+
+// 랜덤 옵션 풀. 장비 부위 계열별로 후보를 제한한다(docs/EQUIPMENT_DESIGN.md §2 —
+// "옵션 풀이 지나치게 넓어져 잡옵 파밍이 과해지지 않도록").
+//
+// 지금은 playerCombatStats가 실제로 소비하는 5개 스탯만 쓴다. 설계 문서가 언급한
+// 치명타·공격속도·이동속도·상태저항·경직저항은 **전투 엔진에 아직 스탯 자체가 없어서**
+// 넣지 않았다. 그 스탯들이 생기면 여기 풀에 추가하면 된다.
+export const EQUIPMENT_OPTION_POOLS = {
+  weapon: [
+    { key: "damageBonus", min: 0.02, max: 0.06 },
+    { key: "cooldownReduction", min: 0.01, max: 0.04 }
+  ],
+  armor: [
+    { key: "maxHpBonus", min: 0.02, max: 0.07 },
+    { key: "armorBonus", min: 0.01, max: 0.03 }
+  ],
+  accessory: [
+    { key: "manaRegenBonus", min: 0.1, max: 0.5 },
+    { key: "cooldownReduction", min: 0.01, max: 0.04 },
+    { key: "damageBonus", min: 0.01, max: 0.04 }
+  ]
+};
+
+export function equipmentOptionPool(slotId) {
+  const slot = EQUIPMENT_SLOT_DEFS[slotId];
+  return slot ? EQUIPMENT_OPTION_POOLS[slot.category] || [] : [];
+}
+
+// 제작 시 등급 확률. 대장장이 숙련도(0 초심자 ~ 3 장인)가 높을수록 좋은 등급이
+// 나온다 — 숙련도가 장비 품질에 영향을 준다는 설계 요구를 여기서 구현한다.
+const CRAFT_GRADE_CHANCES = [
+  { common: 0.7, fine: 0.25, rare: 0.05 },  // 초심자
+  { common: 0.55, fine: 0.33, rare: 0.12 }, // 숙련자
+  { common: 0.4, fine: 0.4, rare: 0.2 },    // 전문가
+  { common: 0.25, fine: 0.45, rare: 0.3 }   // 장인
+];
+
+export function rollCraftGrade(proficiencyLevel = 0, roll = Math.random()) {
+  const level = Math.max(0, Math.min(CRAFT_GRADE_CHANCES.length - 1, Math.floor(proficiencyLevel)));
+  let remaining = roll;
+  for (const [gradeId, chance] of Object.entries(CRAFT_GRADE_CHANCES[level])) {
+    remaining -= chance;
+    if (remaining < 0) return gradeId;
+  }
+  return "common";
+}
+
+// 옵션 수치를 굴린다. 숙련도가 높을수록 **최저값이 올라간다** — 같은 등급이라도
+// 장인이 만든 게 바닥값이 덜 나온다는 뜻이다(최대값은 그대로라 상한은 공평하다).
+function rollOptionValue(option, proficiencyLevel, roll) {
+  const floor = 0.2 * Math.max(0, Math.min(3, proficiencyLevel)) / 3;
+  const t = floor + roll * (1 - floor);
+  const value = option.min + (option.max - option.min) * t;
+  // 소수점이 길게 남으면 UI에서 지저분하고 저장도 커진다.
+  return Math.round(value * 1000) / 1000;
+}
+
+// 장비 한 점의 랜덤 옵션을 굴린다. 같은 스탯이 중복으로 붙지 않도록 후보에서 제거하며
+// 뽑고, 풀이 모자라면 붙일 수 있는 만큼만 붙인다.
+export function rollEquipmentOptions(slotId, gradeId, proficiencyLevel = 0, nextRoll = Math.random) {
+  const pool = [...equipmentOptionPool(slotId)];
+  const count = Math.min(equipmentGradeDefinition(gradeId).optionCount, pool.length);
+  const options = [];
+  for (let i = 0; i < count; i += 1) {
+    const index = Math.min(pool.length - 1, Math.floor(nextRoll() * pool.length));
+    const [option] = pool.splice(index, 1);
+    options.push({ key: option.key, value: rollOptionValue(option, proficiencyLevel, nextRoll()) });
+  }
+  return options;
+}
+
+// 보유 장비 한 점(인스턴스). 같은 설계도로 여러 번 만들면 각각 다른 옵션을 갖기
+// 때문에, 보유 목록은 id 배열이 아니라 인스턴스 배열이어야 한다.
+export function createEquipmentInstance(uid, defId, gradeId, options = []) {
+  return { uid, defId, grade: gradeId, options: options.map((entry) => ({ ...entry })) };
+}
+
+// 인스턴스가 실제로 주는 보너스 = 정의 기본값 × 등급 배율 + 굴린 옵션.
+export function instanceBonuses(instance) {
+  const definition = EQUIPMENT_DEFS[instance?.defId];
+  if (!definition) return {};
+  const scale = equipmentGradeDefinition(instance.grade).baseScale;
+  const totals = {};
+  for (const [key, value] of Object.entries(definition.bonus || {})) {
+    totals[key] = Math.round(value * scale * 1000) / 1000;
+  }
+  for (const option of instance.options || []) {
+    totals[option.key] = Math.round(((totals[option.key] || 0) + option.value) * 1000) / 1000;
+  }
+  return totals;
+}
+
+export function findEquipmentInstance(commander, uid) {
+  return (commander?.equipmentOwned || []).find((entry) => entry?.uid === uid) || null;
+}
+
 // 장비 정의. 습득 흐름은 룬과 같은 2단계(설계도 습득 → 제작 → 장착)다.
 //
 // 슬롯별 성격:
@@ -809,7 +926,7 @@ export function legendariesForRegion(regionId) {
 // 컬렉션 진행도. 제작해서 실제로 보유한 전설 장비 기준으로 센다
 // (설계도만 받은 건 아직 "모은 것"이 아니다).
 export function legendaryCollection(commander = {}) {
-  const owned = new Set(commander.equipmentOwned || []);
+  const owned = new Set((commander.equipmentOwned || []).map((entry) => entry?.defId));
   const all = Object.values(LEGENDARY_DEFS);
   const collected = all.filter((entry) => owned.has(entry.id));
   return {
@@ -838,11 +955,16 @@ export function equipmentForSlot(slot) {
 export function equippedBonuses(commander = {}, baseClassId = null) {
   const totals = { damageBonus: 0, cooldownReduction: 0, maxHpBonus: 0, armorBonus: 0, manaRegenBonus: 0 };
   const equipped = commander.equipped || {};
+  // 장착표는 인스턴스 uid를 담는다(같은 설계도로 만든 장비도 옵션이 제각각이라
+  // 정의 id만으로는 어느 물건인지 특정할 수 없다).
+  const equippedInstance = (slot) => findEquipmentInstance(commander, equipped[slot]);
+
   for (const slot of EQUIPMENT_SLOTS) {
-    const definition = EQUIPMENT_DEFS[equipped[slot]];
+    const instance = equippedInstance(slot);
+    const definition = EQUIPMENT_DEFS[instance?.defId];
     if (!definition || definition.slot !== slot) continue;
     if (definition.slot === "weapon" && baseClassId && definition.baseClassId !== baseClassId) continue;
-    for (const [key, value] of Object.entries(definition.bonus || {})) {
+    for (const [key, value] of Object.entries(instanceBonuses(instance))) {
       if (totals[key] === undefined) continue;
       totals[key] += Number(value) || 0;
     }
@@ -851,7 +973,7 @@ export function equippedBonuses(commander = {}, baseClassId = null) {
   for (const set of Object.values(ARMOR_SET_DEFS)) {
     const complete = set.pieces.every((pieceId) => {
       const piece = EQUIPMENT_DEFS[pieceId];
-      return piece && equipped[piece.slot] === pieceId;
+      return piece && equippedInstance(piece.slot)?.defId === pieceId;
     });
     if (!complete) continue;
     for (const [key, value] of Object.entries(set.setBonus || {})) {
@@ -923,7 +1045,8 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
     equippedRuneId: rune?.id || null,
     // 실제로 보너스가 적용된 무기만 돌려준다(직업 불일치 무기는 null).
     equippedWeaponId: (() => {
-      const weapon = equipmentDefinition(commander.equipped?.weapon);
+      const instance = findEquipmentInstance(commander, commander.equipped?.weapon);
+      const weapon = equipmentDefinition(instance?.defId);
       return weapon && weapon.baseClassId === kit.baseClassId ? weapon.id : null;
     })(),
     equipped: { ...(commander.equipped || {}) }

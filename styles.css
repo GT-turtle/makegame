@@ -1857,6 +1857,28 @@ button:disabled {
   color: #e0a648;
 }
 
+/* 보유 장비는 등급 색으로 테두리를 준다(--grade-color는 렌더러가 넣는다). */
+.equipment-card.owned { border-color: var(--grade-color, var(--line)); }
+.equipment-card.owned .equipment-tag { color: var(--grade-color, var(--gold)); }
+.equipment-card .equipment-rolled { color: #8fbf8a; }
+
+/* 제작 카드는 "아직 물건이 아닌" 쪽이라 한 톤 죽인다. */
+.equipment-card.craft { border-style: dashed; }
+.equipment-card.craft strong { color: var(--muted); }
+
+.equipment-discard {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-size: 11px;
+  text-decoration: none;
+  color: var(--muted);
+  padding: 2px 5px;
+  border-radius: 6px;
+}
+
+.equipment-discard:hover { color: #e07a6a; background: #2a1a17; }
+
 .equipment-slot + .equipment-slot { margin-top: 4px; }
 .equipment-category + .equipment-category { margin-top: 10px; }
 

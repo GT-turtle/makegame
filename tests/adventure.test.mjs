@@ -48,6 +48,21 @@ class MemoryStorage {
   setItem(key, value) { this.values.set(key, value); }
 }
 
+
+// 장비를 끼운 지휘관을 만든다. 장비가 인스턴스(uid)로 바뀌면서 픽스처가
+// 장황해져서, 정의 id만 넘기면 인스턴스를 만들어 장착까지 해주는 헬퍼를 둔다.
+function gearUp(commander, bySlot, grade = "common") {
+  let n = 0;
+  for (const [slot, defId] of Object.entries(bySlot)) {
+    if (!defId) continue;
+    n += 1;
+    const uid = "fixture" + n;
+    commander.equipmentOwned.push({ uid, defId, grade, options: [] });
+    commander.equipped[slot] = uid;
+  }
+  return commander;
+}
+
 test("다섯 지역 필드는 41×41이고 모든 조우와 던전 입구가 연결된다", () => {
   for (const regionId of Object.keys(WORLD_REGION_DEFS)) {
     for (let seed = 1; seed <= 12; seed += 1) {
@@ -1009,19 +1024,19 @@ test("직업과 일치하는 무기는 보너스를 주지만, 다른 직업 무
   const bareStats = playerCombatStats(bare, bare.combatKitId);
 
   const withOwnWeapon = createDefaultCommander();
-  withOwnWeapon.equipped = { weapon: "crusaderBastardSword" };
+  gearUp(withOwnWeapon, { weapon: "crusaderBastardSword" });
   const ownWeaponStats = playerCombatStats(withOwnWeapon, withOwnWeapon.combatKitId);
   assert.ok(ownWeaponStats.damage > bareStats.damage, "크루세이더가 크루세이더 무기를 들면 공격력이 오른다");
   assert.equal(ownWeaponStats.equippedWeaponId, "crusaderBastardSword");
 
   const withWrongWeapon = createDefaultCommander();
-  withWrongWeapon.equipped = { weapon: "barbarianGreataxe" }; // 바바리안 전용 무기
+  gearUp(withWrongWeapon, { weapon: "barbarianGreataxe" }); // 바바리안 전용 무기
   const wrongWeaponStats = playerCombatStats(withWrongWeapon, withWrongWeapon.combatKitId);
   assert.equal(wrongWeaponStats.damage, bareStats.damage, "직업이 안 맞는 무기는 보너스가 적용되지 않는다");
   assert.equal(wrongWeaponStats.equippedWeaponId, null);
 
   const necroCommander = createDefaultCommander();
-  necroCommander.equipped = { weapon: "necromancerArmorSword" };
+  gearUp(necroCommander, { weapon: "necromancerArmorSword" });
   const necroStats = playerCombatStats(necroCommander, "heavyNecromancer");
   const necroBareStats = playerCombatStats(createDefaultCommander(), "heavyNecromancer");
   assert.ok(necroStats.cooldownReduction > necroBareStats.cooldownReduction, "네크로맨서 무기는 스킬 재사용 대기시간을 줄인다");
@@ -1098,12 +1113,12 @@ test("전설 장비는 지역별로 흩어져 있고 컬렉션 진행도로 집�
   const blueprintOnly = { unlockedBlueprints: all.map((entry) => entry.id), equipmentOwned: [] };
   assert.equal(legendaryCollection(blueprintOnly).collectedCount, 0, "설계도만으로는 0");
 
-  const partial = legendaryCollection({ equipmentOwned: ["moya", "durandal", "notLegendary"] });
+  const partial = legendaryCollection({ equipmentOwned: ["moya","durandal","notLegendary"].map((defId, i) => ({ uid: "eq"+i, defId, grade: "common", options: [] })) });
   assert.equal(partial.collectedCount, 2, "전설이 아닌 장비는 세지 않는다");
   assert.equal(partial.total, all.length);
   assert.equal(partial.complete, false);
 
-  const full = legendaryCollection({ equipmentOwned: all.map((entry) => entry.id) });
+  const full = legendaryCollection({ equipmentOwned: all.map((entry, i) => ({ uid: "eq"+i, defId: entry.id, grade: "common", options: [] })) });
   assert.equal(full.complete, true);
 });
 

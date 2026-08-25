@@ -1,7 +1,7 @@
 import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
 import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency } from "./core.js";
 import { GameEngine } from "./game.js";
-import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, equipmentDefinition, equipmentForSlot, equipmentSlotsByCategory, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 import {
   DUNGEON_VIEW_SIZE,
   FIELD_VIEW_SIZE,
@@ -1957,7 +1957,7 @@ function commanderEquipmentSection(state, selectedKit) {
   if (!commander) return "";
   const materials = state.meta.materials || {};
   const unlocked = new Set(commander.unlockedBlueprints || []);
-  const owned = new Set(commander.equipmentOwned || []);
+  const ownedInstances = commander.equipmentOwned || [];
   const equipped = commander.equipped || {};
   const collection = legendaryCollection(commander);
 
@@ -1975,29 +1975,56 @@ function commanderEquipmentSection(state, selectedKit) {
       return `<div class="equipment-slot-empty"><span>${slotDef.name}</span><small>설계도 없음</small></div>`;
     }
 
-    const cards = candidates.map((entry) => {
-      const isOwned = owned.has(entry.id);
-      const isEquipped = equipped[slot] === entry.id;
+    // 제작 카드: 설계도 하나당 하나. 같은 설계도를 계속 눌러 더 좋은 굴림을 노린다.
+    const craftCards = candidates.map((entry) => {
       const lacking = Object.entries(entry.materials || {})
         .filter(([id, amount]) => (materials[id] || 0) < amount);
       const cost = Object.entries(entry.materials || {})
         .map(([id, amount]) => `${MATERIAL_DEFS[id]?.name || id} ${amount}`).join(" · ");
       const set = entry.setId ? ARMOR_SET_DEFS[entry.setId] : null;
 
-      const action = isOwned
-        ? `data-action="equip-equipment" data-equipment-id="${entry.id}" data-slot="${slot}"`
-        : `data-action="craft-equipment" data-equipment-id="${entry.id}"${lacking.length ? " disabled" : ""}`;
-
       return `
-        <button class="equipment-card${isEquipped ? " selected" : ""}${entry.legendary ? " legendary" : ""}" ${action}>
+        <button class="equipment-card craft${entry.legendary ? " legendary" : ""}"
+          data-action="craft-equipment" data-equipment-id="${entry.id}"${lacking.length ? " disabled" : ""}>
           <strong>${escapeHtml(entry.name)}</strong>
           ${entry.legendary ? '<em class="equipment-tag">전설</em>' : ""}
-          <small>${escapeHtml(bonusText(entry.bonus))}</small>
+          <small>기본 ${escapeHtml(bonusText(entry.bonus))}</small>
           ${set ? `<small class="equipment-set">${escapeHtml(set.name)} · 2세트 ${escapeHtml(bonusText(set.setBonus))}</small>` : ""}
           ${entry.lore ? `<small class="equipment-lore">${escapeHtml(entry.lore)}</small>` : ""}
-          <i>${isEquipped ? "장착 중 · 눌러서 해제" : isOwned ? "장착하기" : lacking.length ? `재료 부족 · ${escapeHtml(cost)}` : `제작 · ${escapeHtml(cost)}`}</i>
+          <i>${lacking.length ? `재료 부족 · ${escapeHtml(cost)}` : `제작 · ${escapeHtml(cost)}`}</i>
         </button>`;
     }).join("");
+
+    // 보유 카드: 만든 물건 하나하나. 같은 설계도라도 등급·옵션이 달라서 따로 보여준다.
+    const ownedCards = ownedInstances
+      .filter((instance) => {
+        const entry = equipmentDefinition(instance?.defId);
+        if (!entry || entry.slot !== slot) return false;
+        return !slotDef.classLocked || entry.baseClassId === selectedKit.baseClassId;
+      })
+      .map((instance) => {
+        const entry = equipmentDefinition(instance.defId);
+        const grade = equipmentGradeDefinition(instance.grade);
+        const isEquipped = equipped[slot] === instance.uid;
+        const set = entry.setId ? ARMOR_SET_DEFS[entry.setId] : null;
+
+        return `
+          <button class="equipment-card owned${isEquipped ? " selected" : ""}${entry.legendary ? " legendary" : ""}"
+            style="--grade-color:${grade.color}"
+            data-action="equip-equipment" data-equipment-id="${instance.uid}" data-slot="${slot}">
+            <strong>${escapeHtml(entry.name)}</strong>
+            <em class="equipment-tag">${escapeHtml(grade.name)}</em>
+            <small>${escapeHtml(bonusText(instanceBonuses(instance)))}</small>
+            ${instance.options?.length
+              ? `<small class="equipment-rolled">랜덤 ${escapeHtml(bonusText(Object.fromEntries(instance.options.map((o) => [o.key, o.value]))))}</small>`
+              : ""}
+            ${set ? `<small class="equipment-set">${escapeHtml(set.name)} · 2세트 ${escapeHtml(bonusText(set.setBonus))}</small>` : ""}
+            <i>${isEquipped ? "장착 중 · 눌러서 해제" : "장착하기"}</i>
+            <u class="equipment-discard" data-action="discard-equipment" data-equipment-id="${instance.uid}" title="폐기">✕</u>
+          </button>`;
+      }).join("");
+
+    const cards = ownedCards + craftCards;
 
     return `
       <div class="equipment-slot">
@@ -2997,6 +3024,7 @@ app.addEventListener("click", (event) => {
   if (action === "select-class") engine.selectClass(button.dataset.classId);
   if (action === "select-trait") engine.selectTrait(button.dataset.traitId);
   if (action === "craft-equipment") engine.craftEquipment(button.dataset.equipmentId);
+  if (action === "discard-equipment") engine.discardEquipment(button.dataset.equipmentId);
   if (action === "equip-equipment") {
     // 이미 장착한 걸 다시 누르면 해제 — 스킬 장착 토글과 같은 조작감.
     const slot = button.dataset.slot;
