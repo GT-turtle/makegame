@@ -4054,3 +4054,53 @@ body.battle-active .modal-wrap { z-index: 3200; }
 }
 
 .battle-zone-summon i { background: rgba(150, 110, 200, 0.42); }
+
+/* 부채꼴 예고(브레스·참격). 원을 clip-path로 잘라 만든다. */
+.battle-zone-cone {
+  border: none;
+  background: none;
+  overflow: visible;
+}
+
+.battle-zone-cone::before,
+.battle-zone-cone i {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  transform: rotate(var(--cone-rotate, 0deg));
+  /* 중심에서 좌우 --cone-half 만큼 펼쳐진 부채꼴 */
+  clip-path: polygon(
+    50% 50%,
+    calc(50% + 50% * cos(0deg - var(--cone-half))) calc(50% + 50% * sin(0deg - var(--cone-half))),
+    calc(50% + 71% * cos(0deg - var(--cone-half) / 2)) calc(50% + 71% * sin(0deg - var(--cone-half) / 2)),
+    100% 50%,
+    calc(50% + 71% * cos(var(--cone-half) / 2)) calc(50% + 71% * sin(var(--cone-half) / 2)),
+    calc(50% + 50% * cos(var(--cone-half))) calc(50% + 50% * sin(var(--cone-half)))
+  );
+}
+
+.battle-zone-cone::before { background: rgba(224, 90, 74, 0.16); }
+
+.battle-zone-cone i {
+  inset: calc(50% - var(--zone-progress, 0) * 50%);
+  background: rgba(224, 90, 74, 0.42);
+  width: auto;
+  height: auto;
+}
+
+/* 잔류 장판. 이미 터진 뒤 남아 지속 피해를 주는 구역이라 예고와 색을 달리한다. */
+.battle-ground-effect {
+  position: absolute;
+  aspect-ratio: 1 / 0.62;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 1px dashed rgba(150, 190, 130, 0.6);
+  background: rgba(120, 170, 100, 0.16);
+  pointer-events: none;
+}
+
+.battle-ground-effect.hostile {
+  border-color: rgba(190, 120, 200, 0.65);
+  background: rgba(150, 90, 170, 0.18);
+}

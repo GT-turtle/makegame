@@ -347,7 +347,32 @@ export const MATERIAL_DEFS = {
   // 보스마다 2종씩 나오며, 여러 보스의 부산물을 섞는 고정 조합표를 쓴다(§5).
   // 지금은 북부 설원 거대 곰 것만 있고 나머지 보스는 순차적으로 추가한다.
   bearHide: { id: "bearHide", name: "설원곰 가죽", glyph: "▨", category: "special", description: "북부 거대 곰의 두꺼운 방한 가죽. 중갑·경갑·천 어디에도 쓰인다" },
-  bearSinew: { id: "bearSinew", name: "설원곰 힘줄", glyph: "≈", category: "special", description: "질기고 탄력 있는 힘줄. 경량 장비의 뼈대가 된다" }
+  bearSinew: { id: "bearSinew", name: "설원곰 힘줄", glyph: "≈", category: "special", description: "질기고 탄력 있는 힘줄. 경량 장비의 뼈대가 된다" },
+// 남부
+  tentacleRoot: { id: "tentacleRoot", name: "심해 촉수근", glyph: "≋", category: "special", description: "물가 심층 생물의 질긴 촉수 뿌리" },
+  inkSac: { id: "inkSac", name: "심해 먹물낭", glyph: "◐", category: "special", description: "부패를 부르는 검은 먹물. 부패 부여 장비의 핵심 소재" },
+  spiderFang: { id: "spiderFang", name: "거미 독니", glyph: "⋀", category: "special", description: "인면지주의 맹독 송곳니" },
+  spiderSilk: { id: "spiderSilk", name: "강화 거미실", glyph: "〜", category: "special", description: "쇠보다 질긴 거미실. 경량 장비와 활시위에 쓰인다" },
+  serpentHide: { id: "serpentHide", name: "거대뱀 가죽", glyph: "▤", category: "special", description: "비늘이 촘촘한 거대 뱀의 가죽" },
+  // 동부
+  foxTail: { id: "foxTail", name: "구미호 꼬리", glyph: "☙", category: "special", description: "영력이 깃든 아홉 꼬리 중 하나" },
+  spiritCore: { id: "spiritCore", name: "영핵", glyph: "◉", category: "special", description: "요괴의 영력이 응축된 핵" },
+  oniBlade: { id: "oniBlade", name: "오니 대장의 검", glyph: "†", category: "special", description: "오니가 쓰던 거대한 검. 벼려서 다시 쓸 수 있다" },
+  oniHorn: { id: "oniHorn", name: "오니의 뿔", glyph: "⌃", category: "special", description: "단단하고 예리한 오니의 뿔" },
+  chitinPlate: { id: "chitinPlate", name: "지네 키틴질", glyph: "▦", category: "special", description: "겹겹이 포개진 초거대 지네의 외골격" },
+  greatMandible: { id: "greatMandible", name: "거대 턱니", glyph: "⋈", category: "special", description: "갑주를 뚫는 지네의 턱" },
+  // 서부
+  durahanBlade: { id: "durahanBlade", name: "듀라한의 검", glyph: "‡", category: "special", description: "목 없는 기사가 들던 검" },
+  cursedPlate: { id: "cursedPlate", name: "저주받은 갑주편", glyph: "▩", category: "special", description: "저주가 스민 갑주 조각. 중갑 제작에 쓰인다" },
+  fallenRelic: { id: "fallenRelic", name: "타락한 성유물", glyph: "✟", category: "special", description: "몰락한 제국의 성유물" },
+  soulStone: { id: "soulStone", name: "영혼석", glyph: "◈", category: "special", description: "영혼을 가두는 돌" },
+  dragonBone: { id: "dragonBone", name: "고룡의 뼈", glyph: "⋔", category: "special", description: "오래 산 용의 단단한 뼈" },
+  dragonScale: { id: "dragonScale", name: "고룡의 비늘가죽", glyph: "◇", category: "special", description: "화염을 견디는 용의 비늘가죽" },
+  // 북부 추가
+  frostCore: { id: "frostCore", name: "빙결 마도핵", glyph: "❉", category: "special", description: "타락한 마탑 리치가 품고 있던 냉기 핵" },
+  taintedTome: { id: "taintedTome", name: "타락한 마도서", glyph: "▣", category: "special", description: "읽으면 안 되는 것이 적힌 책" },
+  warchiefAxe: { id: "warchiefAxe", name: "대전사의 도끼", glyph: "⚒", category: "special", description: "오크 대전사가 쓰던 육중한 도끼" },
+  shamanStone: { id: "shamanStone", name: "주술사의 마력석", glyph: "✧", category: "special", description: "오크 주술사의 마력이 응축된 돌" }
 };
 
 // 약초학자가 소비할 수 있는 약초 계열 원재료 목록 (일반 약초 + 지역별 특산 약초)

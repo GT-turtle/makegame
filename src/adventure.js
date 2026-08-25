@@ -149,6 +149,117 @@ export const BOSS_PATTERN_DEFS = {
     status: { id: "stun", durationMs: 700 }
   },
 
+
+  // ── 남부: 밀림·물가 ──
+  // 촉수 후리기 — 맞으면 보스 쪽으로 끌려온다. 거리를 벌리는 게 정답인 보스라
+  // "맞으면 다시 붙어야 한다"는 압박이 생긴다.
+  tentacleLash: {
+    id: "tentacleLash", name: "촉수 후리기", kind: "cone",
+    telegraphMs: 1200, radius: 34, coneDegrees: 90, damageMultiplier: 1.2,
+    cooldownMs: 8000, aim: "target", pullDistance: 14
+  },
+
+  // 먹물 분사 — 터진 자리에 부패 장판이 남는다. 안전지대가 점점 줄어든다.
+  inkSpray: {
+    id: "inkSpray", name: "먹물 분사", kind: "circle",
+    telegraphMs: 1100, radius: 16, damageMultiplier: 1.1,
+    cooldownMs: 10000, aim: "target",
+    linger: { statusId: "decay", damageMultiplier: 0.25, durationMs: 6000, pulseMs: 800 }
+  },
+
+  // 거미줄 — 피해는 적지만 오래 남고 이동을 늦춘다. 다른 패턴과 겹쳐서 위험해진다.
+  webTrap: {
+    id: "webTrap", name: "거미줄", kind: "circle",
+    telegraphMs: 1200, radius: 18, damageMultiplier: 0.6,
+    cooldownMs: 9000, aim: "target",
+    linger: { statusId: "poison", damageMultiplier: 0.2, durationMs: 8000, pulseMs: 900 }
+  },
+
+  // 독니 — 빠른 단발. 예고가 짧아 반응 속도를 요구한다.
+  venomFang: {
+    id: "venomFang", name: "독니", kind: "circle",
+    telegraphMs: 800, radius: 12, damageMultiplier: 1.4,
+    cooldownMs: 6000, aim: "target", status: { id: "poison", stacks: 2 }
+  },
+
+  // 똬리 조이기 — 보스 중심 광역. 뱀이 몸을 감는 그림.
+  coilCrush: {
+    id: "coilCrush", name: "똬리 조이기", kind: "circle",
+    telegraphMs: 1500, radius: 24, damageMultiplier: 1.5,
+    cooldownMs: 11000, aim: "self", status: { id: "bleed", stacks: 2 }
+  },
+
+  // ── 동부: 무예·요괴 ──
+  // 여우불 — 시간차 4발. 계속 움직이게 만드는 패턴.
+  foxfire: {
+    id: "foxfire", name: "여우불", kind: "circle",
+    telegraphMs: 900, radius: 10, damageMultiplier: 0.85,
+    cooldownMs: 10000, aim: "scatter",
+    volleyCount: 4, volleyIntervalMs: 550, volleySpread: 24,
+    status: { id: "burn" }
+  },
+
+  // 참격 — 부채꼴 검기. 오니 대장의 주력.
+  oniCleave: {
+    id: "oniCleave", name: "참격", kind: "cone",
+    telegraphMs: 1000, radius: 30, coneDegrees: 100, damageMultiplier: 1.6,
+    cooldownMs: 7000, aim: "target", status: { id: "bleed", stacks: 1 }
+  },
+
+  // 지네 돌진 — 길고 좁은 띠. 옆으로만 피할 수 있다.
+  centipedeDash: {
+    id: "centipedeDash", name: "지네 돌진", kind: "line",
+    telegraphMs: 1000, length: 85, width: 11, damageMultiplier: 1.5,
+    cooldownMs: 8000, aim: "target"
+  },
+
+  // 산성 분무 — 잔류 부식 장판.
+  acidMist: {
+    id: "acidMist", name: "산성 분무", kind: "circle",
+    telegraphMs: 1200, radius: 17, damageMultiplier: 0.9,
+    cooldownMs: 11000, aim: "self",
+    linger: { statusId: "decay", damageMultiplier: 0.3, durationMs: 5500, pulseMs: 700 }
+  },
+
+  // ── 서부: 기사·마법 ──
+  // 망령 돌격 — 듀라한의 직선기.
+  wraithCharge: {
+    id: "wraithCharge", name: "망령 돌격", kind: "line",
+    telegraphMs: 1100, length: 75, width: 15, damageMultiplier: 1.6,
+    cooldownMs: 8500, aim: "target", status: { id: "bleed", stacks: 2 }
+  },
+
+  // 저주 파동 — 보스 중심 광역 + 회복 감소.
+  curseWave: {
+    id: "curseWave", name: "저주 파동", kind: "circle",
+    telegraphMs: 1450, radius: 24, damageMultiplier: 1.2,
+    cooldownMs: 10000, aim: "self", status: { id: "decay" }
+  },
+
+  // 용의 숨결 — 넓은 부채꼴 + 불 장판 잔류. 서부 최상위 보스의 주력.
+  dragonBreath: {
+    id: "dragonBreath", name: "용의 숨결", kind: "cone",
+    telegraphMs: 1400, radius: 44, coneDegrees: 75, damageMultiplier: 1.8,
+    cooldownMs: 10000, aim: "target",
+    linger: { statusId: "burn", damageMultiplier: 0.3, durationMs: 4500, pulseMs: 750 }
+  },
+
+  // 날갯짓 — 보스 중심에서 밀어내는 대신 끌어당긴다(용이 붙잡는 그림).
+  wingSweep: {
+    id: "wingSweep", name: "날갯짓", kind: "circle",
+    telegraphMs: 1650, radius: 26, damageMultiplier: 1.1,
+    cooldownMs: 12000, aim: "self", pullDistance: 10, status: { id: "stun", durationMs: 600 }
+  },
+
+  // 성유물 폭발 — 몰락 제국 리치. 시간차 3발 + 화상.
+  relicBurst: {
+    id: "relicBurst", name: "성유물 폭발", kind: "circle",
+    telegraphMs: 950, radius: 13, damageMultiplier: 1.0,
+    cooldownMs: 10500, aim: "scatter",
+    volleyCount: 3, volleyIntervalMs: 600, volleySpread: 26,
+    status: { id: "burn" }
+  },
+
   // ── 지역 보스 전용 ──
   // 2페이즈 전용 광역기. 장갑이 무너진 뒤 핵이 노출되며 쓰는 큰 기술이라
   // 반경이 크고 예고도 길다.
@@ -222,6 +333,10 @@ function pushZone(battle, actor, pattern, shape, delayMs = 0) {
     kind: pattern.kind,
     damageMultiplier: pattern.damageMultiplier,
     status: pattern.status || null,
+    // 터진 뒤 그 자리에 남는 지속 구역(거미줄·독무·불 장판).
+    linger: pattern.linger || null,
+    // 맞은 대상을 시전자 쪽으로 끌어당기는 거리(촉수형).
+    pullDistance: pattern.pullDistance || 0,
     bornAt: battle.elapsed + delayMs,
     fireAt: battle.elapsed + delayMs + pattern.telegraphMs,
     ...shape
@@ -241,6 +356,14 @@ function spawnBossZone(battle, actor, pattern, target) {
       y2: actor.y + Math.sin(angle) * pattern.length,
       width: pattern.width,
       angle
+    });
+  } else if (pattern.kind === "cone") {
+    // 보스가 대상을 바라보는 방향으로 펼쳐지는 부채꼴. 옆이나 뒤로 돌아야 한다.
+    pushZone(battle, actor, pattern, {
+      x: actor.x, y: actor.y,
+      radius: pattern.radius,
+      angle: Math.atan2(target.y - actor.y, target.x - actor.x),
+      halfAngle: (pattern.coneDegrees || 70) * Math.PI / 360
     });
   } else if (pattern.kind === "summon") {
     pushZone(battle, actor, pattern, { x: actor.x, y: actor.y, radius: 6 });
@@ -283,7 +406,28 @@ function zoneCovers(zone, unit) {
   if (zone.kind === "line") {
     return distanceToSegment(unit, zone.x, zone.y, zone.x2, zone.y2) <= zone.width / 2;
   }
+  if (zone.kind === "cone") {
+    // 부채꼴: 반경 안 + 중심 방향에서 좌우 halfAngle 이내.
+    // 이 분기가 없으면 전방향으로 맞아 원형 장판과 다를 게 없어진다.
+    if (distanceBetween(zone, unit) > zone.radius) return false;
+    let diff = Math.atan2(unit.y - zone.y, unit.x - zone.x) - zone.angle;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    return Math.abs(diff) <= zone.halfAngle;
+  }
   return distanceBetween(zone, unit) <= zone.radius;
+}
+
+// 촉수처럼 끌어당기는 패턴. knockback의 반대 방향이다.
+function pullToward(source, target, distance, battle) {
+  const dx = source.x - target.x;
+  const dy = source.y - target.y;
+  const length = Math.max(0.001, Math.hypot(dx, dy));
+  const travel = Math.min(distance, length - 2);
+  if (travel <= 0) return;
+  const next = resolveMove(battle, target.x + (dx / length) * travel, target.y + (dy / length) * travel);
+  target.x = next.x;
+  target.y = next.y;
 }
 
 // 소환 패턴이 터지면 잡몹이 나온다.
@@ -324,9 +468,26 @@ function advanceBossZones(battle) {
         const reduction = dodging ? 1 - playerDodgeDefinition(battle.playerKitId).reduction : 1;
         const damage = damageCombatant(owner, unit, zone.damageMultiplier * reduction);
         if (zone.status) applyCombatStatus(battle, unit, zone.status, owner);
+        // 촉수형 패턴은 맞은 대상을 시전자 쪽으로 끌어당긴다.
+        if (zone.pullDistance) pullToward(owner, unit, zone.pullDistance, battle);
         if (unit.id === battle.playerId) battle.playerHitFlash = battle.elapsed;
         pushBattleLog(battle, `${zone.name}: ${unit.name}이 ${damage} 피해`);
       }
+    }
+    // 잔류 패턴은 터진 뒤 그 자리에 장판을 남긴다(거미줄·독무 같은 것).
+    if (zone.linger && owner) {
+      battle.groundEffects.push({
+        x: zone.x, y: zone.y, radius: zone.radius,
+        team: "enemy", sourceId: owner.id,
+        statusId: zone.linger.statusId || null,
+        statusOptions: {},
+        damageMultiplier: zone.linger.damageMultiplier || 0,
+        pulseMs: zone.linger.pulseMs || 700,
+        nextPulseAt: battle.elapsed + (zone.linger.pulseMs || 700),
+        endsAt: battle.elapsed + zone.linger.durationMs,
+        name: zone.name
+      });
+      pushBattleLog(battle, `${zone.name}: 바닥에 남았다`);
     }
     if (!hit.length) pushBattleLog(battle, `${zone.name}: 아무도 맞지 않았다`);
   }
@@ -385,7 +546,7 @@ export const WORLD_REGION_DEFS = {
     description: "방패벽과 중무기, 혹한 생존술이 발달한 산악권. 눈보라 속 폐광의 빙맥 거상을 추적한다.",
     glyph: "❄", accent: "#79adc5", danger: "위험 2", pressure: "혹한", mapX: 51, mapY: 16,
     hazard: { name: "혹한", glyph: "❄", description: "주기적으로 원정대의 체력을 깎는다.", techniqueId: "survival" },
-    enemyPool: ["frostWolves", "iceRaiders", "snowGolems"], villageName: "눈골 부락", dungeonName: "빙맥 폐광", dungeonGlyph: "◆",
+    enemyPool: ["frostWolves", "iceRaiders", "snowGolems"], fieldBossPool: ["northLichLair", "northWarbandLair"], villageName: "눈골 부락", dungeonName: "빙맥 폐광", dungeonGlyph: "◆",
     bossEncounterId: "frostColossusPack", defenseEncounterId: "iceRaiders", rewardMaterial: "frostIron", rewardAmount: 2,
     recruits: ["snow_guard", "winter_berserker", "snow_shaman"], techniqueId: "survival"
   },
@@ -394,7 +555,7 @@ export const WORLD_REGION_DEFS = {
     description: "독과 약초, 매복과 소환술이 함께 발달한 습윤 지대. 수관 아래 뿌리 군락이 개척로를 삼킨다.",
     glyph: "♣", accent: "#66a978", danger: "위험 2", pressure: "독성", mapX: 50, mapY: 84,
     hazard: { name: "독성 포자", glyph: "♢", description: "교전이 길어질수록 중독 피해가 쌓인다.", techniqueId: "poison" },
-    enemyPool: ["venomStalkers", "vineBrood", "mireHunters"], villageName: "강둑 부락", dungeonName: "수관 아래 신전", dungeonGlyph: "♧",
+    enemyPool: ["venomStalkers", "vineBrood", "mireHunters"], fieldBossPool: ["southSpawnLair", "southSpiderLair", "southSerpentLair"], villageName: "강둑 부락", dungeonName: "수관 아래 신전", dungeonGlyph: "♧",
     bossEncounterId: "canopyMatriarchPack", defenseEncounterId: "vineBrood", rewardMaterial: "venomSac", rewardAmount: 2,
     recruits: ["venom_tracker", "vine_keeper", "sap_healer"], techniqueId: "poison"
   },
@@ -403,7 +564,7 @@ export const WORLD_REGION_DEFS = {
     description: "공방 도시와 문파, 산성국과 도국이 이어진다. 무예서와 단조 설계를 둘러싼 분쟁이 끊이지 않는다.",
     glyph: "山", accent: "#c18469", danger: "위험 2", pressure: "험로", mapX: 81, mapY: 51,
     hazard: { name: "험로", glyph: "山", description: "거친 지형이 이동과 공격 주기를 방해한다.", techniqueId: "forging" },
-    enemyPool: ["mountainBandits", "ironGuard", "stoneApes"], villageName: "산성 아래 마을", dungeonName: "봉인된 단조성", dungeonGlyph: "炉",
+    enemyPool: ["mountainBandits", "ironGuard", "stoneApes"], fieldBossPool: ["eastFoxLair", "eastOniLair", "eastCentipedeLair"], villageName: "산성 아래 마을", dungeonName: "봉인된 단조성", dungeonGlyph: "炉",
     bossEncounterId: "forgeGuardianPack", defenseEncounterId: "ironGuard", rewardMaterial: "mountainIron", rewardAmount: 2,
     recruits: ["formation_officer", "duel_swordsman", "meridian_fighter"], techniqueId: "forging"
   },
@@ -412,7 +573,7 @@ export const WORLD_REGION_DEFS = {
     description: "석성 사이에 오래된 계약과 마력 유적이 남아 있다. 서약은 정의가 아니라 힘을 빌리는 방식이다.",
     glyph: "♜", accent: "#c6a66b", danger: "위험 2", pressure: "마력 이상", mapX: 18, mapY: 51,
     hazard: { name: "마력 이상", glyph: "✦", description: "불안정한 마력이 방어를 뚫고 피해를 준다.", techniqueId: "oath" },
-    enemyPool: ["thornBeasts", "oathbreakers", "manaWraiths"], villageName: "변경 순례촌", dungeonName: "무너진 서약당", dungeonGlyph: "✧",
+    enemyPool: ["thornBeasts", "oathbreakers", "manaWraiths"], fieldBossPool: ["westDurahanLair", "westLichLair", "westDragonLair"], villageName: "변경 순례촌", dungeonName: "무너진 서약당", dungeonGlyph: "✧",
     bossEncounterId: "ruinWardenPack", defenseEncounterId: "oathbreakers", rewardMaterial: "manaStone", rewardAmount: 2,
     recruits: ["oath_knight", "mana_weaver", "spirit_ranger"], techniqueId: "oath"
   },
@@ -421,7 +582,7 @@ export const WORLD_REGION_DEFS = {
     description: "오아시스와 유리 협곡이 이어지는 대륙의 중심. 물과 보급을 지키는 자가 길을 지배한다.",
     glyph: "☀", accent: "#c99150", danger: "위험 1", pressure: "작열", mapX: 51, mapY: 68,
     hazard: { name: "작열", glyph: "☀", description: "열기와 갈증이 장기 교전을 불리하게 만든다.", techniqueId: "mobility" },
-    enemyPool: ["sandHunters", "duneRaiders", "glassBeetles"], villageName: "오아시스 부락", dungeonName: "유리사 지하궁", dungeonGlyph: "◇",
+    enemyPool: ["sandHunters", "duneRaiders", "glassBeetles"], fieldBossPool: [], villageName: "오아시스 부락", dungeonName: "유리사 지하궁", dungeonGlyph: "◇",
     bossEncounterId: "duneTyrantPack", defenseEncounterId: "duneRaiders", rewardMaterial: "glassSand", rewardAmount: 2,
     recruits: ["desert_lancer", "glass_alchemist", "caravan_guide"], techniqueId: "mobility"
   }
@@ -486,6 +647,102 @@ export const ENEMY_COMBATANTS = {
   northGoblin: { name: "북부 홉고블린", species: "goblin", variant: "대형종", glyph: "G", maxHp: 29, damage: 7, range: 8, speed: 7, attackMs: 1380, armor: 0.08, color: "#789db0" },
   northOrc: { name: "서리갑주 오크", species: "orc", variant: "빙철 갑주", glyph: "O", maxHp: 34, damage: 7, range: 8, speed: 6, attackMs: 1460, armor: 0.16, color: "#7292a3", statusOnHit: { id: "frost", stacks: 1 }, statusEvery: 2 },
   northWolf: { name: "설원 늑대", species: "wolf", variant: "빙결 송곳니", glyph: "Λ", maxHp: 21, damage: 5, range: 7, speed: 13, attackMs: 1020, color: "#8cb9cd", statusOnHit: { id: "frost", stacks: 1 }, statusEvery: 3 },
+  // ── 필드 보스 (docs/EQUIPMENT_DESIGN.md §9) ──
+  // 모두 "기존 전투 규칙 안의 매우 강한 적"이며 HP 50%에서 패턴이 추가된다
+  // (형태는 그대로 — 형태가 바뀌는 건 지역 보스뿐이다. docs/BOSS_DESIGN.md §1).
+  // 부산물은 보스당 2종씩 확정 지급한다.
+  northLich: {
+    name: "타락한 마탑 리치", species: "lich", variant: "북부 필드 보스", glyph: "L",
+    maxHp: 168, damage: 12, range: 26, speed: 6, attackMs: 1500, armor: 0.1,
+    color: "#8f7fc0", boss: true, preScaled: true,
+    patterns: ["frostVolley", "groundSlam"],
+    phase2Patterns: ["quakeRoar", "callPack"],
+    byproducts: { frostCore: 2, taintedTome: 1 }
+  },
+  northWarchief: {
+    name: "오크 대전사", species: "orc", variant: "북부 필드 보스", glyph: "W",
+    maxHp: 190, damage: 14, range: 9, speed: 7, attackMs: 1450, armor: 0.18,
+    color: "#8a9c6d", boss: true, preScaled: true,
+    patterns: ["chargeRush", "groundSlam"],
+    phase2Patterns: ["quakeRoar"],
+    byproducts: { warchiefAxe: 1, shamanStone: 2 }
+  },
+
+  southStarSpawn: {
+    name: "어린 스타 스폰", species: "aberration", variant: "남부 필드 보스", glyph: "Y",
+    maxHp: 176, damage: 12, range: 14, speed: 5, attackMs: 1600, armor: 0.12,
+    color: "#5f7f8c", boss: true, preScaled: true,
+    patterns: ["tentacleLash", "inkSpray"],
+    phase2Patterns: ["coilCrush"],
+    byproducts: { tentacleRoot: 2, inkSac: 1 }
+  },
+  southSpider: {
+    name: "인면지주", species: "spider", variant: "남부 필드 보스", glyph: "X",
+    maxHp: 158, damage: 11, range: 16, speed: 8, attackMs: 1350, armor: 0.1,
+    color: "#7a6a8c", boss: true, preScaled: true,
+    patterns: ["webTrap", "venomFang"],
+    phase2Patterns: ["frostVolley"],
+    byproducts: { spiderFang: 2, spiderSilk: 2 }
+  },
+  southSerpent: {
+    name: "거대 뱀", species: "serpent", variant: "남부 필드 보스", glyph: "S",
+    maxHp: 184, damage: 13, range: 10, speed: 9, attackMs: 1400, armor: 0.14,
+    color: "#6f9a62", boss: true, preScaled: true,
+    patterns: ["venomFang", "coilCrush"],
+    phase2Patterns: ["chargeRush"],
+    byproducts: { serpentHide: 2, venomSac: 1 }
+  },
+
+  eastFox: {
+    name: "구미호", species: "fox", variant: "동부 필드 보스", glyph: "F",
+    maxHp: 162, damage: 12, range: 22, speed: 10, attackMs: 1300, armor: 0.08,
+    color: "#c98a6b", boss: true, preScaled: true,
+    patterns: ["foxfire", "groundSlam"],
+    phase2Patterns: ["callPack", "quakeRoar"],
+    byproducts: { foxTail: 1, spiritCore: 2 }
+  },
+  eastOni: {
+    name: "오니 대장", species: "oni", variant: "동부 필드 보스", glyph: "O",
+    maxHp: 196, damage: 15, range: 10, speed: 6, attackMs: 1550, armor: 0.2,
+    color: "#b05f52", boss: true, preScaled: true,
+    patterns: ["oniCleave", "chargeRush"],
+    phase2Patterns: ["quakeRoar"],
+    byproducts: { oniBlade: 1, oniHorn: 2 }
+  },
+  eastCentipede: {
+    name: "초거대 지네", species: "centipede", variant: "동부 필드 보스", glyph: "C",
+    maxHp: 180, damage: 12, range: 9, speed: 11, attackMs: 1250, armor: 0.22,
+    color: "#9a7d52", boss: true, preScaled: true,
+    patterns: ["centipedeDash", "acidMist"],
+    phase2Patterns: ["oniCleave"],
+    byproducts: { chitinPlate: 2, greatMandible: 1 }
+  },
+
+  westDurahan: {
+    name: "듀라한", species: "undead", variant: "서부 필드 보스", glyph: "D",
+    maxHp: 186, damage: 14, range: 10, speed: 8, attackMs: 1400, armor: 0.2,
+    color: "#7a8496", boss: true, preScaled: true,
+    patterns: ["wraithCharge", "groundSlam"],
+    phase2Patterns: ["curseWave"],
+    byproducts: { durahanBlade: 1, cursedPlate: 2 }
+  },
+  westLich: {
+    name: "몰락 제국 리치", species: "lich", variant: "서부 필드 보스", glyph: "R",
+    maxHp: 170, damage: 13, range: 26, speed: 6, attackMs: 1500, armor: 0.12,
+    color: "#9b82bd", boss: true, preScaled: true,
+    patterns: ["relicBurst", "curseWave"],
+    phase2Patterns: ["callPack"],
+    byproducts: { fallenRelic: 1, soulStone: 2 }
+  },
+  westDragon: {
+    name: "고룡", species: "dragon", variant: "서부 필드 보스", glyph: "▲",
+    maxHp: 240, damage: 16, range: 13, speed: 7, attackMs: 1600, armor: 0.24,
+    color: "#a8734f", boss: true, preScaled: true,
+    patterns: ["dragonBreath", "wingSweep"],
+    phase2Patterns: ["quakeRoar", "chargeRush"],
+    byproducts: { dragonBone: 1, dragonScale: 2 }
+  },
+
   // 북부 지역 보스(docs/BOSS_DESIGN.md §4 타이탄).
   // 필드 보스와 달리 HP 50%에서 패턴 풀이 **교체**되고 형태가 바뀐다.
   // 부위 공략(팔·다리를 노려 자세를 무너뜨리는 기믹)은 유닛에 부위 개념이
@@ -512,22 +769,38 @@ export const ENEMY_COMBATANTS = {
   southGoblin: { name: "독침 고블린", species: "goblin", variant: "독침 사수", glyph: "G", maxHp: 19, damage: 4, range: 21, speed: 10, attackMs: 1080, color: "#6fa66d", statusOnHit: { id: "poison", stacks: 1 } },
   southOrc: { name: "덩굴갑주 오크", species: "orc", variant: "재생 갑주", glyph: "O", maxHp: 31, damage: 6, range: 8, speed: 6, attackMs: 1390, armor: 0.14, hpRegen: 0.2, color: "#638f63" },
   southWolf: { name: "수풀 늑대", species: "wolf", variant: "독니 매복종", glyph: "Λ", maxHp: 20, damage: 5, range: 7, speed: 13, attackMs: 1010, color: "#80a965", statusOnHit: { id: "poison", stacks: 1 }, statusEvery: 2 },
-  southBear: { name: "수관 큰곰", species: "bear", variant: "맹독 우두머리", glyph: "B", maxHp: 88, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.1, hpRegen: 0.25, color: "#6e9e62", boss: true, statusOnHit: { id: "poison", stacks: 2 } },
+  southBear: { name: "수관 큰곰", species: "bear", variant: "맹독 우두머리", glyph: "B", maxHp: 88, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.1, hpRegen: 0.25, color: "#6e9e62", boss: true, 
+    patterns: ["venomFang", "coilCrush"],
+    phase2Patterns: ["webTrap"],
+    byproducts: { serpentHide: 1, venomSac: 1 },
+    statusOnHit: { id: "poison", stacks: 2 } },
 
   eastGoblin: { name: "산성 고블린 궁수", species: "goblin", variant: "장궁 사수", glyph: "G", maxHp: 20, damage: 6, range: 24, speed: 9, attackMs: 1220, color: "#b37b60" },
   eastOrc: { name: "단조갑주 오크", species: "orc", variant: "중갑 수문병", glyph: "O", maxHp: 34, damage: 6, range: 8, speed: 5, attackMs: 1460, armor: 0.21, color: "#9f765f" },
   eastWolf: { name: "산등성이 늑대", species: "wolf", variant: "절벽 추격종", glyph: "Λ", maxHp: 22, damage: 7, range: 7, speed: 13, attackMs: 1050, color: "#9a7562", statusOnHit: { id: "bleed", stacks: 1 }, statusEvery: 2 },
-  eastBear: { name: "철발톱 큰곰", species: "bear", variant: "단조성 우두머리", glyph: "B", maxHp: 94, damage: 10, range: 9, speed: 5, attackMs: 1500, armor: 0.18, color: "#bd7459", boss: true, statusOnHit: { id: "bleed", stacks: 2 }, statusEvery: 2 },
+  eastBear: { name: "철발톱 큰곰", species: "bear", variant: "단조성 우두머리", glyph: "B", maxHp: 94, damage: 10, range: 9, speed: 5, attackMs: 1500, armor: 0.18, color: "#bd7459", boss: true, 
+    patterns: ["oniCleave", "chargeRush"],
+    phase2Patterns: ["quakeRoar"],
+    byproducts: { chitinPlate: 1, mountainIron: 1 },
+    statusOnHit: { id: "bleed", stacks: 2 }, statusEvery: 2 },
 
   westGoblin: { name: "마나 고블린 술사", species: "goblin", variant: "화염 마법종", glyph: "G", maxHp: 18, damage: 6, range: 24, speed: 9, attackMs: 1180, color: "#9b82bd", statusOnHit: { id: "burn" }, statusEvery: 3 },
   westOrc: { name: "서약 파기 오크", species: "orc", variant: "기사 무장", glyph: "O", maxHp: 29, damage: 8, range: 8, speed: 7, attackMs: 1300, armor: 0.13, color: "#a17870" },
   westWolf: { name: "정령숲 늑대", species: "wolf", variant: "마력 추적종", glyph: "Λ", maxHp: 22, damage: 5, range: 8, speed: 14, attackMs: 990, color: "#7f9c71", statusOnHit: { id: "decay" }, statusEvery: 3 },
-  westBear: { name: "룬갑주 큰곰", species: "bear", variant: "폐서약당 우두머리", glyph: "B", maxHp: 98, damage: 10, range: 10, speed: 5, attackMs: 1540, armor: 0.16, color: "#b29378", boss: true, statusOnHit: { id: "stun", durationMs: 800 }, statusEvery: 3 },
+  westBear: { name: "룬갑주 큰곰", species: "bear", variant: "폐서약당 우두머리", glyph: "B", maxHp: 98, damage: 10, range: 10, speed: 5, attackMs: 1540, armor: 0.16, color: "#b29378", boss: true, 
+    patterns: ["groundSlam", "curseWave"],
+    phase2Patterns: ["relicBurst"],
+    byproducts: { cursedPlate: 1, soulStone: 1 },
+    statusOnHit: { id: "stun", durationMs: 800 }, statusEvery: 3 },
 
   centralGoblin: { name: "화염병 고블린", species: "goblin", variant: "연금 투척수", glyph: "G", maxHp: 19, damage: 5, range: 22, speed: 10, attackMs: 1150, color: "#cf9257", statusOnHit: { id: "burn" }, statusEvery: 3 },
   centralOrc: { name: "사구 도끼오크", species: "orc", variant: "대상로 약탈자", glyph: "O", maxHp: 31, damage: 8, range: 8, speed: 7, attackMs: 1320, armor: 0.1, color: "#b97648", statusOnHit: { id: "bleed", stacks: 1 }, statusEvery: 2 },
   centralWolf: { name: "모래 늑대", species: "wolf", variant: "고속 추적종", glyph: "Λ", maxHp: 20, damage: 6, range: 7, speed: 14, attackMs: 1000, color: "#c18b52", statusOnHit: { id: "bleed", stacks: 1 }, statusEvery: 3 },
-  centralBear: { name: "사구 큰곰", species: "bear", variant: "유리사 우두머리", glyph: "B", maxHp: 90, damage: 11, range: 9, speed: 5, attackMs: 1480, armor: 0.13, color: "#cf8b46", boss: true, statusOnHit: { id: "stun", durationMs: 750 }, statusEvery: 3 }
+  centralBear: { name: "사구 큰곰", species: "bear", variant: "유리사 우두머리", glyph: "B", maxHp: 90, damage: 11, range: 9, speed: 5, attackMs: 1480, armor: 0.13, color: "#cf8b46", boss: true, 
+    patterns: ["groundSlam", "chargeRush"],
+    phase2Patterns: ["quakeRoar"],
+    byproducts: { glassSand: 2, sunShard: 1 },
+    statusOnHit: { id: "stun", durationMs: 750 }, statusEvery: 3 }
 };
 
 export const ENCOUNTER_DEFS = {
@@ -551,7 +824,19 @@ export const ENCOUNTER_DEFS = {
   ruinWardenPack: { name: "폐서약당 룬갑주", glyph: "☠", enemies: ["westBear", "westOrc", "westGoblin"], scrap: 12, boss: true },
   duneTyrantPack: { name: "유리사의 사구 큰곰", glyph: "☠", enemies: ["centralBear", "centralOrc", "centralGoblin"], scrap: 11, boss: true },
   frostColossusPack: { name: "빙맥 큰곰", glyph: "☠", enemies: ["northBear", "northOrc", "northGoblin"], scrap: 13, boss: true },
-  frostTitanLair: { name: "설산의 타이탄", glyph: "☠", enemies: ["northTitan"], scrap: 24, boss: true, regionBoss: true }
+  frostTitanLair: { name: "설산의 타이탄", glyph: "☠", enemies: ["northTitan"], scrap: 24, boss: true, regionBoss: true },
+  // 필드 보스 조우. 보스 + 그 지역 잡몹 조합(단독은 지역 보스만).
+  northLichLair: { name: "타락한 마탑 리치", glyph: "☠", enemies: ["northLich", "northGoblin"], scrap: 18, boss: true },
+  northWarbandLair: { name: "오크 대전사", glyph: "☠", enemies: ["northWarchief", "northOrc"], scrap: 18, boss: true },
+  southSpawnLair: { name: "어린 스타 스폰", glyph: "☠", enemies: ["southStarSpawn", "southGoblin"], scrap: 18, boss: true },
+  southSpiderLair: { name: "인면지주", glyph: "☠", enemies: ["southSpider", "southWolf"], scrap: 18, boss: true },
+  southSerpentLair: { name: "거대 뱀", glyph: "☠", enemies: ["southSerpent", "southOrc"], scrap: 18, boss: true },
+  eastFoxLair: { name: "구미호", glyph: "☠", enemies: ["eastFox", "eastGoblin"], scrap: 18, boss: true },
+  eastOniLair: { name: "오니 대장", glyph: "☠", enemies: ["eastOni", "eastOrc"], scrap: 18, boss: true },
+  eastCentipedeLair: { name: "초거대 지네", glyph: "☠", enemies: ["eastCentipede", "eastWolf"], scrap: 18, boss: true },
+  westDurahanLair: { name: "듀라한", glyph: "☠", enemies: ["westDurahan", "westOrc"], scrap: 18, boss: true },
+  westLichLair: { name: "몰락 제국 리치", glyph: "☠", enemies: ["westLich", "westGoblin"], scrap: 18, boss: true },
+  westDragonLair: { name: "고룡", glyph: "☠", enemies: ["westDragon", "westOrc"], scrap: 22, boss: true }
 };
 
 function mulberry32(seed) {
@@ -1198,7 +1483,37 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
     enemy.groupIndex = groupIndex;
     enemy.dormant = true;
   });
+  // 필드 보스는 별도의 잠든 무리로 필드 안쪽에 놓는다(docs/EQUIPMENT_DESIGN.md §9).
+  // 던전 입구로 직행하면 안 만나고 지나칠 수 있는 위치에 둔다 — 그래야
+  // "필드 어딘가에 보스가 산다"가 되고, 찾아가 싸우는 게 선택이 된다.
+  const bossPool = region.fieldBossPool || [];
+  if (bossPool.length && options.fieldBoss !== false) {
+    const pick = bossPool[Math.floor(rng() * bossPool.length) % bossPool.length];
+    const encounter = ENCOUNTER_DEFS[pick];
+    if (encounter) {
+      const bossGroup = groupCount + 1;
+      // 던전 입구로 가는 직선 경로에서 벗어난 가장자리 쪽.
+      const side = rng() < 0.5 ? -1 : 1;
+      const anchorX = bounds.minX + 120 + rng() * Math.max(20, bounds.maxX - bounds.minX - 200);
+      const anchorY = centerY + side * ((bounds.maxY - bounds.minY) * 0.32);
+      encounter.enemies.forEach((enemyId, index) => {
+        const definition = ENEMY_COMBATANTS[enemyId];
+        if (!definition) return;
+        const unit = createCombatant(definition, `fieldboss-${index}`, "enemy", index);
+        const placed = resolveMove(battle, anchorX + (rng() - 0.5) * 18, anchorY + (rng() - 0.5) * 18);
+        unit.x = placed.x;
+        unit.y = placed.y;
+        unit.groupIndex = bossGroup;
+        unit.dormant = true;
+        unit.fieldBoss = true;
+        battle.enemies.push(unit);
+      });
+      battle.fieldBossName = encounter.name;
+    }
+  }
+
   battle.log.unshift(`${region.name} 필드에 진입했다. 흩어진 무리를 헤치고 ${region.dungeonName} 입구로.`);
+  if (battle.fieldBossName) battle.log.unshift(`어딘가에서 ${battle.fieldBossName}의 기척이 느껴진다.`);
   return battle;
 }
 
@@ -1429,7 +1744,11 @@ function tickGroundEffects(battle) {
     if (battle.elapsed >= effect.endsAt || effect.nextPulseAt > battle.elapsed) continue;
     const targets = living(effect.team === "unit" ? battle.enemies : battle.units).filter((target) => distanceBetween(effect, target) <= effect.radius);
     const source = [...battle.units, ...battle.enemies].find((actor) => actor.id === effect.sourceId) || null;
-    for (const target of targets) applyCombatStatus(battle, target, effect.statusId, source, effect.statusOptions || {});
+    for (const target of targets) {
+      if (effect.statusId) applyCombatStatus(battle, target, effect.statusId, source, effect.statusOptions || {});
+      // 보스가 남기는 장판은 상태이상만이 아니라 지속 피해도 준다.
+      if (effect.damageMultiplier && source) damageCombatant(source, target, effect.damageMultiplier);
+    }
     effect.nextPulseAt += effect.pulseMs;
   }
   battle.groundEffects = (battle.groundEffects || []).filter((effect) => battle.elapsed < effect.endsAt);

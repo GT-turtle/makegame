@@ -1153,10 +1153,24 @@ test("모든 보스 패턴은 '보고 피할 수 있어야' 한다는 기준식�
   for (const pattern of Object.values(BOSS_PATTERN_DEFS)) {
     if (pattern.kind === "summon") continue; // 소환은 피할 대상이 아니다
     const reach = PLAYER_SPEED * (pattern.telegraphMs / 1000);
-    // 직선은 폭의 절반만 옆으로 비키면 된다.
-    const need = pattern.kind === "line" ? pattern.width / 2 : pattern.radius;
+
+    // "벗어나려면 최소 얼마를 가야 하는가"는 도형마다 다르다.
+    let need;
+    if (pattern.kind === "line") {
+      // 직선은 폭의 절반만 옆으로 비키면 된다.
+      need = pattern.width / 2;
+    } else if (pattern.kind === "cone") {
+      // 부채꼴은 밖으로 나가는 길이 두 가지다(옆으로 돌기 / 사거리 밖으로).
+      // 최악의 위치는 두 경계에서 가장 먼 지점이고, 그 거리는 부채꼴에 내접하는
+      // 가장 큰 원의 반지름과 같다: R·sinθ / (1 + sinθ).
+      const half = (pattern.coneDegrees / 2) * Math.PI / 180;
+      need = pattern.radius * Math.sin(half) / (1 + Math.sin(half));
+    } else {
+      need = pattern.radius;
+    }
+
     assert.ok(reach > need,
-      `${pattern.name}: 예고 동안 ${reach.toFixed(1)} 이동 가능한데 ${need}를 벗어나야 한다`);
+      `${pattern.name}: 예고 동안 ${reach.toFixed(1)} 이동 가능한데 ${need.toFixed(1)}을 벗어나야 한다`);
   }
 });
 
@@ -1277,6 +1291,100 @@ test("필드 보스는 부산물을 확률이 아니라 확정으로 준다", ()
 
   // 지역 보스도 부산물을 준다.
   assert.ok(ENEMY_COMBATANTS.northTitan.byproducts);
+});
+
+test("부채꼴은 정면만 맞고 뒤쪽은 맞지 않는다", () => {
+  // 이 방향 판정이 없으면 부채꼴이 전방향으로 맞아 원형 장판과 똑같아진다.
+  const setup = () => {
+    const battle = createAutoBattle("southSpawnLair", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 33 });
+    const boss = battle.enemies.find((enemy) => enemy.patterns?.includes("tentacleLash"));
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.hp = player.maxHp = 99999;
+    boss.patterns = ["tentacleLash"];
+    let guard = 0;
+    while (!battle.zones.length && guard++ < 300) tickAutoBattle(battle, 100);
+    return { battle, player, zone: battle.zones[0] };
+  };
+
+  const front = setup();
+  assert.equal(front.zone.kind, "cone");
+  front.player.x = front.zone.x + Math.cos(front.zone.angle) * 20;
+  front.player.y = front.zone.y + Math.sin(front.zone.angle) * 20;
+  const frontDistance = Math.hypot(front.player.x - front.zone.x, front.player.y - front.zone.y);
+  let guard = 0;
+  while (front.battle.zones.length && guard++ < 400) tickAutoBattle(front.battle, 100);
+  assert.ok(front.battle.log.some((line) => /촉수 후리기: 개척자/.test(line.text || line)), "정면은 맞는다");
+  // 끌어당김: 맞은 뒤 시전자 쪽으로 당겨진다.
+  const pulled = Math.hypot(front.player.x - front.zone.x, front.player.y - front.zone.y);
+  assert.ok(pulled < frontDistance - 5, `끌어당겨져야 한다 (${frontDistance.toFixed(1)} -> ${pulled.toFixed(1)})`);
+
+  const back = setup();
+  back.player.x = back.zone.x + Math.cos(back.zone.angle + Math.PI) * 20;
+  back.player.y = back.zone.y + Math.sin(back.zone.angle + Math.PI) * 20;
+  guard = 0;
+  while (back.battle.zones.length && guard++ < 400) tickAutoBattle(back.battle, 100);
+  assert.ok(!back.battle.log.some((line) => /촉수 후리기: 개척자/.test(line.text || line)), "뒤쪽은 맞지 않는다");
+});
+
+test("잔류 패턴은 터진 자리에 지속 피해 구역을 남긴다", () => {
+  const battle = createAutoBattle("southSpiderLair", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 33 });
+  const boss = battle.enemies.find((enemy) => enemy.patterns?.includes("webTrap"));
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.hp = player.maxHp = 99999;
+  boss.patterns = ["webTrap"];
+
+  let guard = 0;
+  while (!battle.zones.length && guard++ < 300) tickAutoBattle(battle, 100);
+  assert.ok(battle.zones[0].linger, "잔류 정보가 장판에 실려 있다");
+
+  const before = battle.groundEffects.length;
+  while (battle.zones.length && guard++ < 400) tickAutoBattle(battle, 100);
+  assert.ok(battle.groundEffects.length > before, "터진 자리에 장판이 남는다");
+
+  const effect = battle.groundEffects[battle.groundEffects.length - 1];
+  assert.equal(effect.team, "enemy", "적이 남긴 장판이라 아군이 밟으면 아프다");
+  assert.ok(effect.endsAt > battle.elapsed, "지속 시간이 남아 있다");
+
+  // 장판 위에 서 있으면 실제로 아프다.
+  player.x = effect.x;
+  player.y = effect.y;
+  player.hp = 500;
+  const hpBefore = player.hp;
+  for (let i = 0; i < 20 && battle.groundEffects.length; i += 1) tickAutoBattle(battle, 100);
+  assert.ok(player.hp < hpBefore, "잔류 장판 위에 있으면 피해를 받는다");
+
+  // 시간이 지나면 사라진다.
+  for (let i = 0; i < 120 && battle.groundEffects.length; i += 1) tickAutoBattle(battle, 100);
+  assert.equal(battle.groundEffects.length, 0, "지속 시간이 끝나면 사라진다");
+});
+
+test("필드 보스는 지역마다 정의돼 있고 부산물이 모두 실재하는 재료다", () => {
+  const bossEncounters = Object.entries(ENCOUNTER_DEFS).filter(([, encounter]) => encounter.boss);
+  assert.ok(bossEncounters.length >= 15, "보스 조우가 충분히 정의돼 있다");
+
+  for (const [, encounter] of bossEncounters) {
+    for (const enemyId of encounter.enemies) {
+      const definition = ENEMY_COMBATANTS[enemyId];
+      assert.ok(definition, `${enemyId} 정의가 있어야 한다`);
+      if (!definition.byproducts) continue;
+      for (const materialId of Object.keys(definition.byproducts)) {
+        assert.ok(MATERIAL_DEFS[materialId], `${enemyId}의 부산물 ${materialId}가 재료로 정의돼야 한다`);
+      }
+    }
+  }
+
+  // 모든 보스가 패턴을 가진다 — 패턴 없는 보스는 그냥 체력 높은 잡몹이다.
+  for (const [id, encounter] of bossEncounters) {
+    const hasPattern = encounter.enemies.some((enemyId) => ENEMY_COMBATANTS[enemyId]?.patterns?.length);
+    assert.ok(hasPattern, `${id}에 패턴을 가진 보스가 있어야 한다`);
+  }
+
+  // 필드 보스 풀이 참조하는 조우가 실재해야 한다.
+  for (const region of Object.values(WORLD_REGION_DEFS)) {
+    for (const encounterId of region.fieldBossPool || []) {
+      assert.ok(ENCOUNTER_DEFS[encounterId], `${encounterId} 조우가 정의돼야 한다`);
+    }
+  }
 });
 
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {
@@ -1521,7 +1629,17 @@ test("광역 필드 전투는 넓은 경계를 쓰고 몬스터를 여러 무리
   assert.ok(battle.enemies.length >= 3);
   assert.ok(battle.enemies.every((enemy) => enemy.dormant === true), "처음엔 전부 비활성");
   const groups = new Set(battle.enemies.map((enemy) => enemy.groupIndex));
-  assert.equal(groups.size, 3, "3개 무리로 나뉜다");
+  // 일반 무리 3개 + 필드 보스 무리 1개. 보스는 별도 무리라 지나칠 수 있다.
+  assert.equal(groups.size, 4, "일반 3개 무리 + 필드 보스 무리");
+
+  const fieldBosses = battle.enemies.filter((enemy) => enemy.fieldBoss);
+  assert.ok(fieldBosses.length, "필드 어딘가에 보스가 있다");
+  assert.equal(new Set(fieldBosses.map((enemy) => enemy.groupIndex)).size, 1, "보스는 한 무리로 묶인다");
+  assert.ok(fieldBosses.some((enemy) => enemy.patterns?.length), "필드 보스는 패턴을 가진다");
+
+  // 보스 없이 시작할 수도 있어야 한다.
+  const noBoss = createFieldBattle("north", STARTING_PARTY, {}, { seed: 4242, groupCount: 3, fieldBoss: false });
+  assert.equal(noBoss.enemies.filter((enemy) => enemy.fieldBoss).length, 0);
 
   // 무리끼리 실제로 떨어져 있다(전부 한 곳에 뭉쳐 있지 않다).
   const xs = battle.enemies.map((enemy) => enemy.x);

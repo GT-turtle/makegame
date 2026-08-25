@@ -1392,8 +1392,30 @@ function battleZones(battle) {
     if (!projection.visible) return "";
     // 장애물과 같은 계수를 써야 화면 크기가 실제 판정 반경과 맞는다.
     const width = zone.radius * 2 * 0.72 * (projection.scale / 0.9);
+
+    if (zone.kind === "cone") {
+      // 부채꼴은 원을 clip-path로 잘라 만든다. 화면 각도는 카메라 요를 빼야 맞는다.
+      const screenAngle = (zone.angle - view.battleCameraYaw) * 180 / Math.PI;
+      const half = zone.halfAngle * 180 / Math.PI;
+      return `<div class="battle-zone battle-zone-cone" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;--cone-rotate:${screenAngle.toFixed(1)}deg;--cone-half:${half.toFixed(1)}deg;--zone-progress:${progress.toFixed(3)};z-index:${projection.z - 2}"><i></i></div>`;
+    }
+
     const kindClass = zone.kind === "summon" ? " battle-zone-summon" : "";
     return `<div class="battle-zone${kindClass}" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;--zone-progress:${progress.toFixed(3)};z-index:${projection.z - 2}"><i></i></div>`;
+  }).join("");
+}
+
+// 잔류 장판(거미줄·독무·불 장판). 예고 장판과 달리 이미 발동한 뒤 남아 있는
+// 지속 피해 구역이다. 여태 렌더러가 없어 화면에 안 보였다 - 보이지 않는 피해
+// 구역은 피할 수가 없으므로 반드시 그려야 한다.
+function battleGroundEffects(battle) {
+  if (!battle.groundEffects?.length) return "";
+  return battle.groundEffects.map((effect) => {
+    const projection = battleProjection(effect, battle);
+    if (!projection.visible) return "";
+    const width = effect.radius * 2 * 0.72 * (projection.scale / 0.9);
+    const hostile = effect.team === "enemy";
+    return `<div class="battle-ground-effect${hostile ? " hostile" : ""}" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;z-index:${projection.z - 3}"></div>`;
   }).join("");
 }
 
@@ -1556,6 +1578,7 @@ function battleScreen(state, defenseMode = false) {
         ${battlePartyRail(battle)}
         ${battleRadar(battle)}
         ${battleObstacles(battle)}
+        ${battleGroundEffects(battle)}
         ${battleZones(battle)}
         ${battleTriggers(battle)}
         ${[...battle.units, ...battle.enemies].map((entity) => battleEntity(entity, battle)).join("")}
