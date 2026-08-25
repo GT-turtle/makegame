@@ -672,10 +672,9 @@ export const WORLD_REGION_DEFS = {
     id: "east", direction: "동부", name: "동부 산악권", subtitle: "단조와 무예, 산성의 문화권",
     description: "공방 도시와 문파, 산성국과 도국이 이어진다. 무예서와 단조 설계를 둘러싼 분쟁이 끊이지 않는다.",
     glyph: "山", accent: "#c18469", danger: "위험 2", pressure: "험로", mapX: 81, mapY: 51,
-    hazard: { name: "험로", glyph: "山", description: "거친 기운이 걸어둔 이상을 씻어낸다.", techniqueId: "forging",
-      // 동부는 매화 카운터. 몬스터가 "디버프를 스스로 씻어낸다"는 컨셉과 같은 방향으로,
-      // 환경도 플레이어가 건 상태이상을 깎는다.
-      counterEffect: { type: "statusDecay", reduceMs: 1500, resistedAt: 4 } },
+    // 동부는 지역 환경 디버프를 두지 않는다(REGION_PROGRESSION_HAZARDS.md).
+    // 매화 카운터는 환경이 아니라 **몬스터 능력**으로만 건다 — 구미호의 자가 정화가 대표.
+    hazard: { name: "험로", glyph: "山", description: "거친 지형이 이동과 공격 주기를 방해한다.", techniqueId: "forging" },
     enemyPool: ["mountainBandits", "ironGuard", "stoneApes"], fieldBossPool: ["eastFoxLair", "eastOniLair", "eastCentipedeLair"], villageName: "산성 아래 마을", dungeonName: "봉인된 단조성", dungeonGlyph: "炉",
     bossEncounterId: "forgeGuardianPack", defenseEncounterId: "ironGuard", rewardMaterial: "mountainIron", rewardAmount: 2,
     recruits: ["formation_officer", "duel_swordsman", "meridian_fighter"], techniqueId: "forging"
@@ -694,7 +693,7 @@ export const WORLD_REGION_DEFS = {
     description: "오아시스와 유리 협곡이 이어지는 대륙의 중심. 물과 보급을 지키는 자가 길을 지배한다.",
     glyph: "☀", accent: "#c99150", danger: "위험 1", pressure: "작열", mapX: 51, mapY: 68,
     hazard: { name: "작열", glyph: "☀", description: "열기와 갈증이 장기 교전을 불리하게 만든다.", techniqueId: "mobility" },
-    enemyPool: ["sandHunters", "duneRaiders", "glassBeetles"], fieldBossPool: [], villageName: "오아시스 부락", dungeonName: "유리사 지하궁", dungeonGlyph: "◇",
+    enemyPool: ["sandHunters", "duneRaiders", "glassBeetles"], fieldBossPool: ["centralSandwormLair", "centralManticoreLair", "centralGolemLair"], villageName: "오아시스 부락", dungeonName: "유리사 지하궁", dungeonGlyph: "◇",
     bossEncounterId: "duneTyrantPack", defenseEncounterId: "duneRaiders", rewardMaterial: "glassSand", rewardAmount: 2,
     recruits: ["desert_lancer", "glass_alchemist", "caravan_guide"], techniqueId: "mobility"
   }
@@ -764,6 +763,7 @@ export const ENEMY_COMBATANTS = {
   // (형태는 그대로 — 형태가 바뀌는 건 지역 보스뿐이다. docs/BOSS_DESIGN.md §1).
   // 부산물은 보스당 2종씩 확정 지급한다.
   northLich: {
+    fieldTier: 1,
     name: "타락한 마탑 리치", species: "lich", variant: "북부 필드 보스", glyph: "L",
     maxHp: 168, damage: 12, range: 26, speed: 6, attackMs: 1500, armor: 0.1,
     color: "#8f7fc0", boss: true, preScaled: true,
@@ -772,6 +772,7 @@ export const ENEMY_COMBATANTS = {
     byproducts: { frostCore: 2, taintedTome: 1 }
   },
   northWarchief: {
+    fieldTier: 3,
     name: "오크 대전사", species: "orc", variant: "북부 필드 보스", glyph: "W",
     maxHp: 190, damage: 14, range: 9, speed: 7, attackMs: 1450, armor: 0.18,
     color: "#8a9c6d", boss: true, preScaled: true,
@@ -781,6 +782,7 @@ export const ENEMY_COMBATANTS = {
   },
 
   southStarSpawn: {
+    fieldTier: 3,
     name: "어린 스타 스폰", species: "aberration", variant: "남부 필드 보스", glyph: "Y",
     maxHp: 176, damage: 12, range: 14, speed: 5, attackMs: 1600, armor: 0.12,
     color: "#5f7f8c", boss: true, preScaled: true,
@@ -789,6 +791,7 @@ export const ENEMY_COMBATANTS = {
     byproducts: { tentacleRoot: 2, inkSac: 1 }
   },
   southSpider: {
+    fieldTier: 2,
     name: "인면지주", species: "spider", variant: "남부 필드 보스", glyph: "X",
     maxHp: 158, damage: 11, range: 16, speed: 8, attackMs: 1350, armor: 0.1,
     color: "#7a6a8c", boss: true, preScaled: true,
@@ -797,6 +800,7 @@ export const ENEMY_COMBATANTS = {
     byproducts: { spiderFang: 2, spiderSilk: 2 }
   },
   southSerpent: {
+    fieldTier: 1,
     name: "거대 뱀", species: "serpent", variant: "남부 필드 보스", glyph: "S",
     maxHp: 184, damage: 13, range: 10, speed: 9, attackMs: 1400, armor: 0.14,
     color: "#6f9a62", boss: true, preScaled: true,
@@ -806,6 +810,7 @@ export const ENEMY_COMBATANTS = {
   },
 
   eastFox: {
+    fieldTier: 1,
     name: "구미호", species: "fox", variant: "동부 필드 보스", glyph: "F",
     maxHp: 162, damage: 12, range: 22, speed: 10, attackMs: 1300, armor: 0.08,
     color: "#c98a6b", boss: true, preScaled: true,
@@ -816,6 +821,7 @@ export const ENEMY_COMBATANTS = {
     byproducts: { foxTail: 1, spiritCore: 2 }
   },
   eastOni: {
+    fieldTier: 2,
     name: "오니 대장", species: "oni", variant: "동부 필드 보스", glyph: "O",
     maxHp: 196, damage: 15, range: 10, speed: 6, attackMs: 1550, armor: 0.2,
     color: "#b05f52", boss: true, preScaled: true,
@@ -824,6 +830,7 @@ export const ENEMY_COMBATANTS = {
     byproducts: { oniBlade: 1, oniHorn: 2 }
   },
   eastCentipede: {
+    fieldTier: 3,
     name: "초거대 지네", species: "centipede", variant: "동부 필드 보스", glyph: "C",
     maxHp: 180, damage: 12, range: 9, speed: 11, attackMs: 1250, armor: 0.22,
     color: "#9a7d52", boss: true, preScaled: true,
@@ -833,14 +840,18 @@ export const ENEMY_COMBATANTS = {
   },
 
   westDurahan: {
+    fieldTier: 1,
     name: "듀라한", species: "undead", variant: "서부 필드 보스", glyph: "D",
     maxHp: 186, damage: 14, range: 10, speed: 8, attackMs: 1400, armor: 0.2,
     color: "#7a8496", boss: true, preScaled: true,
     patterns: ["wraithCharge", "groundSlam"],
     phase2Patterns: ["curseWave"],
-    byproducts: { durahanBlade: 1, cursedPlate: 2 }
+    // 1필드 보스. 듀라한의 영혼은 서부 저주 대응 장신구의 핵심 소재라
+    // 기존 두 종에 더해 함께 나온다(REGION_PROGRESSION_HAZARDS.md §4).
+    byproducts: { durahanBlade: 1, cursedPlate: 2, durahanSoul: 1 }
   },
   westLich: {
+    fieldTier: 3,
     name: "몰락 제국 리치", species: "lich", variant: "서부 필드 보스", glyph: "R",
     maxHp: 170, damage: 13, range: 26, speed: 6, attackMs: 1500, armor: 0.12,
     color: "#9b82bd", boss: true, preScaled: true,
@@ -849,12 +860,46 @@ export const ENEMY_COMBATANTS = {
     byproducts: { fallenRelic: 1, soulStone: 2 }
   },
   westDragon: {
+    fieldTier: 2,
     name: "고룡", species: "dragon", variant: "서부 필드 보스", glyph: "▲",
     maxHp: 240, damage: 16, range: 13, speed: 7, attackMs: 1600, armor: 0.24,
     color: "#a8734f", boss: true, preScaled: true,
     patterns: ["dragonBreath", "wingSweep"],
     phase2Patterns: ["quakeRoar", "chargeRush"],
     byproducts: { dragonBone: 1, dragonScale: 2 }
+  },
+
+  // ── 중부 필드 보스 (페르시아·유목 재설계분) ──
+  // 문화권이 이집트에서 페르시아·유목으로 바뀌며 확정된 3종.
+  centralSandworm: {
+    name: "샌드웜", species: "worm", variant: "중부 필드 보스", glyph: "S",
+    // 1필드 보스. 열핵이 중부 하드 게이트(내열)를 여는 열쇠라 가장 먼저 만난다.
+    fieldTier: 1,
+    maxHp: 176, damage: 13, range: 10, speed: 10, attackMs: 1400, armor: 0.18,
+    color: "#c99a5c", boss: true, preScaled: true,
+    patterns: ["centipedeDash", "quakeRoar"],
+    phase2Patterns: ["groundSlam"],
+    byproducts: { wormCore: 1, wormPlate: 2 }
+  },
+  centralManticore: {
+    name: "인공 만티코어", species: "chimera", variant: "중부 필드 보스", glyph: "M",
+    // 고대 마도공학이 페르시아 전승의 만티코어를 생명 합성으로 재현한 키메라 병기.
+    fieldTier: 2,
+    maxHp: 182, damage: 14, range: 20, speed: 11, attackMs: 1300, armor: 0.14,
+    color: "#b06a5f", boss: true, preScaled: true,
+    patterns: ["venomFang", "oniCleave"],
+    phase2Patterns: ["frostVolley", "chargeRush"],
+    byproducts: { manticoreBarb: 2, synthNerve: 1 }
+  },
+  centralGolem: {
+    name: "거대 골렘", species: "construct", variant: "중부 필드 보스", glyph: "G",
+    // 고대 마도공학 문명의 자동 병기. 느리지만 단단하고 한 방이 크다.
+    fieldTier: 3,
+    maxHp: 214, damage: 16, range: 10, speed: 4, attackMs: 1850, armor: 0.26,
+    color: "#9a8f74", boss: true, preScaled: true,
+    patterns: ["groundSlam", "chargeRush"],
+    phase2Patterns: ["quakeRoar", "coreBurst"],
+    byproducts: { golemCore: 1, ancientAlloy: 2 }
   },
 
   // ── 지역 보스 (몬스터 컨셉.txt) ──
@@ -912,7 +957,7 @@ export const ENEMY_COMBATANTS = {
     phase2Form: "coreExposed",
     byproducts: { frostIron: 3, bearHide: 2 }
   },
-  northBear: { name: "빙맥 큰곰", species: "bear", variant: "빙맥 우두머리", glyph: "B", maxHp: 96, damage: 11, range: 9, speed: 4, attackMs: 1650, armor: 0.12, color: "#79aec7", boss: true,
+  northBear: { fieldTier: 2, name: "빙맥 큰곰", species: "bear", variant: "빙맥 우두머리", glyph: "B", maxHp: 96, damage: 11, range: 9, speed: 4, attackMs: 1650, armor: 0.12, color: "#79aec7", boss: true,
     // 북부 필드 보스(docs/EQUIPMENT_DESIGN.md §9 "설원 거대 곰").
     // 1페이즈는 원형·직선 두 종류로 대응법을 나누고, HP 50%부터 연속 장판과
     // 광역 포효가 추가된다(필드 보스이므로 교체가 아니라 추가 - §1).
@@ -995,7 +1040,10 @@ export const ENCOUNTER_DEFS = {
   eastCentipedeLair: { name: "초거대 지네", glyph: "☠", enemies: ["eastCentipede", "eastWolf"], scrap: 18, boss: true },
   westDurahanLair: { name: "듀라한", glyph: "☠", enemies: ["westDurahan", "westOrc"], scrap: 18, boss: true },
   westLichLair: { name: "몰락 제국 리치", glyph: "☠", enemies: ["westLich", "westGoblin"], scrap: 18, boss: true },
-  westDragonLair: { name: "고룡", glyph: "☠", enemies: ["westDragon", "westOrc"], scrap: 22, boss: true }
+  westDragonLair: { name: "고룡", glyph: "☠", enemies: ["westDragon", "westOrc"], scrap: 22, boss: true },
+  centralSandwormLair: { name: "샌드웜", glyph: "☠", enemies: ["centralSandworm", "centralGoblin"], scrap: 18, boss: true },
+  centralManticoreLair: { name: "인공 만티코어", glyph: "☠", enemies: ["centralManticore", "centralWolf"], scrap: 18, boss: true },
+  centralGolemLair: { name: "거대 골렘", glyph: "☠", enemies: ["centralGolem", "centralOrc"], scrap: 20, boss: true }
 };
 
 function mulberry32(seed) {
@@ -1683,6 +1731,8 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
         unit.groupIndex = bossGroup;
         unit.dormant = true;
         unit.fieldBoss = true;
+        // 추격을 멈추고 돌아갈 때 1페이즈 상태로 되돌리기 위해 원본 패턴을 남겨둔다.
+        unit.basePatterns = [...(definition.patterns || [])];
         battle.enemies.push(unit);
       });
       battle.fieldBossName = encounter.name;
@@ -1745,10 +1795,43 @@ function wakeNearbyFieldGroups(battle) {
     if (!enemy.dormant || enemy.hp <= 0) continue;
     if (distanceBetween(player, enemy) <= FIELD_AGGRO_RADIUS) wokenGroups.add(enemy.groupIndex);
   }
-  if (!wokenGroups.size) return;
   for (const enemy of battle.enemies) {
     if (enemy.dormant && wokenGroups.has(enemy.groupIndex)) enemy.dormant = false;
   }
+  leashFieldBoss(battle, player);
+}
+
+// 필드 보스에서 벗어날 수 있게 한다.
+// 필드 보스는 선택 콘텐츠인데 한 번 깨우면 끝까지 쫓아온다면 "지나칠 수 있다"가
+// 성립하지 않는다. 멀리 떨어져 일정 시간이 지나면 제자리로 돌아가 다시 잠든다.
+// 체력을 되돌리는 건 치고 빠지기로 야금야금 깎는 걸 막기 위해서다.
+const FIELD_BOSS_LEASH_RADIUS = 110;
+const FIELD_BOSS_LEASH_MS = 2500;
+
+function leashFieldBoss(battle, player) {
+  const bosses = battle.enemies.filter((enemy) => enemy.fieldBoss && enemy.hp > 0 && !enemy.dormant);
+  if (!bosses.length) { battle.fieldBossLeashSince = null; return; }
+
+  const near = bosses.some((enemy) => distanceBetween(player, enemy) <= FIELD_BOSS_LEASH_RADIUS);
+  if (near) { battle.fieldBossLeashSince = null; return; }
+
+  battle.fieldBossLeashSince ||= battle.elapsed;
+  if (battle.elapsed - battle.fieldBossLeashSince < FIELD_BOSS_LEASH_MS) return;
+
+  for (const enemy of bosses) {
+    enemy.dormant = true;
+    enemy.hp = enemy.maxHp;
+    enemy.statuses = {};
+    enemy.patternReadyAt = {};
+    enemy.castingUntil = 0;
+    enemy.phase = 1;
+    enemy.patterns = [...(enemy.basePatterns || enemy.patterns)];
+    enemy.form = null;
+  }
+  // 보스가 깔아둔 예고도 같이 걷는다 — 보스가 사라졌는데 장판만 터지면 이상하다.
+  battle.zones = (battle.zones || []).filter((zone) => !bosses.some((enemy) => enemy.id === zone.ownerId));
+  battle.fieldBossLeashSince = null;
+  pushBattleLog(battle, `${bosses[0].name}이 추격을 멈추고 자기 자리로 돌아갔다.`);
 }
 
 // 던전 입구 같은 지점 트리거. 사거리 안에 들어오면 battle.pendingTrigger에
@@ -1762,7 +1845,10 @@ function checkFieldTriggers(battle) {
     if (Math.hypot(player.x - trigger.x, player.y - trigger.y) > (trigger.radius || 6)) continue;
     // 적대적인 무리가 아직 붙어 있으면 던전에 못 들어간다 — 전투 도중 도주
     // 수단으로 쓰이지 않게.
-    if (trigger.requiresClear && battle.enemies.some((enemy) => enemy.hp > 0 && !enemy.dormant)) {
+    // 단 필드 보스는 선택 콘텐츠라 막지 않는다. 깨워놓고 상대하지 않기로 했다면
+    // 그냥 두고 던전으로 갈 수 있어야 "지나칠 수 있다"가 성립한다.
+    if (trigger.requiresClear
+      && battle.enemies.some((enemy) => enemy.hp > 0 && !enemy.dormant && !enemy.fieldBoss)) {
       battle.blockedTrigger = trigger.id;
       return;
     }
@@ -2090,17 +2176,6 @@ export function tickAutoBattle(battle, deltaMs) {
           unit.mana = Math.max(0, unit.mana - Math.max(1, Math.round(unit.maxMana * counter.ratio)));
         }
         pushBattleLog(battle, `${battle.hazard.name}: 마력 순환이 굳어 마나가 빠져나간다`);
-      } else if (counter.type === "statusDecay") {
-        // 동부 — 매화 카운터. 적에게 걸어둔 상태이상이 씻겨 나간다.
-        let cleansed = 0;
-        for (const enemy of living(battle.enemies)) {
-          for (const [statusId, status] of Object.entries(enemy.statuses || {})) {
-            if (!status) continue;
-            status.expiresAt = (status.expiresAt || 0) - counter.reduceMs;
-            if (status.expiresAt <= battle.elapsed) { delete enemy.statuses[statusId]; cleansed += 1; }
-          }
-        }
-        if (cleansed) pushBattleLog(battle, `${battle.hazard.name}: 걸어둔 이상이 ${cleansed}건 씻겨 나갔다`);
       }
     }
 
@@ -2305,13 +2380,22 @@ export function tickAutoBattle(battle, deltaMs) {
     if (actor.team === "unit") markUnitActive(battle, actor);
   }
   refreshBaseClassPassive(battle);
-  if (!living(battle.enemies).length) {
+  // 필드 보스는 **선택 콘텐츠**다(docs/EQUIPMENT_DESIGN.md §9 — 지나쳐서 던전으로
+  // 직행할 수 있는 위치에 놓는다). 그래서 "필드 정리" 판정에서 제외한다.
+  // 포함시키면 보스를 반드시 잡아야 던전에 갈 수 있게 되어 배치 의도와 어긋난다.
+  const blockingEnemies = battle.fieldMode
+    ? living(battle.enemies).filter((enemy) => !enemy.fieldBoss)
+    : living(battle.enemies);
+  if (!blockingEnemies.length) {
     // 필드 전투는 적을 다 잡아도 끝나지 않는다 — 정리한 뒤 던전 입구까지
     // 걸어가야 하므로 전투를 계속 active로 두고 "정리됨" 표시만 남긴다.
     if (battle.fieldMode) {
       if (!battle.fieldCleared) {
         battle.fieldCleared = true;
-        pushBattleLog(battle, "필드의 무리를 모두 정리했다. 던전 입구로 이동할 수 있다.");
+        const bossAlive = living(battle.enemies).some((enemy) => enemy.fieldBoss);
+        pushBattleLog(battle, bossAlive
+          ? "필드의 무리를 정리했다. 던전으로 갈 수도, 남은 보스를 노릴 수도 있다."
+          : "필드의 무리를 모두 정리했다. 던전 입구로 이동할 수 있다.");
       }
     } else {
       battle.status = "victory";

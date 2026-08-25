@@ -335,12 +335,25 @@ test("필드 조우부터 던전 우두머리와 영지 정산까지 한 원정�
   const fieldBattle = run.battle;
   assert.ok(fieldBattle?.fieldMode, "지역 탐험은 광역 전투로 시작한다");
   let fieldGuard = 0;
-  while (fieldBattle.enemies.some((enemy) => enemy.hp > 0) && fieldGuard < 2000) {
+  // 필드 보스는 선택 콘텐츠라 건너뛴다 — 일반 무리만 정리하고 던전으로 향한다.
+  const normalMobs = () => fieldBattle.enemies.filter((enemy) => !enemy.fieldBoss);
+  while (normalMobs().some((enemy) => enemy.hp > 0) && fieldGuard < 2000) {
     const player = fieldBattle.units.find((unit) => unit.controlled && unit.hp > 0);
-    const target = fieldBattle.enemies.find((enemy) => enemy.hp > 0);
+    const target = normalMobs().find((enemy) => enemy.hp > 0);
     if (player && target) {
-      player.x = target.x - 5;
-      player.y = target.y;
+      // 근처 필드 보스를 깨웠다면 그 예고 장판은 피한다. 안 피하면 이 통합
+      // 테스트가 전투 난이도에 좌우된다(원정 흐름을 보는 테스트다).
+      const danger = (fieldBattle.zones || []).find((zone) => zone.kind !== "summon"
+        && fieldBattle.elapsed >= zone.bornAt
+        && Math.hypot(player.x - zone.x, player.y - zone.y) <= (zone.radius || zone.width || 12) + 2);
+      if (danger) {
+        const angle = Math.atan2(player.y - danger.y, player.x - danger.x) || 0;
+        player.x = danger.x + Math.cos(angle) * ((danger.radius || 12) + 10);
+        player.y = danger.y + Math.sin(angle) * ((danger.radius || 12) + 10);
+      } else {
+        player.x = target.x - 5;
+        player.y = target.y;
+      }
       target.dormant = false;
       engine.playerRealtimeAction("attack");
       engine.playerRealtimeAction("skill1");
@@ -350,7 +363,10 @@ test("필드 조우부터 던전 우두머리와 영지 정산까지 한 원정�
     engine.advanceRealtimeBattle(120);
     fieldGuard += 1;
   }
-  assert.ok(fieldBattle.fieldCleared, "필드의 무리를 전부 정리했다");
+  assert.ok(fieldBattle.fieldCleared, "일반 무리를 전부 정리하면 필드가 정리된다");
+  // 필드 보스를 잡지 않아도 정리로 친다 — 선택 콘텐츠이므로 지나칠 수 있어야 한다.
+  assert.ok(fieldBattle.enemies.some((enemy) => enemy.fieldBoss && enemy.hp > 0),
+    "필드 보스는 살아 있는데도 필드가 정리된다");
   assert.equal(fieldBattle.status, "active", "필드를 비워도 전투 자체는 끝나지 않는다");
 
   // 2단계: 던전 입구로 걸어가면 그대로 던전으로 이어진다.
@@ -1504,13 +1520,16 @@ test("마도사의 장막은 피해를 체력 대신 마나로 치른다", () =>
   assert.ok(player.mana < 200, "마나가 실제로 소모된다(피해를 마나로 대신 치렀다)");
 });
 
-test("동부는 매화를, 북부는 아크메이지를 카운터하는 환경 효과를 가진다", () => {
+test("북부는 환경으로, 동부는 몬스터 능력으로 직업을 카운터한다", () => {
   // 몬스터 컨셉.txt의 지역별 카운터를 환경에도 일관되게 건다.
   const north = WORLD_REGION_DEFS.north.hazard.counterEffect;
   assert.equal(north.type, "manaDrain", "북부는 마나 고갈(아크메이지 카운터)");
 
-  const east = WORLD_REGION_DEFS.east.hazard.counterEffect;
-  assert.equal(east.type, "statusDecay", "동부는 상태이상 감쇠(매화 카운터)");
+  // 동부는 지역 환경 디버프를 두지 않는다 - 매화 카운터는 몬스터 능력으로만 건다
+  // (REGION_PROGRESSION_HAZARDS.md). 구미호의 자가 정화가 그 대표 사례다.
+  assert.ok(!WORLD_REGION_DEFS.east.hazard.counterEffect, "동부는 환경 카운터 효과가 없다");
+  const fox = ENEMY_COMBATANTS.eastFox;
+  assert.ok(fox.patterns.includes("spiritCleanse"), "대신 구미호가 자가 정화를 가진다");
 
   // 마나 고갈은 마나가 많은 직업일수록 크게 잃는다.
   assert.ok(PLAYER_BASE_CLASS_DEFS.archmage.statProfile.base.maxMana
@@ -1656,6 +1675,57 @@ test("구미호의 외투는 총량은 같게 두고 한 방의 크기만 줄인
   assert.ok(geared.worst < bare.worst, `한 번에 받는 최대 피해가 줄어든다 (${bare.worst} -> ${geared.worst})`);
   // 총량은 비슷하게 유지된다 — 피해를 없애는 게 아니라 미루는 효과다.
   assert.ok(Math.abs(geared.total - bare.total) < bare.total * 0.35, "총 피해량은 크게 달라지지 않는다");
+});
+
+test("필드 보스는 선택 콘텐츠라 지나칠 수 있고, 멀어지면 추격을 멈춘다", () => {
+  const battle = createFieldBattle("central", STARTING_PARTY, {}, { seed: 4455 });
+  const boss = battle.enemies.find((enemy) => enemy.fieldBoss);
+  assert.ok(boss, "중부 필드에도 보스가 배치된다");
+
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+
+  // 붙으면 깨어난다.
+  player.x = boss.x;
+  player.y = boss.y;
+  for (let t = 0; t < 10; t += 1) { tickAutoBattle(battle, 100); player.hp = 99999; }
+  assert.equal(boss.dormant, false, "가까이 가면 깨어난다");
+
+  boss.hp = Math.floor(boss.maxHp * 0.5);
+
+  // 멀어지면 제자리로 돌아가 다시 잠든다. 체력도 복구된다.
+  player.x = 20;
+  player.y = 20;
+  for (let t = 0; t < 60; t += 1) {
+    tickAutoBattle(battle, 100);
+    player.x = 20; player.y = 20; player.hp = 99999;
+  }
+  assert.equal(boss.dormant, true, "멀어지면 추격을 멈추고 다시 잠든다");
+  assert.equal(boss.hp, boss.maxHp, "체력이 복구된다(치고 빠지기로 깎을 수 없다)");
+  assert.equal(boss.phase, 1, "페이즈도 되돌아간다");
+});
+
+test("필드 보스가 살아 있어도 일반 무리만 정리하면 던전으로 갈 수 있다", () => {
+  const battle = createFieldBattle("central", STARTING_PARTY, {}, { seed: 4455 });
+  const boss = battle.enemies.find((enemy) => enemy.fieldBoss);
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+
+  // 일반 무리만 제거한다(보스는 그대로 둔다).
+  for (const enemy of battle.enemies) {
+    if (!enemy.fieldBoss) enemy.hp = 0;
+  }
+  tickAutoBattle(battle, 100);
+  assert.ok(battle.fieldCleared, "보스를 남겨둬도 필드는 정리로 친다");
+  assert.ok(boss.hp > 0, "보스는 여전히 살아 있다");
+
+  // 던전 입구도 열린다 — 보스를 깨워놨더라도 막지 않는다.
+  boss.dormant = false;
+  const entrance = battle.triggers[0];
+  player.x = entrance.x;
+  player.y = entrance.y;
+  tickAutoBattle(battle, 100);
+  assert.equal(battle.pendingTrigger?.type || battle.pendingTrigger, "dungeonEntrance",
+    "필드 보스가 깨어 있어도 던전 입구는 막히지 않는다");
 });
 
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {

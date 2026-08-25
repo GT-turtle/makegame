@@ -363,6 +363,14 @@ export const MATERIAL_DEFS = {
   greatMandible: { id: "greatMandible", name: "거대 턱니", glyph: "⋈", category: "special", description: "갑주를 뚫는 지네의 턱" },
   // 서부
   durahanBlade: { id: "durahanBlade", name: "듀라한의 검", glyph: "‡", category: "special", description: "목 없는 기사가 들던 검" },
+  durahanSoul: { id: "durahanSoul", name: "듀라한의 영혼", glyph: "☽", category: "special", description: "목 없는 기사에 깃든 저주의 핵. 서부 저주 누적 대응 장신구의 핵심 소재" },
+  // 중부 — 페르시아·유목 문화권 재설계분
+  wormCore: { id: "wormCore", name: "샌드웜 열핵", glyph: "◉", category: "special", description: "체내 열을 흡수·분산하는 특수 마력기관. 내열 확보 장신구의 핵심 소재" },
+  wormPlate: { id: "wormPlate", name: "샌드웜 갑피", glyph: "▩", category: "special", description: "모래를 가르며 닳은 두꺼운 표피. 방어구 제작에 쓰인다" },
+  manticoreBarb: { id: "manticoreBarb", name: "만티코어 미늘", glyph: "⌁", category: "special", description: "합성된 꼬리에서 사출되는 독 미늘" },
+  synthNerve: { id: "synthNerve", name: "합성 신경다발", glyph: "≡", category: "special", description: "생명 합성으로 만든 인공 신경. 마도공학 병기의 제어부" },
+  golemCore: { id: "golemCore", name: "골렘 동력핵", glyph: "◈", category: "special", description: "고대 마도공학 자동 병기를 움직이던 동력원" },
+  ancientAlloy: { id: "ancientAlloy", name: "고대 합금판", glyph: "▤", category: "special", description: "잊혀진 문명이 남긴 부식되지 않는 합금" },
   cursedPlate: { id: "cursedPlate", name: "저주받은 갑주편", glyph: "▩", category: "special", description: "저주가 스민 갑주 조각. 중갑 제작에 쓰인다" },
   fallenRelic: { id: "fallenRelic", name: "타락한 성유물", glyph: "✟", category: "special", description: "몰락한 제국의 성유물" },
   soulStone: { id: "soulStone", name: "영혼석", glyph: "◈", category: "special", description: "영혼을 가두는 돌" },
