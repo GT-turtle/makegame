@@ -468,6 +468,62 @@ function dodgeDangerZone(battle, actor, step) {
   return true;
 }
 
+// 시간이 흐르며 동작하는 전설 고유효과들(docs/EQUIPMENT_DESIGN.md §10·§11).
+// 피해 계산 시점에 끝나지 않고 tick마다 상태를 봐야 하는 것만 여기 모은다.
+function tickLegendaryEffects(battle, step) {
+  const legendary = battle.legendary;
+  if (!legendary) return;
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  if (!player || player.hp <= 0) return;
+  const state = battle.legendaryState;
+
+  // 구미호의 외투: 미뤄둔 피해를 조금씩 흘려보낸다.
+  // 총량은 같지만 한 방에 죽지 않게 해주는 게 목적이다.
+  if (state.spread?.length) {
+    for (const entry of state.spread) {
+      const portion = entry.total * (step / entry.durationMs);
+      const applied = Math.min(entry.remaining, portion);
+      entry.remaining -= applied;
+      player.hp = Math.max(1, player.hp - applied); // 분산 피해로는 죽지 않는다
+    }
+    state.spread = state.spread.filter((entry) => entry.remaining > 0.01);
+  }
+
+  // 영혼의 장막: 일정 시간 안 맞으면 1회성 장막이 생긴다.
+  const recovery = legendary.recoveryShield;
+  if (recovery && battle.elapsed - state.lastPlayerHitAt >= recovery.quietMs) {
+    const amount = Math.round(player.maxHp * recovery.maxRatio);
+    if (!player.positiveEffects.shield || player.positiveEffects.shield.amount < amount) {
+      player.positiveEffects.shield = { amount, endsAt: battle.elapsed + 60000 };
+      pushBattleLog(battle, "영혼의 장막: 숨을 고르는 사이 장막이 생겼다");
+      state.lastPlayerHitAt = battle.elapsed; // 매 tick 다시 걸리지 않게
+    }
+  }
+
+  // 구미호 영핵 목걸이: 몸에 붙은 해로운 것이 오래 머물지 못한다.
+  const shrug = legendary.statusShrug;
+  if (shrug) {
+    for (const [statusId, status] of Object.entries(player.statuses || {})) {
+      if (!status) continue;
+      status.expiresAt -= shrug.reduceMs * (step / 1000);
+      if (status.expiresAt <= battle.elapsed) delete player.statuses[statusId];
+    }
+  }
+
+  // 몰락한 성유물 목걸이: 위급할 때 한 번 스스로를 씻는다. 내부 쿨다운이 있다.
+  const desperate = legendary.desperateCleanse;
+  if (desperate
+    && player.hp / player.maxHp <= desperate.threshold
+    && battle.elapsed - state.lastCleanseAt >= desperate.cooldownMs) {
+    const ids = Object.keys(player.statuses || {});
+    if (ids.length) {
+      delete player.statuses[ids[0]];
+      state.lastCleanseAt = battle.elapsed;
+      pushBattleLog(battle, `몰락한 성유물: 무너지기 직전 ${ids[0]} 이상을 씻어냈다`);
+    }
+  }
+}
+
 // 촉수처럼 끌어당기는 패턴. knockback의 반대 방향이다.
 function pullToward(source, target, distance, battle) {
   const dx = source.x - target.x;
@@ -1447,6 +1503,15 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
   player.x = 27;
   player.y = 50;
   player.moveTarget = null;
+
+  // 대전사의 전투갑주: 공속·이속을 올린다. 전투 중 장비가 바뀌지 않으므로
+  // 매 tick 다시 계산하지 않고 여기서 한 번만 반영한다.
+  const tempo = equippedUniqueEffects(options.commander || {}, playerBaseClass.id)
+    .find((effect) => effect.type === "battleTempo");
+  if (tempo) {
+    player.attackMs = Math.max(200, Math.round(player.attackMs / (1 + tempo.attackSpeed)));
+    player.speed = player.speed * (1 + tempo.moveSpeed);
+  }
   const units = [player, ...companions];
   const enemyCopies = Math.max(1, Math.min(4, Number(options.enemyCopies || 1)));
   const enemyIds = Array.from({ length: enemyCopies }, () => encounter.enemies).flat();
@@ -2044,6 +2109,7 @@ export function tickAutoBattle(battle, deltaMs) {
   wakeNearbyFieldGroups(battle);
   checkFieldTriggers(battle);
   advanceBossZones(battle);
+  tickLegendaryEffects(battle, step);
   for (const actor of all) {
     if (actor.hp <= 0) continue;
     // 아직 안 깨어난 무리는 시간도 흐르지 않는다 — 쿨다운·재생이 진행되면
@@ -2184,6 +2250,17 @@ export function tickAutoBattle(battle, deltaMs) {
             target.mana = Math.max(0, target.mana - payable * veil.manaPerDamage);
             damage -= payable;
           }
+        }
+        // 구미호의 외투: 일부를 지금 받지 않고 지속 피해로 미룬다.
+        // 총량은 같지만 한 방에 죽는 일이 없어진다.
+        const spread = battle.legendary?.damageSpread;
+        if (spread && damage > 0) {
+          const deferred = damage * spread.ratio;
+          damage -= deferred;
+          battle.legendaryState.spread ||= [];
+          battle.legendaryState.spread.push({
+            total: deferred, remaining: deferred, durationMs: spread.durationMs
+          });
         }
         damage = Math.max(0, Math.round(damage));
         battle.legendaryState.lastPlayerHitAt = battle.elapsed;

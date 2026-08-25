@@ -1539,6 +1539,125 @@ test("구미호는 걸어둔 상태이상을 스스로 씻어낸다", () => {
   assert.ok(cleansed > 0, "정화가 실제로 발동한다");
 });
 
+test("대전사의 전투갑주는 공격속도와 이동속도를 올린다", () => {
+  const equip = (defId) => {
+    const commander = createDefaultCommander();
+    if (!defId) return commander;
+    commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+    commander.equipped.chest = "g0";
+    return commander;
+  };
+  const bare = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander: equip(null) });
+  const geared = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander: equip("warchiefPlate") });
+  const barePlayer = bare.units.find((unit) => unit.id === bare.playerId);
+  const gearedPlayer = geared.units.find((unit) => unit.id === geared.playerId);
+
+  assert.ok(gearedPlayer.attackMs < barePlayer.attackMs, "공격 주기가 짧아진다");
+  assert.ok(gearedPlayer.speed > barePlayer.speed, "이동속도가 오른다");
+});
+
+test("영혼의 장막은 일정 시간 안 맞으면 1회성 장막을 만든다", () => {
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "soulVeil", grade: "common", options: [] }];
+  commander.equipped.chest = "g0";
+
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  for (const enemy of battle.enemies) enemy.dormant = true; // 안 맞는 상황
+
+  assert.ok(!player.positiveEffects.shield, "처음엔 장막이 없다");
+  const quietMs = LEGENDARY_DEFS.soulVeil.uniqueEffect.quietMs;
+  for (let t = 0; t < quietMs / 100 + 5; t += 1) tickAutoBattle(battle, 100);
+
+  const shield = player.positiveEffects.shield;
+  assert.ok(shield, "조용히 버티면 장막이 생긴다");
+  // 흡수 상한은 최대 체력의 60%다.
+  const expected = Math.round(player.maxHp * LEGENDARY_DEFS.soulVeil.uniqueEffect.maxRatio);
+  assert.equal(shield.amount, expected);
+});
+
+test("구미호 영핵 목걸이는 해로운 상태이상을 빨리 털어낸다", () => {
+  const measure = (defId) => {
+    const commander = createDefaultCommander();
+    if (defId) {
+      commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+      commander.equipped.necklace = "g0";
+    }
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 9999;
+    for (const enemy of battle.enemies) enemy.dormant = true;
+    player.statuses = { poison: { id: "poison", expiresAt: battle.elapsed + 6000, stacks: 1 } };
+
+    let ticks = 0;
+    while (player.statuses.poison && ticks < 200) {
+      tickAutoBattle(battle, 100);
+      player.hp = 9999;
+      ticks += 1;
+    }
+    return ticks;
+  };
+  const bare = measure(null);
+  const geared = measure("foxCoreAmulet");
+  assert.ok(geared < bare, `목걸이를 차면 더 빨리 사라진다 (맨몸 ${bare} vs 착용 ${geared})`);
+});
+
+test("몰락한 성유물 목걸이는 위급할 때 한 번 스스로를 씻는다", () => {
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "fallenRelicAmulet", grade: "common", options: [] }];
+  commander.equipped.necklace = "g0";
+
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  for (const enemy of battle.enemies) enemy.dormant = true;
+
+  const effect = LEGENDARY_DEFS.fallenRelicAmulet.uniqueEffect;
+
+  // 체력이 충분하면 발동하지 않는다.
+  player.hp = player.maxHp;
+  player.statuses = { burn: { id: "burn", expiresAt: battle.elapsed + 9000, stacks: 1 } };
+  for (let t = 0; t < 10; t += 1) { tickAutoBattle(battle, 100); player.hp = player.maxHp; }
+  assert.ok(player.statuses.burn, "여유가 있을 때는 발동하지 않는다");
+
+  // 위급해지면 씻어낸다.
+  for (let t = 0; t < 20; t += 1) {
+    player.hp = Math.floor(player.maxHp * (effect.threshold - 0.1));
+    tickAutoBattle(battle, 100);
+  }
+  assert.ok(!player.statuses.burn, "위급하면 상태이상을 제거한다");
+});
+
+test("구미호의 외투는 총량은 같게 두고 한 방의 크기만 줄인다", () => {
+  const measure = (defId) => {
+    const commander = createDefaultCommander();
+    if (defId) {
+      commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+      commander.equipped.chest = "g0";
+    }
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242, commander });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = 200;
+    player.hp = 200;
+
+    let worst = 0;
+    let total = 0;
+    for (let t = 0; t < 300 && battle.status === "active"; t += 1) {
+      const before = player.hp;
+      tickAutoBattle(battle, 100);
+      const dealt = before - player.hp;
+      if (dealt > 0) { total += dealt; worst = Math.max(worst, dealt); }
+      player.hp = 200;
+    }
+    return { worst, total };
+  };
+
+  const bare = measure(null);
+  const geared = measure("foxMantle");
+  assert.ok(geared.worst < bare.worst, `한 번에 받는 최대 피해가 줄어든다 (${bare.worst} -> ${geared.worst})`);
+  // 총량은 비슷하게 유지된다 — 피해를 없애는 게 아니라 미루는 효과다.
+  assert.ok(Math.abs(geared.total - bare.total) < bare.total * 0.35, "총 피해량은 크게 달라지지 않는다");
+});
+
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {
   // 서부는 크루세이더·네크로맨서 두 직업의 출신지다.
   const first = dungeonClearRewards("west", 1, []);
