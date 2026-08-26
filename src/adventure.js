@@ -1,4 +1,4 @@
-import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_SET_DEFS, companionBonuses, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
 export const DUNGEON_SIZE = 15;
@@ -572,6 +572,60 @@ function accumulateCurse(battle, counter) {
       pushBattleLog(battle, `${unit.name}이 저주에 질려 몸이 굳었다.`);
     }
   }
+}
+
+// ── 그로기 ────────────────────────────────────────────────────────────────
+//
+// 보스에게만 붙는 별도 게이지다. 피해를 넣으면 차오르고, 가득 차면 보스가 잠시
+// 무너져 아무것도 못 하고 받는 피해도 커진다. 안 때리면 서서히 빠진다.
+//
+// 목적은 "쉬지 않고 몰아쳐서 무너뜨리는 구간"을 만드는 것이다. 패턴을 피하기만
+// 해서는 게이지가 빠지므로, 피할 때와 붙을 때를 나누게 된다.
+//
+// 잡몹에는 붙이지 않는다 — 어차피 금방 죽어서 게이지가 의미가 없고,
+// 화면에 게이지만 늘어난다.
+const GROGGY_DURATION_MS = 4000;
+const GROGGY_DECAY_PER_SEC = 0.055;   // 가만 두면 약 18초에 완충분이 빠진다
+const GROGGY_DAMAGE_TAKEN = 1.5;      // 그로기 중 받는 피해 배율
+const GROGGY_COOLDOWN_MS = 12000;     // 연속으로 다시 무너지지 않게
+
+// 보스가 그로기에 걸리기까지 필요한 누적 피해. 최대 체력에 비례시켜
+// 보스가 커져도 "몇 번 몰아쳐야 무너진다"가 일정하게 유지되도록 한다.
+function groggyThreshold(unit) {
+  return Math.max(1, unit.maxHp * 0.55);
+}
+
+// 피해를 넣을 때 게이지를 채운다. 그로기 중에는 더 차지 않는다.
+function addStagger(battle, target, amount) {
+  if (!target?.boss || amount <= 0) return;
+  if ((target.groggyUntil || 0) > battle.elapsed) return;
+  if (battle.elapsed - (target.lastGroggyAt ?? -999999) < GROGGY_COOLDOWN_MS) return;
+
+  target.stagger = (target.stagger || 0) + amount;
+  if (target.stagger < groggyThreshold(target)) return;
+
+  target.stagger = 0;
+  target.groggyUntil = battle.elapsed + GROGGY_DURATION_MS;
+  target.lastGroggyAt = battle.elapsed;
+  // 무너지는 순간 시전 중이던 패턴과 깔아둔 예고를 함께 걷는다.
+  target.castingUntil = 0;
+  battle.zones = (battle.zones || []).filter((zone) => zone.ownerId !== target.id);
+  pushBattleLog(battle, `${target.name}이 무너졌다! 지금이 기회다`);
+}
+
+// 안 때리면 게이지가 빠진다 — 계속 피하기만 해서는 무너뜨릴 수 없다.
+function decayStagger(battle, step) {
+  for (const enemy of battle.enemies) {
+    if (!enemy.boss || !enemy.stagger) continue;
+    if ((enemy.groggyUntil || 0) > battle.elapsed) continue;
+    if (battle.elapsed - (enemy.lastStaggerAt || 0) < 1200) continue;
+    enemy.stagger = Math.max(0, enemy.stagger - groggyThreshold(enemy) * GROGGY_DECAY_PER_SEC * (step / 1000));
+  }
+}
+
+// 그로기 중인 대상은 더 아프게 맞는다.
+function groggyDamageMultiplier(battle, target) {
+  return (target.groggyUntil || 0) > battle.elapsed ? GROGGY_DAMAGE_TAKEN : 1;
 }
 
 // 치명타 굴림. 오래 죽어 있던 스탯을 실제 피해 계산에 연결한 것이라
@@ -1656,10 +1710,18 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     const definition = UNIT_DEFS[unitId];
     const progress = unitProgress[unitId] || { level: 1, xp: 0 };
     const secondary = SECONDARY_DEFS[progress.secondaryId] || null;
+    // 동료가 낀 장비의 보너스. 지휘관과 같은 규칙으로 계산해서 얹는다.
+    const gear = companionBonuses(options.commander || {}, definition.id);
     const scaledDefinition = {
       ...definition,
-      maxHp: Math.max(1, Math.round(definition.maxHp * playerHpGrowth * COMPANION_POWER_MULTIPLIER)),
-      damage: Math.max(1, Math.round(definition.damage * playerDamageGrowth * COMPANION_POWER_MULTIPLIER)),
+      maxHp: Math.max(1, Math.round(definition.maxHp * playerHpGrowth * COMPANION_POWER_MULTIPLIER * (1 + gear.maxHpBonus))),
+      damage: Math.max(1, Math.round(definition.damage * playerDamageGrowth * COMPANION_POWER_MULTIPLIER * (1 + gear.damageBonus))),
+      armor: Math.min(0.58, (definition.armor || 0) + gear.armorBonus),
+      speed: (definition.speed || 10) * (1 + gear.moveSpeedBonus),
+      attackMs: Math.max(280, Math.round((definition.attackMs || 1200) / (1 + gear.attackSpeedBonus))),
+      criticalChance: Math.max(0, Math.min(1, 0.03 + gear.criticalChance)),
+      criticalDamage: 1.5 + gear.criticalDamage,
+      statusResistance: Math.max(0, Math.min(0.75, (definition.statusResistance || 0) + gear.statusResistBonus)),
       preScaled: true
     };
     const companion = createCombatant(scaledDefinition, `unit-${definition.id}`, "unit", index, progress, secondary);
@@ -2075,7 +2137,10 @@ function healCombatant(target, amount) {
 }
 
 function actorDisabled(actor, battle) {
-  return Boolean(actor.statuses?.stun || (actor.frozenUntil || 0) > battle.elapsed);
+  return Boolean(actor.statuses?.stun
+    || (actor.frozenUntil || 0) > battle.elapsed
+    // 그로기: 무너진 보스는 아무것도 하지 못한다.
+    || (actor.groggyUntil || 0) > battle.elapsed);
 }
 
 function speedDebuffMultiplier(actor) {
@@ -2321,6 +2386,7 @@ export function tickAutoBattle(battle, deltaMs) {
   wakeNearbyFieldGroups(battle);
   checkFieldTriggers(battle);
   advanceBossZones(battle);
+  decayStagger(battle, step);
   tickLegendaryEffects(battle, step);
   for (const actor of all) {
     if (actor.hp <= 0) continue;
@@ -2504,7 +2570,11 @@ export function tickAutoBattle(battle, deltaMs) {
         }
       }
 
+      // 그로기 중인 보스는 더 아프게 맞고, 맞은 만큼 게이지가 찬다.
+      damage = Math.round(damage * groggyDamageMultiplier(battle, target));
       target.hp = Math.max(0, target.hp - damage);
+      target.lastStaggerAt = battle.elapsed;
+      addStagger(battle, target, damage);
 
       // 반지의 적중 시 상태이상 부여(먹물·거미독). 반지를 둘 끼면 각각 굴린다.
       if (actor.id === battle.playerId && target.hp > 0) {
@@ -3310,9 +3380,12 @@ export function issuePlayerAction(battle, action) {
       * critical
       * legendaryOutgoingMultiplier(battle, target)
       * (1 - legendaryPiercedArmor(battle, target))
+      * groggyDamageMultiplier(battle, target)
     ));
     target.hp = Math.max(0, target.hp - damage);
     target.lastHit = 260;
+    target.lastStaggerAt = battle.elapsed;
+    addStagger(battle, target, damage);
     if (stealthy) delete player.positiveEffects.stealth;
     applyLegendaryOnHit(battle, player, target);
     applyChargedBurst(battle, player, target);

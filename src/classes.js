@@ -821,6 +821,38 @@ export function instanceBonuses(instance) {
 
 // 장착 중인 전설 장비의 고유효과를 모은다. 전투 엔진이 이 목록을 보고 분기한다.
 // 같은 종류가 둘이면(반지 두 칸) 둘 다 들어간다 - 합산 여부는 사용하는 쪽이 정한다.
+// 동료 장비. 쓰던 장비를 물려주는 용도라 **보관함(equipmentOwned)은 지휘관과 공유**하고
+// 장착표만 동료별로 따로 둔다.
+//
+// 무기는 줄 수 없다 — 무기만 직업 전용이고(EQUIPMENT_SLOT_DEFS.classLocked) 동료는
+// 플레이어 직업이 아니다. 방어구 5칸과 장신구 3칸은 원래 직업 제한이 없어서 그대로 쓴다.
+export function companionEquippedMap(commander, unitId) {
+  return commander?.companionEquipped?.[unitId] || {};
+}
+
+export function companionEquippableSlots() {
+  return Object.values(EQUIPMENT_SLOT_DEFS).filter((slot) => !slot.classLocked);
+}
+
+// 같은 장비를 지휘관과 동료가 동시에 낄 수 없다. 어디에 끼워져 있든 찾아서 뗀다.
+export function releaseEquipmentEverywhere(commander, uid) {
+  if (!commander || !uid) return;
+  for (const slot of EQUIPMENT_SLOTS) {
+    if (commander.equipped?.[slot] === uid) commander.equipped[slot] = null;
+  }
+  for (const map of Object.values(commander.companionEquipped || {})) {
+    for (const slot of Object.keys(map)) {
+      if (map[slot] === uid) map[slot] = null;
+    }
+  }
+}
+
+// 동료가 낀 장비의 보너스 합계. 지휘관 계산과 같은 규칙을 쓰되 장착표만 바꿔 넣는다.
+export function companionBonuses(commander, unitId) {
+  const equipped = companionEquippedMap(commander, unitId);
+  return equippedBonuses({ ...commander, equipped }, null);
+}
+
 export function equippedUniqueEffects(commander = {}, baseClassId = null) {
   const effects = [];
   const equipped = commander.equipped || {};
@@ -1337,7 +1369,8 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
   // 치명타는 민첩에서 파생시킨다. 예전에는 statProfile.base.criticalChance를 읽었는데
   // 어떤 직업도 그 값을 정의하지 않아 항상 null이 나오는 죽은 경로였다.
   // 민첩 기반으로 두면 추적자·매화가 자연히 높고, 모든 직업이 값을 갖는다.
-  const criticalChance = Math.max(0, Math.min(0.75,
+  // 상한 1.0 — 치명타 100%를 목표로 삼는 빌드가 가능해야 한다.
+  const criticalChance = Math.max(0, Math.min(1,
     0.03 + agility * 0.005 + gear.criticalChance
     + Number(commander.itemBonuses?.criticalChance || 0)));
   // 치명타 피해 배율. 기본 1.5배에서 장비로 더 올린다.
@@ -1409,6 +1442,8 @@ export function createDefaultCommander() {
     unlockedBlueprints: [],
     equipmentOwned: [],
     equipped: createEmptyEquipped(),
+    // 동료별 장착표. 보관함은 지휘관과 공유한다(쓰던 장비를 물려주는 구조).
+    companionEquipped: {},
     skillLoadouts: Object.fromEntries(Object.values(PLAYER_KIT_DEFS).map((kit) => [kit.id, [...kit.defaultLoadout]]))
   };
 }

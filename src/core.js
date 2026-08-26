@@ -20,7 +20,7 @@ import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState, creat
 import { createDefenseDeployments } from "./defense.js";
 import { EQUIPMENT_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, createEmptyEquipped, createEquipmentInstance, findEquipmentInstance, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 23;
+export const SAVE_VERSION = 24;
 
 // 영지 행복도(state.meta.estate.happiness)가 생산 속도에 미치는 배율.
 // 기준치(70, 신규 영지의 시작값)에서는 정확히 1.0배 — 기존 저장/테스트의 기준 생산량을 그대로 유지한다.
@@ -1394,6 +1394,12 @@ export function migrateState(rawState) {
     }
     commander.equipped = equipped;
     state.log.unshift({ text: "장신구가 반지 두 칸과 목걸이로 나뉘었다.", tone: "item" });
+  }
+  if (previousVersion < 24) {
+    // 동료도 장비를 낄 수 있게 되면서 동료별 장착표가 생겼다.
+    // 보관함(equipmentOwned)은 지휘관과 공유하므로 옮길 데이터는 없다.
+    state.adventure.commander.companionEquipped ||= {};
+    state.log.unshift({ text: "쓰던 장비를 동료에게 물려줄 수 있게 됐다. 보스에게는 그로기가 생겼다.", tone: "item" });
   }
   state.adventure.party = state.adventure.party.slice(0, 2);
   state.adventure.commander.combatKitId = playerKitDefinition(state.adventure.commander.combatKitId).id;

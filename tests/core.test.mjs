@@ -24,7 +24,8 @@ import {
   workerProficiency
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
-import { EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions } from "../src/classes.js";
+import { STARTING_PARTY, createAutoBattle, issuePlayerAction, tickAutoBattle } from "../src/adventure.js";
+import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -598,7 +599,7 @@ test("구형 층제 원정 저장은 영구 성장만 보존하고 안전하게 
   const migrated = new GameEngine(storage);
   assert.equal(migrated.state.expedition, null);
   assert.equal(migrated.state.meta.scrap, 19);
-  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구|투구·갑옷·장갑|등급\(일반~신화\)|반지 두 칸/);
+  assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구|투구·갑옷·장갑|등급\(일반~신화\)|반지 두 칸|동료에게 물려줄/);
 });
 
 test("방어구 세트를 완성하면 세트 보너스가 추가로 붙는다", () => {
@@ -822,6 +823,117 @@ test("v22 저장의 반지·부적은 반지1·목걸이로 옮겨진다", () =>
   assert.equal(commander.equipped.ring2, null, "새로 생긴 반지2는 비어 있다");
   assert.deepEqual(Object.keys(commander.equipped).sort(), [...EQUIPMENT_SLOTS].sort());
   assert.equal(commander.equipped.amulet, undefined, "옛 키는 남지 않는다");
+});
+
+test("보스는 몰아치면 그로기로 무너지고, 무너진 동안 더 아프게 맞는다", () => {
+  const battle = createAutoBattle("frostColossusPack", null, null, STARTING_PARTY, {}, { rollSeed: 5 });
+  const boss = battle.enemies.find((enemy) => enemy.boss);
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+  player.damage = 40;
+  boss.dormant = false;
+
+  let groggyCount = 0;
+  let disabledTicks = 0;
+  for (let t = 0; t < 400; t += 1) {
+    player.x = boss.x - 3;
+    player.y = boss.y;
+    issuePlayerAction(battle, "attack");
+    tickAutoBattle(battle, 100);
+    player.hp = 99999;
+    if (boss.hp < boss.maxHp * 0.3) boss.hp = boss.maxHp; // 죽지 않게 유지
+    groggyCount += battle.log.filter((line) => /무너졌다/.test(line.text || line)).length;
+    if ((boss.groggyUntil || 0) > battle.elapsed) disabledTicks += 1;
+    battle.log = [];
+  }
+
+  assert.ok(groggyCount > 0, "몰아치면 무너진다");
+  assert.ok(disabledTicks > 0, "무너져 있는 동안이 있다");
+});
+
+test("그로기는 보스에게만 붙고, 안 때리면 게이지가 빠진다", () => {
+  const battle = createAutoBattle("frostColossusPack", null, null, STARTING_PARTY, {}, { rollSeed: 5 });
+  const boss = battle.enemies.find((enemy) => enemy.boss);
+  const mob = battle.enemies.find((enemy) => !enemy.boss);
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+
+  // 잡몹에는 게이지가 생기지 않는다 — 금방 죽어서 의미가 없다.
+  for (const enemy of battle.enemies) enemy.dormant = false;
+  mob.maxHp = mob.hp = 99999;
+  player.x = mob.x - 3;
+  player.y = mob.y;
+  for (let t = 0; t < 40; t += 1) {
+    issuePlayerAction(battle, "attack");
+    tickAutoBattle(battle, 100);
+    player.hp = 99999;
+    player.x = mob.x - 3;
+    player.y = mob.y;
+  }
+  assert.ok(!mob.stagger, "잡몹은 그로기 게이지를 갖지 않는다");
+
+  // 보스 게이지를 채워두고 손을 놓으면 빠진다.
+  boss.stagger = boss.maxHp * 0.4;
+  boss.lastStaggerAt = battle.elapsed;
+  const before = boss.stagger;
+  for (let t = 0; t < 80; t += 1) { tickAutoBattle(battle, 100); player.hp = 99999; }
+  assert.ok(boss.stagger < before, `안 때리면 게이지가 빠진다 (${before.toFixed(1)} -> ${boss.stagger.toFixed(1)})`);
+});
+
+test("동료에게 장비를 물려줄 수 있고, 같은 물건을 둘이 동시에 낄 수 없다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const commander = engine.state.adventure.commander;
+  commander.equipmentOwned = [{ uid: "a1", defId: "heavyPlate", grade: "rare", options: [] }];
+
+  // 보관함은 지휘관과 공유하고 장착표만 동료별로 따로 둔다.
+  assert.equal(engine.equipCompanionEquipment("snow_guard", "a1"), true);
+  assert.equal(commander.companionEquipped.snow_guard.chest, "a1");
+
+  const gear = companionBonuses(commander, "snow_guard");
+  assert.ok(gear.maxHpBonus > 0, "동료가 낀 장비의 보너스가 계산된다");
+
+  // 지휘관이 같은 물건을 끼면 동료에게서 떨어진다.
+  assert.equal(engine.equipEquipment("a1"), true);
+  assert.equal(commander.equipped.chest, "a1");
+  assert.equal(commander.companionEquipped.snow_guard.chest, null, "동료에게서 떨어진다");
+
+  // 무기는 직업 전용이라 동료에게 못 준다.
+  commander.equipmentOwned.push({ uid: "w1", defId: "crusaderBastardSword", grade: "common", options: [] });
+  assert.equal(engine.equipCompanionEquipment("snow_guard", "w1"), false, "무기는 넘길 수 없다");
+
+  // 동료가 낄 수 있는 부위는 무기를 뺀 전부다.
+  const slots = companionEquippableSlots().map((slot) => slot.id);
+  assert.ok(!slots.includes("weapon"));
+  assert.equal(slots.length, EQUIPMENT_SLOTS.length - 1);
+});
+
+test("동료가 낀 장비는 실제 전투 능력치를 올린다", () => {
+  const build = (gift) => {
+    const commander = createDefaultCommander();
+    commander.equipmentOwned = [{ uid: "a1", defId: "heavyPlate", grade: "mythic", options: [] }];
+    if (gift) commander.companionEquipped = { snow_guard: { chest: "a1" } };
+    const battle = createAutoBattle("frostColossusPack", null, null, STARTING_PARTY, {},
+      { rollSeed: 1, commander });
+    return battle.units.find((unit) => unit.id === "unit-snow_guard");
+  };
+
+  const bare = build(false);
+  const geared = build(true);
+  assert.ok(geared.maxHp > bare.maxHp, `체력이 오른다 (${bare.maxHp} -> ${geared.maxHp})`);
+  assert.ok(geared.armor > bare.armor, "방어력도 오른다");
+});
+
+test("치명타 확률은 100%까지 올릴 수 있다", () => {
+  EQUIPMENT_DEFS.__critCap = {
+    id: "__critCap", slot: "ring", name: "검증용", materials: {}, bonus: { criticalChance: 1.5 }
+  };
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "__critCap", grade: "common", options: [] }];
+  commander.equipped.ring1 = "g0";
+
+  const stats = playerCombatStats(commander, "crusader");
+  assert.equal(stats.criticalChance, 1, "상한이 100%다");
+  delete EQUIPMENT_DEFS.__critCap;
 });
 
 test("던전을 정복하면 개방되고, 개척 주기마다 영지에 정기 수익이 들어온다", () => {

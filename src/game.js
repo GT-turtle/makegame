@@ -1,5 +1,5 @@
 import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
-import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, equipmentGradeDefinition, findEquipmentInstance, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem } from "./classes.js";
+import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, equipmentGradeDefinition, findEquipmentInstance, releaseEquipmentEverywhere, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem } from "./classes.js";
 import {
   activeWorkerCount,
   addMaterial,
@@ -2331,6 +2331,48 @@ export class GameEngine {
     return true;
   }
 
+  // 동료에게 장비를 물려준다. 보관함은 지휘관과 공유하므로 "주는" 게 아니라
+  // 착용자만 바뀌는 구조다. 무기는 직업 전용이라 넘길 수 없다.
+  equipCompanionEquipment(unitId, uid, slot = null) {
+    const commander = this.state.adventure.commander;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    if (!UNIT_DEFS[unitId]) return false;
+
+    commander.companionEquipped ||= {};
+    commander.companionEquipped[unitId] ||= {};
+    const worn = commander.companionEquipped[unitId];
+
+    if (uid === null) {
+      if (!EQUIPMENT_SLOTS.includes(slot)) return false;
+      worn[slot] = null;
+      this.addLog(`${UNIT_DEFS[unitId].name}의 ${EQUIPMENT_SLOT_LABELS[slot]} 해제.`, "item");
+      this.emit();
+      return true;
+    }
+
+    const instance = findEquipmentInstance(commander, uid);
+    const definition = EQUIPMENT_DEFS[instance?.defId];
+    if (!definition) return false;
+
+    const candidates = slotsAcceptingItem(definition.slot)
+      .filter((entry) => !EQUIPMENT_SLOT_DEFS[entry.id].classLocked);
+    // 무기처럼 직업 전용인 부위는 동료가 낄 수 없다.
+    if (!candidates.length) return false;
+
+    const target = slot && candidates.some((entry) => entry.id === slot)
+      ? slot
+      : (candidates.find((entry) => !worn[entry.id]) || candidates[0]).id;
+
+    // 같은 물건을 지휘관과 동료가 동시에 낄 수 없다 — 어디에 있든 떼고 여기 붙인다.
+    releaseEquipmentEverywhere(commander, uid);
+    commander.companionEquipped[unitId] ||= {};
+    commander.companionEquipped[unitId][target] = uid;
+
+    this.addLog(`${UNIT_DEFS[unitId].name}에게 ${definition.name} 지급.`, "item");
+    this.emit();
+    return true;
+  }
+
   // uid가 null이면 slot을 비운다(그때는 slot을 반드시 넘겨야 한다).
   equipEquipment(uid, slot = null) {
     const commander = this.state.adventure.commander;
@@ -2363,10 +2405,9 @@ export class GameEngine {
       if (definition.baseClassId !== kit.baseClassId) return false;
     }
 
-    // 같은 물건을 두 칸에 동시에 끼면 보너스가 두 번 더해진다. 옮겨 끼는 것으로 본다.
-    for (const slotId of EQUIPMENT_SLOTS) {
-      if (slotId !== target && commander.equipped[slotId] === uid) commander.equipped[slotId] = null;
-    }
+    // 같은 물건을 두 곳에서 동시에 낄 수 없다 — 지휘관의 다른 칸이든 동료가 끼고
+    // 있든 전부 떼고 여기 붙인다(보관함을 공유하기 때문).
+    releaseEquipmentEverywhere(commander, uid);
 
     commander.equipped[target] = uid;
     this.addLog(`${definition.name} 장착.`, "item");
