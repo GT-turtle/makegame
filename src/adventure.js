@@ -1160,6 +1160,27 @@ export const UNIT_DEFS = {
   ...GOLEM_UNIT_DEFS
 };
 
+// 몬스터 아틀라스에 들어 있는 종. **순서가 곧 아틀라스의 가로 순서다** —
+// 잘라내는 위치를 이 배열의 인덱스로 계산하므로(styles.css --monster-index),
+// 순서를 바꾸면 전부 다른 그림이 나온다. 새 종은 반드시 뒤에 붙인다.
+//
+// 종 데이터 옆에 두는 이유: 아래 ENEMY_COMBATANTS에 새 species를 적고 여기
+// 추가하는 걸 잊으면 그 몬스터는 화면에 글자 하나로만 뜬다. 테스트가 둘을 맞춰본다.
+// **실제로 PNG에 그려져 있는 것만** 적는다. 목록에 미리 적어두면 아틀라스를
+// N등분하는 계산이 바뀌어서, 이미 그려진 종까지 엉뚱한 칸을 가리키게 된다.
+// 그림이 늘면 PNG · 이 목록 · styles.css의 --monster-count 셋을 함께 고친다.
+export const MONSTER_ATLAS_SPECIES = Object.freeze([
+  "goblin", "orc", "wolf", "bear"
+]);
+
+// 아직 그림이 없는 종. 화면에는 글리프 문자 하나로만 뜬다.
+// 알파 전에 채워야 하는 목록이고, 여기 있는 동안은 "빠뜨린 것"이 아니라
+// "아직 안 그린 것"으로 취급한다 — 테스트가 이 둘을 구분해서 본다.
+export const MONSTER_SPECIES_PENDING_ART = Object.freeze([
+  "lich", "dragon", "titan", "oni", "fox", "spider", "serpent",
+  "centipede", "undead", "worm", "chimera", "construct", "aberration"
+]);
+
 export const ENEMY_COMBATANTS = {
   northGoblin: { name: "북부 홉고블린", species: "goblin", variant: "대형종", glyph: "G", maxHp: 29, damage: 7, range: 8, speed: 7, attackMs: 1380, armor: 0.08, color: "#789db0" },
   northOrc: { name: "서리갑주 오크", species: "orc", variant: "빙철 갑주", glyph: "O", maxHp: 34, damage: 7, range: 8, speed: 6, attackMs: 1460, armor: 0.16, color: "#7292a3", statusOnHit: { id: "frost", stacks: 1 }, statusEvery: 2 },

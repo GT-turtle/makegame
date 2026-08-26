@@ -2993,25 +2993,81 @@ body.battle-active .battle-entity.third-person-entity > i.monster-sprite {
   filter: drop-shadow(0 3px 2px rgba(0,0,0,.84)) drop-shadow(0 0 3px color-mix(in srgb, var(--entity-color) 62%, transparent));
   overflow: visible;
 }
+/* 몬스터 아틀라스 — 종을 가로로 나란히 붙인 한 장.
+ * 잘라내는 위치는 --monster-index / (종 수 - 1) 로 계산한다.
+ * 하드코딩된 %를 쓰면 종이 하나 늘 때마다 17줄을 다시 계산해야 한다.
+ * 종을 추가할 때 고칠 곳: 이 목록, MONSTER_ATLAS_SPECIES(app.js), 아틀라스 PNG. */
+body.battle-active .battle-entity.third-person-entity > i.monster-sprite {
+  --monster-count: 4;   /* PNG에 실제로 그려진 종 수. MONSTER_ATLAS_SPECIES와 같아야 한다. */
+  background-position: calc(var(--monster-index, 0) / (var(--monster-count) - 1) * 100%) 50%;
+}
 body.battle-active .battle-entity.third-person-entity > i.monster-goblin {
   width: clamp(39px, 12vh, 52px);
   height: clamp(76px, 25vh, 108px);
-  background-position: 0 50%;
 }
 body.battle-active .battle-entity.third-person-entity > i.monster-orc {
   width: clamp(50px, 15vh, 66px);
   height: clamp(82px, 27vh, 112px);
-  background-position: 33% 50%;
 }
 body.battle-active .battle-entity.third-person-entity > i.monster-wolf {
   width: clamp(46px, 14vh, 62px);
   height: clamp(75px, 24vh, 104px);
-  background-position: 66% 50%;
 }
 body.battle-active .battle-entity.third-person-entity > i.monster-bear {
   width: clamp(56px, 17vh, 72px);
   height: clamp(84px, 28vh, 116px);
-  background-position: 100% 50%;
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-lich {
+  width: clamp(44px, 13vh, 58px);
+  height: clamp(80px, 26vh, 110px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-dragon {
+  width: clamp(64px, 19vh, 84px);
+  height: clamp(90px, 30vh, 124px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-titan {
+  width: clamp(68px, 20vh, 90px);
+  height: clamp(94px, 31vh, 130px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-oni {
+  width: clamp(56px, 17vh, 72px);
+  height: clamp(86px, 28vh, 118px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-fox {
+  width: clamp(48px, 14vh, 64px);
+  height: clamp(74px, 24vh, 102px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-spider {
+  width: clamp(58px, 17vh, 76px);
+  height: clamp(68px, 22vh, 94px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-serpent {
+  width: clamp(52px, 16vh, 70px);
+  height: clamp(72px, 23vh, 100px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-centipede {
+  width: clamp(60px, 18vh, 78px);
+  height: clamp(70px, 23vh, 96px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-undead {
+  width: clamp(44px, 13vh, 58px);
+  height: clamp(80px, 26vh, 110px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-worm {
+  width: clamp(56px, 17vh, 74px);
+  height: clamp(78px, 25vh, 106px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-chimera {
+  width: clamp(60px, 18vh, 80px);
+  height: clamp(86px, 28vh, 118px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-construct {
+  width: clamp(58px, 17vh, 76px);
+  height: clamp(88px, 29vh, 120px);
+}
+body.battle-active .battle-entity.third-person-entity > i.monster-aberration {
+  width: clamp(54px, 16vh, 72px);
+  height: clamp(82px, 27vh, 112px);
 }
 body.battle-active .battle-entity.third-person-entity.focused::before {
   width: 58px;

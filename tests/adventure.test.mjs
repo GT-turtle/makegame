@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   DUNGEON_SIZE,
@@ -42,7 +43,7 @@ import {
   resolveObstacles,
   createFieldBattle,
   REGION_ARMOR_SET
-, SPECIAL_UNIT_DEFS } from "../src/adventure.js";
+, SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES , MONSTER_SPECIES_PENDING_ART } from "../src/adventure.js";
 import { MATERIAL_DEFS } from "../src/data.js";
 import { EQUIPMENT_GRADES, combatPowerBreakdown, combatPowerScore, masterySlots, MASTERY_TRAIT_SLOTS, ENHANCE_MAX, playerKitDefinition } from "../src/classes.js";
 import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, LEGENDARY_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, legendariesForRegion, legendaryCollection, playerCombatStats } from "../src/classes.js";
@@ -2883,4 +2884,31 @@ test("특수 동료가 쓰러지면 매 틱 얹던 버프는 걷힌다", () => {
   architect.hp = 0;
   tickAutoBattle(battle, 20);
   assert.equal(ally.passiveCooldownReduction, 0, "죽은 동료의 쿨감이 남지 않는다");
+});
+
+test("적 종은 그림이 있거나 미착수 목록에 있고, 아틀라스 계산이 어긋나지 않는다", () => {
+  // 아틀라스에 없는 종은 화면에 글리프 문자 하나로만 뜬다. 어느 쪽 목록에도 없으면
+  // "안 그린 것"이 아니라 "빠뜨린 것"이라 조용히 사라진다.
+  const species = [...new Set(Object.values(ENEMY_COMBATANTS).map((def) => def.species).filter(Boolean))];
+  const unaccounted = species.filter((name) =>
+    !MONSTER_ATLAS_SPECIES.includes(name) && !MONSTER_SPECIES_PENDING_ART.includes(name));
+  assert.deepEqual(unaccounted, [], "어느 목록에도 없는 종");
+
+  // 한 종이 양쪽에 있으면 그려진 건지 아닌지 알 수 없어진다.
+  const both = MONSTER_ATLAS_SPECIES.filter((name) => MONSTER_SPECIES_PENDING_ART.includes(name));
+  assert.deepEqual(both, [], "그려진 종이 미착수 목록에도 있다");
+  assert.equal(new Set(MONSTER_ATLAS_SPECIES).size, MONSTER_ATLAS_SPECIES.length, "종 이름이 겹치지 않는다");
+
+  // CSS가 아는 종 수와 그려진 종 수가 다르면 아틀라스를 자르는 위치가 전부 어긋난다.
+  // 목록만 늘리고 PNG를 안 바꾸면 여기서 잡힌다.
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const declared = css.match(/--monster-count:\s*(\d+)/);
+  assert.ok(declared, "styles.css에 --monster-count가 있어야 한다");
+  assert.equal(Number(declared[1]), MONSTER_ATLAS_SPECIES.length,
+    "CSS의 종 수는 실제로 그려진 종 수와 같아야 한다");
+
+  // 크기 규칙은 미착수 종까지 미리 있어도 된다 — 그림만 오면 바로 붙는다.
+  for (const name of [...MONSTER_ATLAS_SPECIES, ...MONSTER_SPECIES_PENDING_ART]) {
+    assert.ok(css.includes(`i.monster-${name} {`), `${name}의 크기 규칙이 CSS에 있어야 한다`);
+  }
 });

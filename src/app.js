@@ -18,7 +18,7 @@ import {
   WORLD_REGION_DEFS,
   currentZone,
   explorationPath
-, SPECIAL_UNIT_DEFS } from "./adventure.js";
+, SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES } from "./adventure.js";
 import {
   DISCOVERY_SITE_DEFS,
   FRONTIER_FACTION_DEFS,
@@ -142,12 +142,15 @@ const PLAYER_KIT_CONCEPT_ART = Object.freeze({
   maehwa: "./assets/character-maehwa-webtoon-v1.png"
 });
 
-const MONSTER_BATTLE_ART_CLASSES = Object.freeze({
-  goblin: "monster-sprite monster-goblin",
-  orc: "monster-sprite monster-orc",
-  wolf: "monster-sprite monster-wolf",
-  bear: "monster-sprite monster-bear"
-});
+const MONSTER_BATTLE_ART_CLASSES = Object.freeze(Object.fromEntries(
+  MONSTER_ATLAS_SPECIES.map((species) => [species, `monster-sprite monster-${species}`])
+));
+
+// 아틀라스에서 몇 번째 칸인지. CSS가 이 값으로 배경 위치를 계산한다.
+function monsterAtlasIndex(species) {
+  const index = MONSTER_ATLAS_SPECIES.indexOf(species);
+  return index < 0 ? null : index;
+}
 
 const COMPANION_BATTLE_ART_CLASSES = Object.freeze({
   north: "companion-sprite companion-north",
@@ -1531,6 +1534,8 @@ function battleEntity(entity, battle) {
   const companionRegion = entity.team === "unit" && !entity.controlled && !entity.summonType ? battleCompanionClass(entity) : "";
   const companionArt = companionRegion ? COMPANION_BATTLE_ART_CLASSES[companionRegion] : "";
   const speciesClass = monsterArt ? `species-${entity.species}` : "";
+  // 아틀라스 칸 번호. CSS가 이 값으로 배경 위치를 계산한다(styles.css --monster-index).
+  const atlasIndex = monsterArt ? monsterAtlasIndex(entity.species) : null;
   const statuses = Object.values(entity.statuses || {})
     .filter((status) => status.expiresAt > battle.elapsed && STATUS_EFFECT_DEFS[status.id])
     .map((status) => `<u class="negative" title="${escapeHtml(STATUS_EFFECT_DEFS[status.id].name)}">${STATUS_EFFECT_DEFS[status.id].glyph}${status.stacks > 1 ? status.stacks : ""}</u>`);
@@ -1552,7 +1557,7 @@ function battleEntity(entity, battle) {
   }
   return `
     <button class="battle-entity third-person-entity team-${entity.team} ${monsterArt ? "unit-art-monster" : companionArt ? "unit-art-companion" : "unit-art-portrait"} ${speciesClass} ${companionRegion ? `ally-region-${companionRegion}` : ""} ${entity.hp <= 0 ? "down" : ""} ${entity.lastHit ? "hit" : ""} ${targeted ? "focused" : ""} ${telegraphing ? "telegraphing" : ""} ${projection.visible ? "" : "off-camera"}"
-      style="--entity-x:${projection.x}%;--entity-y:${projection.y}%;--entity-z:${projection.z};--entity-scale:${projection.scale.toFixed(2)};--entity-color:${entity.color};--entity-hp:${hpRatio * 100}%"
+      style="--entity-x:${projection.x}%;--entity-y:${projection.y}%;--entity-z:${projection.z};--entity-scale:${projection.scale.toFixed(2)};--entity-color:${entity.color};--entity-hp:${hpRatio * 100}%${atlasIndex === null ? "" : `;--monster-index:${atlasIndex}`}"
       data-action="${entity.team === "enemy" && entity.hp > 0 ? "battle-player-target" : "inspect-battle-unit"}"
       data-target-id="${entity.id}"
       ${entity.hp <= 0 ? "disabled" : ""}
