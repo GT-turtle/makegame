@@ -798,23 +798,88 @@ export function rollEquipmentOptions(slotId, gradeId, proficiencyLevel = 0, next
   return options;
 }
 
+// ── 강화 ────────────────────────────────────────────────────────────────
+//
+// 강화는 장비의 자체 보너스를 키운다. 등급이 "몇 칸이 붙었나"라면 강화는 "얼마나
+// 벼렸나"다.
+//
+// 실패하면 **부서지되 사라지지는 않는다.** 부서진 장비는 보너스를 전혀 주지 않고,
+// 수리해야 다시 쓸 수 있다. 파괴가 아니라 파손인 이유는, 이 게임이 파밍을 강제하는
+// 수단으로 "장비 상실"이 아니라 "수리 재료 소모"를 택했기 때문이다.
+//
+// **낮은 단계는 절대 부서지지 않는다.** 3지역 진입에 필요한 정도의 강화는 안전 구간
+// 안에서 달성할 수 있어야 한다 — 운이 나빠서 진행이 막히면 안 된다.
+// 그 위가 파밍 구간이다.
+export const ENHANCE_MAX = 10;
+export const ENHANCE_SAFE_LEVEL = 3;   // 여기까지는 실패해도 부서지지 않는다
+const ENHANCE_STEP = 0.08;             // 단계당 자체 보너스 +8%
+
+// 강화 성공률과 파손률. 인덱스는 "지금 단계"이며 다음 단계로 올릴 때의 값이다.
+const ENHANCE_TABLE = [
+  { success: 1.00, break: 0 },    // 0 -> 1
+  { success: 1.00, break: 0 },    // 1 -> 2
+  { success: 0.90, break: 0 },    // 2 -> 3  실패해도 그대로
+  { success: 0.75, break: 0.10 }, // 3 -> 4  여기부터 부서질 수 있다
+  { success: 0.65, break: 0.15 },
+  { success: 0.55, break: 0.20 },
+  { success: 0.45, break: 0.25 },
+  { success: 0.35, break: 0.30 },
+  { success: 0.28, break: 0.35 },
+  { success: 0.20, break: 0.40 }  // 9 -> 10
+];
+
+export function enhanceOdds(level) {
+  return ENHANCE_TABLE[Math.max(0, Math.min(ENHANCE_TABLE.length - 1, level))];
+}
+
+export function enhanceMultiplier(level) {
+  return 1 + Math.max(0, Math.min(ENHANCE_MAX, level)) * ENHANCE_STEP;
+}
+
+// 강화 재료. 그 장비를 만들 때 쓴 재료를 단계에 비례해 다시 요구한다.
+// 별도 재료표를 두지 않는 이유는, 장비 자신의 레시피가 곧 "무엇을 파밍해야 하는지"를
+// 말해주기 때문이다 — 전설을 강화하려면 그 전설을 만든 보스를 다시 찾아가게 된다.
+export function enhanceCost(definition, level) {
+  const scale = 1 + Math.floor(level / 2);
+  return Object.fromEntries(
+    Object.entries(definition?.materials || {}).map(([id, amount]) => [id, amount * scale])
+  );
+}
+
+// 수리 재료. 강화 비용보다 무겁게 잡아 "부서지면 아프다"가 체감되게 한다.
+export function repairCost(definition, level) {
+  const scale = 2 + Math.floor(level / 2);
+  return Object.fromEntries(
+    Object.entries(definition?.materials || {}).map(([id, amount]) => [id, amount * scale])
+  );
+}
+
 // 보유 장비 한 점(인스턴스). 같은 설계도로 여러 번 만들면 각각 다른 옵션을 갖기
 // 때문에, 보유 목록은 id 배열이 아니라 인스턴스 배열이어야 한다.
 export function createEquipmentInstance(uid, defId, gradeId, options = []) {
-  return { uid, defId, grade: gradeId, options: options.map((entry) => ({ ...entry })) };
+  return {
+    uid, defId, grade: gradeId,
+    options: options.map((entry) => ({ ...entry })),
+    enhance: 0,
+    broken: false
+  };
 }
 
 // 인스턴스가 실제로 주는 보너스 = 정의 기본값 × 등급 배율 + 굴린 옵션.
 export function instanceBonuses(instance) {
   const definition = EQUIPMENT_DEFS[instance?.defId];
   if (!definition) return {};
-  const scale = equipmentGradeDefinition(instance.grade).baseScale;
+  // 부서진 장비는 아무 보너스도 주지 않는다. 끼고 있어도 없는 것과 같다.
+  if (instance.broken) return {};
+  // 등급 배율 × 강화 배율. 굴린 옵션도 함께 벼려진다.
+  const enhance = enhanceMultiplier(instance.enhance || 0);
+  const scale = equipmentGradeDefinition(instance.grade).baseScale * enhance;
   const totals = {};
   for (const [key, value] of Object.entries(definition.bonus || {})) {
     totals[key] = Math.round(value * scale * 1000) / 1000;
   }
   for (const option of instance.options || []) {
-    totals[option.key] = Math.round(((totals[option.key] || 0) + option.value) * 1000) / 1000;
+    totals[option.key] = Math.round(((totals[option.key] || 0) + option.value * enhance) * 1000) / 1000;
   }
   return totals;
 }

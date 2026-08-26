@@ -25,6 +25,7 @@ import {
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
 import { STARTING_PARTY, createAutoBattle, issuePlayerAction, tickAutoBattle } from "../src/adventure.js";
+import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, enhanceCost, enhanceOdds, repairCost } from "../src/classes.js";
 import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
@@ -934,6 +935,100 @@ test("치명타 확률은 100%까지 올릴 수 있다", () => {
   const stats = playerCombatStats(commander, "crusader");
   assert.equal(stats.criticalChance, 1, "상한이 100%다");
   delete EQUIPMENT_DEFS.__critCap;
+});
+
+test("안전 구간 강화는 절대 부서지지 않는다", () => {
+  // 3지역 진입에 필요한 정도의 강화는 안전 구간 안에서 달성할 수 있어야 한다.
+  // 운이 나빠서 진행이 막히면 안 된다.
+  // enhanceOdds(L)은 "L에서 L+1로 올릴 때"의 확률이다.
+  // +3까지 안전하게 도달해야 하므로 안전한 전이는 0->1, 1->2, 2->3 이다.
+  for (let level = 0; level < ENHANCE_SAFE_LEVEL; level += 1) {
+    assert.equal(enhanceOdds(level).break, 0, `+${level} -> +${level + 1}은 부서지지 않아야 한다`);
+  }
+  assert.ok(enhanceOdds(ENHANCE_SAFE_LEVEL).break > 0,
+    "+3을 넘기려는 순간부터 부서질 수 있다");
+
+  // 실제로 안전 구간을 100번 돌려도 부서지지 않는다.
+  const engine = new GameEngine(new MemoryStorage());
+  for (const key of Object.keys(engine.state.meta.materials)) engine.state.meta.materials[key] = 99999;
+  const commander = engine.state.adventure.commander;
+
+  for (let trial = 0; trial < 100; trial += 1) {
+    commander.equipmentOwned = [{
+      uid: "t", defId: "heavyPlate", grade: "common", options: [], enhance: 0, broken: false
+    }];
+    const instance = commander.equipmentOwned[0];
+    while ((instance.enhance || 0) < ENHANCE_SAFE_LEVEL && !instance.broken) {
+      engine.enhanceEquipment("t");
+    }
+    assert.equal(instance.broken, false, "안전 구간에서는 부서지지 않는다");
+  }
+});
+
+test("강화하면 보너스가 오르고, 부서지면 아무것도 주지 않는다", () => {
+  const base = { uid: "t", defId: "heavyPlate", grade: "common", options: [{ key: "maxHpBonus", value: 0.05 }] };
+
+  const plain = instanceBonuses({ ...base, enhance: 0, broken: false });
+  const forged = instanceBonuses({ ...base, enhance: 5, broken: false });
+  assert.ok(forged.maxHpBonus > plain.maxHpBonus, "강화하면 자체 보너스가 오른다");
+  assert.ok(forged.armorBonus > plain.armorBonus, "굴린 옵션이 아닌 기본 보너스도 오른다");
+
+  const broken = instanceBonuses({ ...base, enhance: 5, broken: true });
+  assert.deepEqual(broken, {}, "부서지면 끼고 있어도 없는 것과 같다");
+});
+
+test("부서진 장비는 수리해야 다시 쓸 수 있고, 수리가 강화보다 비싸다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  for (const key of Object.keys(engine.state.meta.materials)) engine.state.meta.materials[key] = 99999;
+  const commander = engine.state.adventure.commander;
+  commander.equipmentOwned = [{
+    uid: "t", defId: "heavyPlate", grade: "common", options: [], enhance: 5, broken: true
+  }];
+  const instance = commander.equipmentOwned[0];
+
+  // 부서진 장비는 강화할 수 없다.
+  assert.equal(engine.enhanceEquipment("t"), false, "부서진 채로는 강화 불가");
+
+  assert.equal(engine.repairEquipment("t"), true);
+  assert.equal(instance.broken, false, "수리하면 다시 쓸 수 있다");
+  assert.equal(instance.enhance, 5, "강화 단계는 유지된다(파괴가 아니라 파손)");
+  assert.equal(engine.repairEquipment("t"), false, "멀쩡한 걸 또 수리할 수는 없다");
+
+  // 수리가 강화보다 무거워야 "부서지면 아프다"가 체감된다.
+  const definition = EQUIPMENT_DEFS.heavyPlate;
+  const enhance = enhanceCost(definition, 5);
+  const repair = repairCost(definition, 5);
+  for (const key of Object.keys(repair)) {
+    assert.ok(repair[key] > enhance[key], `${key} 수리비가 강화비보다 비싸야 한다`);
+  }
+});
+
+test("재료가 모자라면 강화도 수리도 되지 않는다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  for (const key of Object.keys(engine.state.meta.materials)) engine.state.meta.materials[key] = 0;
+  const commander = engine.state.adventure.commander;
+  commander.equipmentOwned = [{
+    uid: "t", defId: "heavyPlate", grade: "common", options: [], enhance: 0, broken: false
+  }];
+  assert.equal(engine.enhanceEquipment("t"), false, "재료가 없으면 강화 불가");
+
+  commander.equipmentOwned[0].broken = true;
+  assert.equal(engine.repairEquipment("t"), false, "재료가 없으면 수리 불가");
+  assert.equal(commander.equipmentOwned[0].broken, true, "실패해도 상태는 그대로");
+});
+
+test("강화 단계가 오를수록 성공률이 낮아지고 파손률이 오른다", () => {
+  let previousSuccess = 2;
+  let previousBreak = -1;
+  for (let level = 0; level < ENHANCE_MAX; level += 1) {
+    const odds = enhanceOdds(level);
+    assert.ok(odds.success <= previousSuccess, `+${level} 성공률이 이전보다 높으면 안 된다`);
+    assert.ok(odds.break >= previousBreak || level <= ENHANCE_SAFE_LEVEL,
+      `+${level} 파손률이 이전보다 낮으면 안 된다`);
+    assert.ok(odds.success + odds.break <= 1, "성공+파손이 100%를 넘을 수 없다");
+    previousSuccess = odds.success;
+    previousBreak = odds.break;
+  }
 });
 
 test("던전을 정복하면 개방되고, 개척 주기마다 영지에 정기 수익이 들어온다", () => {

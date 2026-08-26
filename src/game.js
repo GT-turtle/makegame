@@ -1,5 +1,5 @@
 import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
-import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, equipmentGradeDefinition, findEquipmentInstance, releaseEquipmentEverywhere, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem } from "./classes.js";
+import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, ENHANCE_MAX, enhanceCost, enhanceOdds, equipmentGradeDefinition, findEquipmentInstance, releaseEquipmentEverywhere, repairCost, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem } from "./classes.js";
 import {
   activeWorkerCount,
   addMaterial,
@@ -2327,6 +2327,62 @@ export class GameEngine {
       if (commander.equipped[slot] === uid) commander.equipped[slot] = null;
     }
     this.addLog(`${EQUIPMENT_DEFS[instance.defId]?.name || "장비"} 폐기.`, "item");
+    this.emit();
+    return true;
+  }
+
+  // 재료가 충분한지 확인하고, 충분하면 소모한다.
+  spendMaterials(cost) {
+    for (const [id, amount] of Object.entries(cost)) {
+      if ((this.state.meta.materials[id] || 0) < amount) return false;
+    }
+    for (const [id, amount] of Object.entries(cost)) this.state.meta.materials[id] -= amount;
+    return true;
+  }
+
+  // 장비 강화. 성공하면 단계가 오르고, 실패하면 그대로거나 부서진다.
+  // 부서져도 사라지지는 않는다 — 파괴가 아니라 파손이라 수리하면 다시 쓴다.
+  enhanceEquipment(uid) {
+    const commander = this.state.adventure.commander;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+
+    const instance = findEquipmentInstance(commander, uid);
+    const definition = EQUIPMENT_DEFS[instance?.defId];
+    if (!definition || instance.broken) return false;
+
+    const level = instance.enhance || 0;
+    if (level >= ENHANCE_MAX) return false;
+    if (!this.spendMaterials(enhanceCost(definition, level))) return false;
+
+    const odds = enhanceOdds(level);
+    const roll = this.nextCraftRoll();
+    if (roll < odds.success) {
+      instance.enhance = level + 1;
+      this.addLog(`${definition.name} 강화 성공 +${instance.enhance}`, "item");
+    } else if (roll < odds.success + odds.break) {
+      // 안전 구간(ENHANCE_SAFE_LEVEL 이하)에서는 break가 0이라 여기 오지 않는다.
+      instance.broken = true;
+      this.addLog(`${definition.name} 강화 실패 — 부서졌다. 수리해야 쓸 수 있다.`, "danger");
+    } else {
+      this.addLog(`${definition.name} 강화 실패 — 단계는 그대로다.`, "item");
+    }
+    this.emit();
+    return true;
+  }
+
+  // 부서진 장비 수리. 강화보다 무겁게 잡아 "부서지면 아프다"가 체감되게 한다.
+  // 그 장비를 만든 재료를 다시 요구하므로, 전설이라면 그 보스를 다시 찾아가게 된다.
+  repairEquipment(uid) {
+    const commander = this.state.adventure.commander;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+
+    const instance = findEquipmentInstance(commander, uid);
+    const definition = EQUIPMENT_DEFS[instance?.defId];
+    if (!definition || !instance.broken) return false;
+    if (!this.spendMaterials(repairCost(definition, instance.enhance || 0))) return false;
+
+    instance.broken = false;
+    this.addLog(`${definition.name} 수리 완료.`, "item");
     this.emit();
     return true;
   }
