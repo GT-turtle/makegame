@@ -727,16 +727,26 @@ export function equipmentGradeDefinition(gradeId) {
 export const EQUIPMENT_OPTION_POOLS = {
   weapon: [
     { key: "damageBonus", min: 0.02, max: 0.06 },
-    { key: "cooldownReduction", min: 0.01, max: 0.04 }
+    { key: "cooldownReduction", min: 0.01, max: 0.04 },
+    { key: "criticalChance", min: 0.01, max: 0.05 },
+    { key: "criticalDamage", min: 0.05, max: 0.25 },
+    { key: "attackSpeedBonus", min: 0.02, max: 0.08 },
+    { key: "statusPowerBonus", min: 0.03, max: 0.12 }
   ],
   armor: [
     { key: "maxHpBonus", min: 0.02, max: 0.07 },
-    { key: "armorBonus", min: 0.01, max: 0.03 }
+    { key: "armorBonus", min: 0.01, max: 0.03 },
+    { key: "statusResistBonus", min: 0.02, max: 0.08 },
+    { key: "moveSpeedBonus", min: 0.02, max: 0.06 },
+    { key: "cooldownReduction", min: 0.01, max: 0.03 }
   ],
   accessory: [
     { key: "manaRegenBonus", min: 0.1, max: 0.5 },
     { key: "cooldownReduction", min: 0.01, max: 0.04 },
-    { key: "damageBonus", min: 0.01, max: 0.04 }
+    { key: "damageBonus", min: 0.01, max: 0.04 },
+    { key: "criticalChance", min: 0.01, max: 0.04 },
+    { key: "moveSpeedBonus", min: 0.02, max: 0.07 },
+    { key: "statusResistBonus", min: 0.02, max: 0.06 }
   ]
 };
 
@@ -1199,6 +1209,46 @@ Object.assign(EQUIPMENT_DEFS, LEGENDARY_DEFS);
 // 지역 진행용 목걸이도 같은 목록에 합친다 — 제작·장착이 일반 장비와 같은 경로를 탄다.
 Object.assign(EQUIPMENT_DEFS, REGION_WARD_DEFS);
 
+// 강함의 척도. 이 게임에는 레벨이 없으므로 "스탯 총량"이 성장의 눈금이 된다.
+// 단위가 제각각이라(체력 60, 방어력 0.18, 치명타 0.055) 그대로 더할 수 없어
+// 각 스탯을 같은 저울로 환산한 뒤 합친다. 가중치는 "전투에서 체감되는 크기"
+// 기준이며, 절대값보다 **장비를 바꿨을 때 늘고 주는지**를 보기 위한 지표다.
+const POWER_WEIGHTS = {
+  maxHp: 1,
+  damage: 12,
+  armor: 220,            // 0.01 오르면 2.2
+  criticalChance: 160,   // 1% 오르면 1.6
+  criticalDamage: 40,    // 0.1배 오르면 4
+  cooldownReduction: 200,
+  speed: 3,
+  statusResistance: 120,
+  statusPotency: 30,
+  manaRegen: 8,
+  hpRegen: 20
+};
+
+export function combatPowerScore(stats = {}) {
+  let total = 0;
+  for (const [key, weight] of Object.entries(POWER_WEIGHTS)) {
+    total += (Number(stats[key]) || 0) * weight;
+  }
+  // 공격 주기는 짧을수록 강하다. 기준 700ms 대비 얼마나 빠른지로 환산한다.
+  const attackMs = Number(stats.attackMs) || 700;
+  total += (700 / attackMs - 1) * 120;
+  return Math.round(total);
+}
+
+// 스탯별 기여도. UI에서 "무엇이 내 전투력을 올리고 있는지" 보여줄 때 쓴다.
+export function combatPowerBreakdown(stats = {}) {
+  const rows = Object.entries(POWER_WEIGHTS)
+    .map(([key, weight]) => ({ key, value: Number(stats[key]) || 0, score: Math.round((Number(stats[key]) || 0) * weight) }))
+    .filter((row) => row.score !== 0);
+  const attackMs = Number(stats.attackMs) || 700;
+  const hasteScore = Math.round((700 / attackMs - 1) * 120);
+  if (hasteScore !== 0) rows.push({ key: "attackMs", value: attackMs, score: hasteScore });
+  return rows.sort((a, b) => b.score - a.score);
+}
+
 export function equipmentDefinition(equipmentId) {
   return EQUIPMENT_DEFS[equipmentId] || null;
 }
@@ -1212,7 +1262,18 @@ export function equipmentForSlot(slotId) {
 // 장착 중인 장비의 보너스를 합산한다. 무기는 직업이 일치할 때만 계산에 들어간다
 // (킷을 바꾼 뒤 장착 해제를 안 한 저장 상태가 있을 수 있어 여기서도 방어적으로 확인).
 export function equippedBonuses(commander = {}, baseClassId = null) {
-  const totals = { damageBonus: 0, cooldownReduction: 0, maxHpBonus: 0, armorBonus: 0, manaRegenBonus: 0 };
+  // 장비가 줄 수 있는 스탯. 여기 없는 키는 장비에 적어도 조용히 무시된다.
+  const totals = {
+    // 기존 5종
+    damageBonus: 0, cooldownReduction: 0, maxHpBonus: 0, armorBonus: 0, manaRegenBonus: 0,
+    // 확장 6종 — 랜덤 옵션 풀을 넓히려면 소비처가 먼저 있어야 한다.
+    criticalChance: 0,     // 치명타 확률
+    criticalDamage: 0,     // 치명타 피해 배율 가산
+    attackSpeedBonus: 0,   // 공격 주기 단축
+    moveSpeedBonus: 0,     // 이동 속도
+    statusResistBonus: 0,  // 내가 받는 상태이상 저항
+    statusPowerBonus: 0    // 내가 거는 상태이상 위력
+  };
   const equipped = commander.equipped || {};
   // 장착표는 인스턴스 uid를 담는다(같은 설계도로 만든 장비도 옵션이 제각각이라
   // 정의 id만으로는 어느 물건인지 특정할 수 없다).
@@ -1273,10 +1334,14 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
   const gear = equippedBonuses(commander, kit.baseClassId);
   const itemCooldownReduction = Math.max(0, Math.min(0.35,
     Number(commander.itemBonuses?.cooldownReduction || 0) + gear.cooldownReduction));
-  const criticalChance = baseClass.statProfile.base.criticalChance == null
-    ? null
-    : Math.max(0, grownValue(profile, "criticalChance", level)
-        + Number(commander.itemBonuses?.criticalChance || 0));
+  // 치명타는 민첩에서 파생시킨다. 예전에는 statProfile.base.criticalChance를 읽었는데
+  // 어떤 직업도 그 값을 정의하지 않아 항상 null이 나오는 죽은 경로였다.
+  // 민첩 기반으로 두면 추적자·매화가 자연히 높고, 모든 직업이 값을 갖는다.
+  const criticalChance = Math.max(0, Math.min(0.75,
+    0.03 + agility * 0.005 + gear.criticalChance
+    + Number(commander.itemBonuses?.criticalChance || 0)));
+  // 치명타 피해 배율. 기본 1.5배에서 장비로 더 올린다.
+  const criticalDamage = 1.5 + gear.criticalDamage;
   const rune = runeDefinition(commander.equippedRuneId);
   const maxHp = Math.round(kit.stats.maxHp + Math.max(0, level - 1) * (2.2 + strength * 0.055))
     * (rune?.id === "redRune" ? 1.08 : 1) * (1 + gear.maxHpBonus);
@@ -1284,7 +1349,11 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
     * (rune?.id === "greenRune" ? 1.08 : 1) * (1 + gear.damageBonus);
   const armor = Math.min(0.58, kit.stats.armor + Math.max(0, level - 1) * 0.0025
     + (rune?.id === "yellowRune" ? 0.03 : 0) + gear.armorBonus);
-  const attackMs = Math.max(280, Math.round(kit.stats.attackMs * (rune?.id === "purpleRune" ? 0.94 : 1)));
+  // 공격 주기는 짧을수록 빠르다. 장비 공격속도는 주기를 나눈다(합산이 아니라 배율).
+  const attackMs = Math.max(280, Math.round(
+    kit.stats.attackMs * (rune?.id === "purpleRune" ? 0.94 : 1) / (1 + gear.attackSpeedBonus)));
+  // 이동 속도. 장판을 걸어서 피하는 게 기본 대응이라 전투 난이도에 직결된다.
+  const speed = kit.stats.speed * (1 + gear.moveSpeedBonus);
   const manaRegen = grownValue(profile, "manaRegen", level) + (rune?.id === "blueRune" ? 0.6 : 0) + gear.manaRegenBonus;
   return {
     ...kit.stats,
@@ -1296,17 +1365,23 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
     divineAffinity,
     natureAffinity,
     maxHp: Math.round(maxHp),
-    damage: Math.round(damage),
+    // 정수로 반올림하지 않는다. 기본 공격력이 7 수준이라 반올림하면 +5% 같은
+    // 보너스가 통째로 사라진다(심연의 대부 +12%가 7 -> 7이 되던 버그).
+    // 실제 피해를 낼 때 Math.round를 한 번만 하도록 정밀도를 여기서 유지한다.
+    damage: Math.round(damage * 100) / 100,
     armor,
     attackMs,
     hpRegen: grownValue(profile, "hpRegen", level),
     maxMana: Math.round(grownValue(profile, "maxMana", level)),
     manaRegen,
-    statusResistance: Math.max(0, Math.min(0.6, grownValue(profile, "statusResistance", level))),
-    statusPotency: 1 + intelligence * 0.02,
+    statusResistance: Math.max(0, Math.min(0.75,
+      grownValue(profile, "statusResistance", level) + gear.statusResistBonus)),
+    statusPotency: 1 + intelligence * 0.02 + gear.statusPowerBonus,
     healingPower: 1 + defense * 0.012 + divineAffinity * 0.025,
     summonPower: 1 + intelligence * 0.018 + natureAffinity * 0.025 + (kit.inheritedId === "heavy" ? defense * 0.012 : 0),
+    speed,
     criticalChance,
+    criticalDamage,
     cooldownMultiplier: 1 - itemCooldownReduction,
     cooldownReduction: itemCooldownReduction,
     equippedRuneId: rune?.id || null,

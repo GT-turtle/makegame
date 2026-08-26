@@ -574,6 +574,15 @@ function accumulateCurse(battle, counter) {
   }
 }
 
+// 치명타 굴림. 오래 죽어 있던 스탯을 실제 피해 계산에 연결한 것이라
+// 플레이어 기본 공격과 AI 공격 양쪽에서 같은 함수를 쓴다.
+function rollCritical(battle, actor) {
+  const chance = Number(actor.criticalChance || 0);
+  if (chance <= 0) return 1;
+  if (battleRoll(battle) >= chance) return 1;
+  return Number(actor.criticalDamage || 1.5);
+}
+
 // 플레이어가 적을 때릴 때의 전설 고유효과. 기본 공격 경로와 AI 경로가 갈려 있어
 // 양쪽에서 같은 함수를 부르도록 모아뒀다.
 
@@ -1589,7 +1598,8 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
     statusResistance: definition.statusResistance || 0,
     healingPower: definition.healingPower || 1,
     summonPower: definition.summonPower || 1,
-    criticalChance: definition.criticalChance ?? null,
+    criticalChance: definition.criticalChance ?? 0,
+    criticalDamage: definition.criticalDamage ?? 1.5,
     cooldownMultiplier: definition.cooldownMultiplier || 1,
     maxMana: definition.maxMana || 0,
     mana: definition.maxMana || 0,
@@ -2428,7 +2438,8 @@ export function tickAutoBattle(battle, deltaMs) {
     const lowHealthBonus = actor.hp / actor.maxHp <= 0.5 ? actor.finisher : 1;
     const carryBonus = 1 + activeBuffs * actor.buffCarry;
     const chargeDamage = chargeBoost ? 1.35 + actor.chargeDamage : 1;
-    const rawDamage = actor.damage * (actor.passiveDamageMultiplier || 1) * chargeDamage * lowHealthBonus * carryBonus;
+    const rawDamage = actor.damage * (actor.passiveDamageMultiplier || 1) * chargeDamage * lowHealthBonus * carryBonus
+      * rollCritical(battle, actor);
     const fullDamage = Math.max(1, Math.round(rawDamage * guardReduction * armorReduction));
     const isPlayerTarget = target.id === battle.playerId;
     const dodgeChance = (target.team === "unit" && target.basePassive?.effect === "dodgeChance" ? target.basePassive.chance || 0 : 0)
@@ -3293,8 +3304,10 @@ export function issuePlayerAction(battle, action) {
     const stealthy = Boolean(player.positiveEffects?.stealth);
     // 플레이어의 기본 공격은 AI 유닛과 다른 경로라, 전설 고유효과도 여기서 따로
     // 적용해야 한다(여기 빠뜨리면 동료 공격에만 붙어 사실상 동작하지 않는다).
+    const critical = rollCritical(battle, player);
     const damage = Math.max(1, Math.round(
       player.damage * (player.passiveDamageMultiplier || 1) * (stealthy ? 1.8 : 1)
+      * critical
       * legendaryOutgoingMultiplier(battle, target)
       * (1 - legendaryPiercedArmor(battle, target))
     ));

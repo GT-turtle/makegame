@@ -44,6 +44,7 @@ import {
   REGION_ARMOR_SET
 } from "../src/adventure.js";
 import { MATERIAL_DEFS } from "../src/data.js";
+import { EQUIPMENT_GRADES, combatPowerBreakdown, combatPowerScore } from "../src/classes.js";
 import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, LEGENDARY_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, legendariesForRegion, legendaryCollection, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
 
@@ -1012,8 +1013,10 @@ test("친화도·직업 전용 능력치와 출혈·화상·크루세이더 해�
   assert.ok(necromancerStats.natureAffinity > necromancerStats.divineAffinity);
   assert.ok(crusaderStats.statusResistance > 0);
   assert.equal(necromancerStats.statusResistance, 0);
-  assert.equal(crusaderStats.criticalChance, null);
-  assert.equal(necromancerStats.criticalChance, null);
+  // 치명타는 이제 민첩 파생이라 모든 직업이 값을 갖는다.
+  // (예전에는 어떤 직업도 base.criticalChance를 정의하지 않아 항상 null인 죽은 경로였다.)
+  assert.ok(crusaderStats.criticalChance > 0);
+  assert.ok(necromancerStats.criticalChance > 0);
 
   const battle = createAutoBattle("duneRaiders", "status", "field", [], {}, { commander: crusaderCommander });
   const player = battle.units.find((unit) => unit.controlled);
@@ -2105,6 +2108,112 @@ test("거신의 맹세 폭발은 뭉친 적을 함께 때린다", () => {
   assert.ok(burstLog, "폭발이 발동했다");
   const hitCount = Number((burstLog.match(/적 (\d+)명/) || [])[1] || 0);
   assert.ok(hitCount > 1, `뭉친 적 여럿을 함께 때린다 (${hitCount}명)`);
+});
+
+test("장비 스탯 풀이 11종으로 확장되고 전부 전투 스탯에 반영된다", () => {
+  // 랜덤 옵션 풀을 넓히려면 소비처(실제로 값을 쓰는 스탯)가 먼저 있어야 한다.
+  const withBonus = (bonus) => {
+    const commander = createDefaultCommander();
+    EQUIPMENT_DEFS.__statTest = { id: "__statTest", slot: "ring", name: "검증용", materials: {}, bonus };
+    commander.equipmentOwned = [{ uid: "g0", defId: "__statTest", grade: "common", options: [] }];
+    commander.equipped.ring1 = "g0";
+    return playerCombatStats(commander, "crusader");
+  };
+  const bare = playerCombatStats(createDefaultCommander(), "crusader");
+
+  assert.ok(withBonus({ criticalChance: 0.2 }).criticalChance > bare.criticalChance, "치명타");
+  assert.ok(withBonus({ criticalDamage: 0.5 }).criticalDamage > bare.criticalDamage, "치명타 피해");
+  assert.ok(withBonus({ attackSpeedBonus: 0.3 }).attackMs < bare.attackMs, "공격속도(주기가 짧아진다)");
+  assert.ok(withBonus({ moveSpeedBonus: 0.25 }).speed > bare.speed, "이동속도");
+  assert.ok(withBonus({ statusResistBonus: 0.3 }).statusResistance > bare.statusResistance, "상태저항");
+  assert.ok(withBonus({ statusPowerBonus: 0.4 }).statusPotency > bare.statusPotency, "상태이상 위력");
+
+  delete EQUIPMENT_DEFS.__statTest;
+});
+
+test("치명타는 민첩에서 나오고 실제 피해에 반영된다", () => {
+  // 예전에는 어떤 직업도 base.criticalChance를 정의하지 않아 항상 null이었다.
+  const agile = playerCombatStats(createDefaultCommander(), "heavyTracker");
+  const sturdy = playerCombatStats(createDefaultCommander(), "spiritCrusader");
+  assert.ok(agile.criticalChance > sturdy.criticalChance, "민첩한 직업이 치명타가 높다");
+  assert.ok(sturdy.criticalChance > 0, "모든 직업이 값을 갖는다");
+
+  const fight = (critical) => {
+    const commander = createDefaultCommander();
+    if (critical) {
+      EQUIPMENT_DEFS.__critTest = {
+        id: "__critTest", slot: "ring", name: "검증용", materials: {},
+        bonus: { criticalChance: 0.9, criticalDamage: 1.0 }
+      };
+      commander.equipmentOwned = [{ uid: "g0", defId: "__critTest", grade: "common", options: [] }];
+      commander.equipped.ring1 = "g0";
+    }
+    const battle = createAutoBattle("frostColossusPack", null, null, STARTING_PARTY, {},
+      { rollSeed: 7, commander });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 99999;
+    const target = battle.enemies[0];
+    target.dormant = false;
+    target.maxHp = target.hp = 999999;
+
+    let dealt = 0;
+    for (let i = 0; i < 60; i += 1) {
+      player.x = target.x - 3;
+      player.y = target.y;
+      const before = target.hp;
+      issuePlayerAction(battle, "attack");
+      dealt += before - target.hp;
+      tickAutoBattle(battle, 100);
+      player.hp = 99999;
+    }
+    return dealt;
+  };
+
+  const plain = fight(false);
+  const critty = fight(true);
+  delete EQUIPMENT_DEFS.__critTest;
+  assert.ok(critty > plain * 1.4, `치명타가 실제 피해를 올린다 (${plain} -> ${critty})`);
+});
+
+test("공격력은 정수로 반올림하지 않는다", () => {
+  // 기본 공격력이 7 수준이라 반올림하면 +5% 같은 보너스가 통째로 사라진다.
+  // 실제로 심연의 대부(+12%)가 7 -> 7이 되던 버그가 있었다.
+  const commander = createDefaultCommander();
+  commander.combatKitId = "barbarian";
+  const bare = playerCombatStats(createDefaultCommander(), "barbarian");
+
+  commander.equipmentOwned = [{ uid: "g0", defId: "barbarianGreataxe", grade: "common", options: [] }];
+  commander.equipped.weapon = "g0";
+  const armed = playerCombatStats(commander, "barbarian");
+
+  assert.ok(armed.damage > bare.damage, `무기 보너스가 반영된다 (${bare.damage} -> ${armed.damage})`);
+  assert.ok(!Number.isInteger(armed.damage), "소수점이 살아 있다(작은 보너스가 사라지지 않는다)");
+});
+
+test("전투력 점수는 장비를 갖출수록 오른다", () => {
+  // 레벨이 없으므로 스탯 총량이 강함의 눈금이다.
+  const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), "crusader"));
+
+  const geared = (grade) => {
+    const commander = createDefaultCommander();
+    commander.equipmentOwned = [{ uid: "g0", defId: "heavyPlate", grade, options: [] }];
+    commander.equipped.chest = "g0";
+    return combatPowerScore(playerCombatStats(commander, "crusader"));
+  };
+
+  assert.ok(geared("common") > bare, "장비를 끼면 오른다");
+  // 등급이 오르면 같은 장비라도 점수가 오른다.
+  let previous = 0;
+  for (const grade of EQUIPMENT_GRADES) {
+    const score = geared(grade);
+    assert.ok(score >= previous, `${grade} 등급이 이전보다 낮으면 안 된다`);
+    previous = score;
+  }
+
+  // 무엇이 점수를 올렸는지 분해해서 볼 수 있다.
+  const rows = combatPowerBreakdown(playerCombatStats(createDefaultCommander(), "crusader"));
+  assert.ok(rows.length > 3, "기여 스탯이 여러 개 잡힌다");
+  assert.ok(rows[0].score >= rows[rows.length - 1].score, "기여도 순으로 정렬된다");
 });
 
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {

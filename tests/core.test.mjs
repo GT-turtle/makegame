@@ -695,12 +695,18 @@ test("랜덤 옵션은 부위 계열별 풀에서만 나오고 같은 스탯이 
     const weapon = rollEquipmentOptions("weapon", "fine", 1, rng);
     assert.ok(weapon.every((entry) => weaponKeys.includes(entry.key)));
 
-    for (const entry of [...armor, ...weapon]) {
-      const pool = [...EQUIPMENT_OPTION_POOLS.armor, ...EQUIPMENT_OPTION_POOLS.weapon]
-        .find((option) => option.key === entry.key);
-      assert.ok(entry.value >= pool.min - 1e-9 && entry.value <= pool.max + 1e-9,
-        `${entry.key}=${entry.value}가 ${pool.min}~${pool.max} 범위를 벗어난다`);
-    }
+    // 같은 스탯이 부위마다 다른 범위를 가질 수 있으므로(예: 재사용 감소가
+    // 무기 0.01~0.04, 방어구 0.01~0.03) 반드시 해당 부위의 풀로 검사한다.
+    const inRange = (entries, pool) => {
+      for (const entry of entries) {
+        const option = pool.find((candidate) => candidate.key === entry.key);
+        assert.ok(option, `${entry.key}는 이 부위 풀에 있어야 한다`);
+        assert.ok(entry.value >= option.min - 1e-9 && entry.value <= option.max + 1e-9,
+          `${entry.key}=${entry.value}가 ${option.min}~${option.max} 범위를 벗어난다`);
+      }
+    };
+    inRange(armor, EQUIPMENT_OPTION_POOLS.armor);
+    inRange(weapon, EQUIPMENT_OPTION_POOLS.weapon);
   }
 
   // 풀보다 옵션 칸이 많으면 붙일 수 있는 만큼만 붙는다(방어구 풀은 2개뿐).
