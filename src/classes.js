@@ -757,6 +757,57 @@ export const EQUIPMENT_OPTION_POOLS = {
     { key: "attackSpeedBonus", min: 0.02, max: 0.08 },
     { key: "statusPowerBonus", min: 0.03, max: 0.12 }
   ],
+  // 방어구는 **부위마다 다른 풀**을 쓴다. 다섯 칸이 같은 풀을 쓰면 어느 칸에
+  // 무엇을 끼우든 결과가 같아져서, 다섯 칸이 사실상 한 칸이 된다.
+  //
+  // 나눈 기준은 "그 부위가 실제로 하는 일"이다.
+  //   투구  머리 — 보고 버틴다 → 치명타 확률·상태이상 저항·마나
+  //   갑옷  몸통 — 맞고 버틴다 → 체력·방어 (수치가 가장 크다)
+  //   장갑  손   — 때린다      → 공격속도·치명타 피해·쿨감
+  //   신발  발   — 움직인다    → 이동속도·쿨감
+  //   망토  등   — 흘린다      → 상태이상 저항·이동속도
+  //
+  // 총량은 부위마다 비슷하게 맞췄다(테스트가 잰다). 다른 건 방향뿐이다 —
+  // 한 부위가 "좋은 부위"가 되면 나머지 넷은 그냥 채우는 칸이 된다.
+  helmet: [
+    { key: "criticalChance", min: 0.01, max: 0.04 },
+    { key: "statusResistBonus", min: 0.03, max: 0.09 },
+    { key: "manaRegenBonus", min: 0.1, max: 0.4 },
+    { key: "maxHpBonus", min: 0.02, max: 0.05 },
+    { key: "armorFlat", min: 2, max: 6 }
+  ],
+  chest: [
+    { key: "maxHpBonus", min: 0.04, max: 0.1 },
+    { key: "armorFlat", min: 4, max: 11 },
+    { key: "statusResistBonus", min: 0.02, max: 0.06 },
+    { key: "cooldownReduction", min: 0.01, max: 0.03 }
+  ],
+  // damageFlat은 일부러 뺐다. 전투력 가중치가 12라 이 키 하나가 부위 균형을
+  // 통째로 깬다(장갑만 +95, 신발 +33이 되던 원인). 공격력은 무기 몫으로 두고
+  // 장갑의 정체성은 "속도"로 잡는다.
+  gloves: [
+    { key: "attackSpeedBonus", min: 0.03, max: 0.1 },
+    { key: "criticalDamage", min: 0.06, max: 0.22 },
+    { key: "cooldownReduction", min: 0.02, max: 0.05 },
+    { key: "criticalChance", min: 0.01, max: 0.03 },
+    { key: "armorFlat", min: 2, max: 5 }
+  ],
+  boots: [
+    { key: "moveSpeedBonus", min: 0.03, max: 0.09 },
+    { key: "cooldownReduction", min: 0.01, max: 0.04 },
+    { key: "armorFlat", min: 2, max: 6 },
+    { key: "maxHpBonus", min: 0.02, max: 0.05 },
+    { key: "statusResistBonus", min: 0.02, max: 0.05 }
+  ],
+  cloak: [
+    { key: "statusResistBonus", min: 0.03, max: 0.1 },
+    { key: "moveSpeedBonus", min: 0.02, max: 0.06 },
+    { key: "maxHpBonus", min: 0.03, max: 0.07 },
+    { key: "armorFlat", min: 2, max: 6 },
+    { key: "manaRegenBonus", min: 0.1, max: 0.3 }
+  ],
+
+  // 부위 풀이 없는 방어구가 생기면 여기로 떨어진다.
   armor: [
     { key: "maxHpBonus", min: 0.02, max: 0.07 },
     { key: "armorFlat", min: 2, max: 8 },
@@ -774,9 +825,13 @@ export const EQUIPMENT_OPTION_POOLS = {
   ]
 };
 
+// 부위별 풀을 먼저 보고, 없으면 카테고리 풀로 떨어진다.
+// 무기·장신구는 아직 부위 구분이 없어 카테고리 쪽을 쓴다.
+// itemSlot으로 찾는 이유: 반지 1·2가 같은 풀을 써야 하기 때문이다.
 export function equipmentOptionPool(slotId) {
   const slot = EQUIPMENT_SLOT_DEFS[slotId];
-  return slot ? EQUIPMENT_OPTION_POOLS[slot.category] || [] : [];
+  if (!slot) return [];
+  return EQUIPMENT_OPTION_POOLS[slot.itemSlot] || EQUIPMENT_OPTION_POOLS[slot.category] || [];
 }
 
 // 제작 시 등급 확률. 대장장이 숙련도(0 초심자 ~ 3 장인)가 높을수록 좋은 등급이
@@ -1033,14 +1088,42 @@ export const EQUIPMENT_DEFS = {
   archmageStaff: { id: "archmageStaff", slot: "weapon", name: "현자의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { wood: 3, ingot: 2 }, bonus: { damageFlat: 4, cooldownReduction: 0.12 }, description: "마력 순환을 돕는 대형 지팡이. 공격력이 오르고 스킬 재사용 대기시간이 크게 감소한다." },
 
   // --- 방어구: 직업 제한 없음. 셋 다 "버티기 / 굴리기 / 마력" 방향이 갈린다 ---
-  // 지금은 셋 다 몸통(chest)이다. 투구·장갑·신발·망토 슬롯은 구조만 열어두고
-  // 채울 아이템은 아직 설계 중이다.
+  //
+  // 다섯 부위(투구·갑옷·장갑·신발·망토) × 세 계열이 모두 있다. 부위마다 굴리는
+  // 옵션 풀이 다르므로(EQUIPMENT_OPTION_POOLS) 어느 칸을 무엇으로 채우느냐가
+  // 실제로 다른 결과를 낸다.
+  //
+  // 자체 보너스는 몸통이 가장 크고 장갑·신발이 가장 작다. 부위 크기에 맞춘
+  // 것이기도 하지만, 몸통 하나를 좋은 걸로 맞추는 게 먼저 오게 하려는 순서이기도 하다.
+  //
   // 방어구는 armorFlat(방어 점수)이 본체다. 예전의 armorBonus는 "감소율에 직접 더하는"
   // 값이라 몇 장만 겹쳐도 상한에 닿았다. 점수는 감쇠 곡선을 거치므로 얼마든지 쌓아도
   // 안전하고, 쌓을수록 이득이 줄어 자연히 다른 스탯으로 눈을 돌리게 된다.
+
+  // 몸통 — 가장 무겁고 가장 크다.
   heavyPlate: { id: "heavyPlate", slot: "chest", armorClass: "heavy", setId: "ironbound", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorFlat: 12 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
   scoutLeather: { id: "scoutLeather", slot: "chest", armorClass: "light", setId: "ranger", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorFlat: 6, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
   wardenRobe: { id: "wardenRobe", slot: "chest", armorClass: "cloth", setId: "warden", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorFlat: 6, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
+
+  // 투구 — 머리. 버티는 쪽과 정신 쪽이 갈린다.
+  heavyHelm: { id: "heavyHelm", slot: "helmet", armorClass: "heavy", name: "층철 투구", materials: { ingot: 3, blackSteel: 1 }, bonus: { maxHpBonus: 0.05, armorFlat: 6 }, description: "면갑을 내린 중투구. 체력과 방어가 함께 오른다." },
+  scoutHood: { id: "scoutHood", slot: "helmet", armorClass: "light", name: "순찰자 두건", materials: { wood: 1, ingot: 1, herb: 1 }, bonus: { armorFlat: 3, statusResistBonus: 0.04 }, description: "시야를 가리지 않는 가벼운 두건. 상태이상을 덜 탄다." },
+  wardenCirclet: { id: "wardenCirclet", slot: "helmet", armorClass: "cloth", name: "감시자의 관", materials: { ore: 2, herb: 2 }, bonus: { manaRegenBonus: 0.5, armorFlat: 2 }, description: "이마에 두르는 얇은 관. 마나 회복이 빨라진다." },
+
+  // 장갑 — 손. 때리는 쪽에 가장 가깝다.
+  heavyGauntlets: { id: "heavyGauntlets", slot: "gloves", armorClass: "heavy", name: "층철 건틀릿", materials: { ingot: 2, blackSteel: 1 }, bonus: { attackSpeedBonus: 0.04, armorFlat: 5 }, description: "주먹까지 감싼 강철 장갑. 방어가 오르고 손이 조금 빨라진다." },
+  scoutGrips: { id: "scoutGrips", slot: "gloves", armorClass: "light", name: "순찰자 손보호대", materials: { wood: 1, herb: 1 }, bonus: { attackSpeedBonus: 0.05, armorFlat: 2 }, description: "손가락이 자유로운 보호대. 공격 속도가 빨라진다." },
+  wardenWraps: { id: "wardenWraps", slot: "gloves", armorClass: "cloth", name: "감시자의 손싸개", materials: { herb: 2, ore: 1 }, bonus: { cooldownReduction: 0.04, armorFlat: 2 }, description: "인장을 새긴 천 손싸개. 기술 회전이 빨라진다." },
+
+  // 신발 — 발. 움직이는 쪽.
+  heavySabatons: { id: "heavySabatons", slot: "boots", armorClass: "heavy", name: "층철 각반", materials: { ingot: 3 }, bonus: { maxHpBonus: 0.05, armorFlat: 6 }, description: "정강이까지 덮은 철 각반. 체력과 방어가 오른다." },
+  scoutBoots: { id: "scoutBoots", slot: "boots", armorClass: "light", name: "순찰자 장화", materials: { wood: 2, herb: 1 }, bonus: { moveSpeedBonus: 0.09, armorFlat: 3 }, description: "오래 걷기 위한 가벼운 장화. 이동 속도가 오른다." },
+  wardenSlippers: { id: "wardenSlippers", slot: "boots", armorClass: "cloth", name: "감시자의 신", materials: { wood: 1, herb: 2 }, bonus: { moveSpeedBonus: 0.05, manaRegenBonus: 0.6 }, description: "발소리를 죽이는 신. 이동과 마나 회복이 함께 오른다." },
+
+  // 망토 — 등. 흘리는 쪽.
+  heavyMantle: { id: "heavyMantle", slot: "cloak", armorClass: "heavy", name: "층철 어깨망토", materials: { ingot: 2, herb: 1 }, bonus: { maxHpBonus: 0.05, armorFlat: 4 }, description: "어깨를 덮는 두꺼운 망토. 체력과 방어가 오른다." },
+  scoutCape: { id: "scoutCape", slot: "cloak", armorClass: "light", name: "순찰자 망토", materials: { wood: 1, herb: 2 }, bonus: { moveSpeedBonus: 0.05, statusResistBonus: 0.05 }, description: "바람을 타는 얇은 망토. 이동이 빨라지고 상태이상을 덜 탄다." },
+  wardenShroud: { id: "wardenShroud", slot: "cloak", armorClass: "cloth", name: "감시자의 장막", materials: { herb: 3, ore: 1 }, bonus: { statusResistBonus: 0.07, manaRegenBonus: 0.3 }, description: "주문을 흘려보내는 장막. 상태이상 저항과 마나 회복이 오른다." },
 
   // --- 장신구: 직업 제한 없음. 각각 방어구 하나와 세트를 이룬다 ---
   guardianCharm: { id: "guardianCharm", slot: "necklace", setId: "ironbound", name: "수호의 부적", materials: { herb: 3, ingot: 1 }, bonus: { maxHpBonus: 0.09 }, description: "낡은 수호 부적. 최대 체력이 오른다." },

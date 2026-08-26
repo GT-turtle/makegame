@@ -27,7 +27,7 @@ import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
 import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport } from "../src/frontier.js";
 import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
-import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions } from "../src/classes.js";
+import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -684,7 +684,8 @@ test("대장장이 숙련도가 높을수록 좋은 등급과 높은 옵션 수�
 });
 
 test("랜덤 옵션은 부위 계열별 풀에서만 나오고 같은 스탯이 중복되지 않는다", () => {
-  const armorKeys = EQUIPMENT_OPTION_POOLS.armor.map((entry) => entry.key);
+  // 방어구는 부위마다 풀이 다르므로 chest 풀로 검사한다.
+  const armorKeys = EQUIPMENT_OPTION_POOLS.chest.map((entry) => entry.key);
   const weaponKeys = EQUIPMENT_OPTION_POOLS.weapon.map((entry) => entry.key);
 
   let seed = 7;
@@ -708,12 +709,13 @@ test("랜덤 옵션은 부위 계열별 풀에서만 나오고 같은 스탯이 
           `${entry.key}=${entry.value}가 ${option.min}~${option.max} 범위를 벗어난다`);
       }
     };
-    inRange(armor, EQUIPMENT_OPTION_POOLS.armor);
+    inRange(armor, EQUIPMENT_OPTION_POOLS.chest);
     inRange(weapon, EQUIPMENT_OPTION_POOLS.weapon);
   }
 
-  // 풀보다 옵션 칸이 많으면 붙일 수 있는 만큼만 붙는다(방어구 풀은 2개뿐).
-  assert.equal(rollEquipmentOptions("chest", "mythic", 0, rng).length, EQUIPMENT_OPTION_POOLS.armor.length);
+  // 풀보다 옵션 칸이 많으면 붙일 수 있는 만큼만 붙는다.
+  // 몸통 풀은 4종인데 신화는 5칸이라 4개까지만 붙는다.
+  assert.equal(rollEquipmentOptions("chest", "mythic", 0, rng).length, EQUIPMENT_OPTION_POOLS.chest.length);
 });
 
 test("같은 설계도로 여러 번 만들면 각각 다른 굴림의 장비가 쌓인다", () => {
@@ -1404,4 +1406,99 @@ test("선언된 재료는 모두 초기 상태에 존재한다", () => {
     assert.equal(typeof amount, "number", `${id}는 숫자여야 한다`);
     assert.ok(MATERIAL_DEFS[id], `${id}는 선언된 재료여야 한다`);
   }
+});
+
+test("방어구 다섯 부위는 각자 다른 옵션 풀을 갖고, 어느 한 부위가 정답이 되지 않는다", () => {
+  const slots = ["helmet", "chest", "gloves", "boots", "cloak"];
+
+  // 다섯 칸이 같은 풀을 쓰면 어느 칸에 무엇을 끼우든 결과가 같아져서
+  // 다섯 칸이 사실상 한 칸이 된다.
+  const signatures = slots.map((slot) => equipmentOptionPool(slot).map((o) => o.key).sort().join(","));
+  assert.equal(new Set(signatures).size, slots.length, "부위마다 풀 구성이 달라야 한다");
+  for (const slot of slots) {
+    assert.ok(equipmentOptionPool(slot).length >= 4, `${slot} 풀이 너무 얕다`);
+  }
+
+  // 부위마다 실제로 낄 물건이 있어야 한다. 풀만 나누고 아이템이 없으면
+  // 그 부위는 그냥 빈 칸이다.
+  for (const slot of slots) {
+    const items = Object.values(EQUIPMENT_DEFS).filter((def) => def.slot === slot && !LEGENDARY_DEFS[def.id]);
+    assert.ok(items.length >= 3, `${slot}에 제작 가능한 방어구가 부족하다 (${items.length}개)`);
+    const classes = new Set(items.map((def) => def.armorClass));
+    assert.ok(classes.size >= 3, `${slot}에 세 계열(버티기·굴리기·마력)이 다 있어야 한다`);
+  }
+
+  // 한 부위 안에서 세 계열의 성능이 크게 벌어지면 나머지 둘은 안 쓰인다.
+  const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), "crusader"));
+  const score = (slot, defId) => {
+    const commander = createDefaultCommander();
+    commander.combatKitId = "crusader";
+    commander.equipmentOwned = [{
+      uid: "g", defId, grade: "mythic",
+      options: rollEquipmentOptions(slot, "mythic", 3, () => 0.5), enhance: 0, broken: false
+    }];
+    commander.equipped[slot] = "g";
+    return combatPowerScore(playerCombatStats(commander, "crusader")) - bare;
+  };
+
+  for (const slot of slots) {
+    const values = Object.values(EQUIPMENT_DEFS)
+      .filter((def) => def.slot === slot && !LEGENDARY_DEFS[def.id])
+      .map((def) => score(slot, def.id));
+    const low = Math.min(...values);
+    const high = Math.max(...values);
+    assert.ok(high <= low * 1.35,
+      `${slot} 안에서 계열 간 성능 차가 35%를 넘는다 (${low} ~ ${high})`);
+    assert.ok(low > 0, `${slot}의 모든 방어구가 전투력을 올려야 한다`);
+  }
+});
+
+test("특수 시설 UI가 부르는 엔진 동작 네 가지가 모두 실제로 작동한다", () => {
+  // 화면에 버튼을 붙여도 엔진 쪽이 거절하면 아무 일도 일어나지 않는다.
+  // 네 동작 전부 "구조 전 거부 → 구조 후 성공"까지 확인한다.
+  const engine = new GameEngine(new MemoryStorage());
+  const adventure = engine.state.adventure;
+  const commander = adventure.commander;
+  engine.state.meta.scrap = 999;
+  for (const key of Object.keys(engine.state.meta.materials)) engine.state.meta.materials[key] = 999;
+
+  // 구조 전에는 넷 다 거부된다.
+  assert.equal(engine.buildMageTower(), false);
+  assert.equal(engine.loadMageTowerSpell("blizzard"), false, "마탑이 없으면 장전도 안 된다");
+  assert.equal(engine.buildGolem(), false);
+  commander.equipmentOwned = [{ uid: "e1", defId: "heavyPlate", grade: "common", options: [], enhance: 0, broken: false }];
+  assert.equal(engine.specialForgeEquipment("e1"), false);
+
+  const rescue = (regionId) => {
+    for (const unitId of WORLD_REGION_DEFS[regionId].recruits) {
+      if (!adventure.roster.includes(unitId)) {
+        adventure.roster.push(unitId);
+        adventure.unitProgress[unitId] = newUnitProgress();
+      }
+    }
+    return engine.rescueSpecialCompanion(regionId);
+  };
+  rescue("north");
+  rescue("east");
+  rescue("central");
+
+  // 마탑: 짓고 → 장전하고 → 원정에 실린다.
+  assert.equal(engine.buildMageTower(), true);
+  assert.equal(engine.loadMageTowerSpell("blizzard"), true);
+  const tower = engine.state.meta.estate.mageTower;
+  assert.ok(mageTowerSupport(tower, "suppress") > 0, "장전하면 성공률 보정이 붙는다");
+  assert.equal(engine.loadMageTowerSpell(null), true, "장전 해제도 된다");
+  assert.equal(mageTowerSupport(tower, "suppress"), 0);
+
+  // 골렘: 만들고 → 명부에 오르고 → 편성은 거부된다.
+  assert.equal(engine.buildGolem(), true);
+  const golemId = adventure.roster.find((id) => id.startsWith(GOLEM_UNIT_ID));
+  assert.ok(golemId);
+  assert.equal(engine.togglePartyUnit(golemId), false, "골렘은 파티에 못 들어간다");
+
+  // 특수 단조: 옵션이 한 칸 늘고, 한 번뿐이다.
+  const before = commander.equipmentOwned[0].options.length;
+  assert.equal(engine.specialForgeEquipment("e1"), true);
+  assert.equal(commander.equipmentOwned[0].options.length, before + 1);
+  assert.equal(engine.specialForgeEquipment("e1"), false, "장비당 한 번뿐이다");
 });

@@ -1,7 +1,7 @@
 import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
 import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency } from "./core.js";
 import { GameEngine } from "./game.js";
-import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, ENHANCE_MAX, enhanceCost, enhanceOdds, repairCost, combatPowerScore, companionEquippableSlots, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition , MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress } from "./classes.js";
+import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, ENHANCE_MAX, enhanceCost, enhanceOdds, repairCost, combatPowerScore, companionEquippableSlots, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition , MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, canSpecialForge } from "./classes.js";
 import {
   DUNGEON_VIEW_SIZE,
   FIELD_VIEW_SIZE,
@@ -18,7 +18,7 @@ import {
   WORLD_REGION_DEFS,
   currentZone,
   explorationPath
-, SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES } from "./adventure.js";
+, SPECIAL_UNIT_DEFS, MONSTER_ATLAS_SPECIES, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount } from "./adventure.js";
 import {
   DISCOVERY_SITE_DEFS,
   FRONTIER_FACTION_DEFS,
@@ -39,7 +39,8 @@ import {
   zoneRequirementsMet,
   FAVOR_GIFTS,
   FAVOR_MILESTONES,
-  favorGainPerCycle
+  favorGainPerCycle,
+  MAGE_TOWER_SPELL_DEFS, MAGE_TOWER_MAX_LEVEL, MAGE_TOWER_BUILD_COST, mageTowerCharges, mageTowerUnlocked
 } from "./frontier.js";
 import {
   ESTATE_GATE_DEFS,
@@ -424,6 +425,7 @@ function facilityOverlay(state) {
       <div><span>동행 동료</span><strong>${state.adventure.party.length}/${PARTY_LIMIT}명 편성 · 보유 ${state.adventure.roster.length}/15명</strong><small>플레이어는 직접 조작하고 두 동료는 각자 판단해 싸운다.</small></div>
       <button class="primary" data-action="open-roster" ${ongoing ? "disabled" : ""}>부대 편성·육성</button>
     </article>
+    ${specialFacilitySection(state)}
     ${renownSection(state)}
     ${memoryDungeonSection(state, ongoing)}
     <div class="section-heading"><h2>룬</h2><span>지역마다 발견되는 공용 스탯 룬 · 1개만 장착 가능</span></div>
@@ -2078,6 +2080,69 @@ function bonusText(bonus = {}) {
 }
 
 // 영지 명성과 주변 세력 우호도. 다음 선물까지 얼마나 남았는지 보여준다.
+// 구조한 특수 동료가 열어준 시설들. 아무도 구조하지 않았으면 이 구획 자체가
+// 나타나지 않는다 — 잠긴 칸으로 보여주면 "지역마다 하나씩 총 다섯"이라는
+// 사실이 UI로 새어나간다(docs/COMPANION_EVENT_DESIGN.md §5).
+function specialFacilitySection(state) {
+  const roster = state.adventure?.roster || [];
+  const blocks = [mageTowerBlock(state, roster), golemBlock(state, roster)].filter(Boolean);
+  if (!blocks.length) return "";
+  return `<div class="section-heading"><h2>구조가 열어준 것</h2><span>동료가 남긴 기술</span></div>`
+    + blocks.join("");
+}
+
+function mageTowerBlock(state, roster) {
+  if (!mageTowerUnlocked(roster)) return "";
+  const tower = state.meta.estate.mageTower || { level: 0, loadedSpellId: null, chargesUsed: 0 };
+  const level = tower.level || 0;
+  const cost = MAGE_TOWER_BUILD_COST.scrap * (level + 1);
+  const canBuild = level < MAGE_TOWER_MAX_LEVEL && state.meta.scrap >= cost;
+
+  const buildButton = level >= MAGE_TOWER_MAX_LEVEL
+    ? '<em class="upkeep-safe">최고층</em>'
+    : `<button class="ghost" data-action="build-mage-tower"${canBuild ? "" : " disabled"}>`
+      + `${level === 0 ? "마탑 건축" : `${level + 1}층 증축`} · 고철 ${cost}</button>`;
+
+  if (level === 0) {
+    return `<article class="party-management-card"><div><span>마탑</span><strong>아직 세우지 않았다</strong>`
+      + `<small>설계자가 도면을 남겼다. 세우면 원정에 강령을 실을 수 있다.</small></div>${buildButton}</article>`;
+  }
+
+  const charges = mageTowerCharges(level);
+  const left = Math.max(0, charges - (tower.chargesUsed || 0));
+  const spells = Object.values(MAGE_TOWER_SPELL_DEFS).map((spell) => {
+    const selected = tower.loadedSpellId === spell.id;
+    const detail = `토벌 +${Math.round(spell.bonus.suppress * 100)}% · 탐사 +${Math.round(spell.bonus.recon * 100)}%`;
+    return `<button class="${selected ? "selected" : ""}" data-action="load-tower-spell" data-spell-id="${spell.id}"`
+      + ` title="${escapeHtml(spell.description)} (${detail})">${spell.glyph} ${escapeHtml(spell.name)}</button>`;
+  }).join("");
+
+  return `<article class="party-management-card"><div><span>마탑</span><strong>${level}층 · 강령 ${left}/${charges}회</strong>`
+    + `<small>이번 주기에 남은 횟수다. 주기가 지나면 다시 찬다.</small></div>${buildButton}</article>`
+    + `<div class="technique-row"><span>장전</span><b>${tower.loadedSpellId ? escapeHtml(MAGE_TOWER_SPELL_DEFS[tower.loadedSpellId].name) : "비어 있음"}</b></div>`
+    + `<div class="technique-choices">`
+    + `<button class="${tower.loadedSpellId ? "" : "selected"}" data-action="load-tower-spell" data-spell-id="">비움</button>${spells}</div>`
+    + `<p class="facility-note">장전한 마법이 원정 임무 성공률에 더해진다. 횟수가 정해져 있으니 어느 임무에 쓸지가 선택이다.</p>`;
+}
+
+function golemBlock(state, roster) {
+  if (!golemUnlocked(roster)) return "";
+  const built = golemCount(roster);
+  const materials = state.meta.materials || {};
+  const affordable = Object.entries(GOLEM_MATERIALS).every(([id, amount]) => (materials[id] || 0) >= amount);
+  const costText = Object.entries(GOLEM_MATERIALS)
+    .map(([id, amount]) => `${MATERIAL_DEFS[id]?.name || id} ${amount}`).join(" · ");
+  const full = built >= GOLEM_MAX_COUNT;
+
+  const button = full
+    ? '<em class="upkeep-safe">최대 보유</em>'
+    : `<button class="ghost" data-action="build-golem"${affordable ? "" : " disabled"}>복원 · ${escapeHtml(costText)}</button>`;
+
+  return `<article class="party-management-card"><div><span>복원 골렘</span><strong>${built}/${GOLEM_MAX_COUNT}기 보유</strong>`
+    + `<small>고고학자가 도면을 읽어냈다. 원정대 하나를 통째로 맡길 수 있다.</small></div>${button}</article>`
+    + `<p class="facility-note">골렘은 편성에 넣을 수 없다. 분대장 자리를 대신 채우는 병기라, 늘어나는 건 화력이 아니라 동시에 굴릴 수 있는 원정 수다.</p>`;
+}
+
 function renownSection(state) {
   const renown = state.meta.renown || 0;
   const favor = state.meta.favor || {};
@@ -2157,8 +2222,23 @@ function equipmentUpkeepRow(state, instance, definition) {
   const risk = odds.break > 0
     ? `<em class="upkeep-risk">파손 ${Math.round(odds.break * 100)}%</em>`
     : '<em class="upkeep-safe">안전</em>';
+
+  // 특수 단조 — 동부 대장장이를 구조해야 나타난다. 구조 전에는 버튼 자체를
+  // 만들지 않는다. 잠긴 버튼으로 보이면 아직 만나지 않은 동료의 존재가 샌다.
+  let forgeButton = "";
+  if (canSpecialForge(instance, state.adventure.roster)) {
+    const forgeCost = Object.fromEntries(
+      Object.entries(enhanceCost(definition, level)).map(([id, amount]) => [id, amount * 2]));
+    const forgeDisabled = affordable(forgeCost) ? "" : " disabled";
+    forgeButton = `<button class="ghost" data-action="special-forge" data-equipment-id="${instance.uid}"${forgeDisabled}`
+      + ` title="등급이 정한 칸수를 한 칸 넘겨 옵션을 새긴다. 장비당 한 번뿐이다.">특수 단조 · ${escapeHtml(costText(forgeCost))}</button>`;
+  } else if (instance.specialForged) {
+    forgeButton = '<em class="upkeep-safe">특수 단조 완료</em>';
+  }
+
   return `<div class="equipment-upkeep"><span>+${level} → +${level + 1} · 성공 ${Math.round(odds.success * 100)}% ${risk}</span>`
-    + `<button class="ghost" data-action="enhance-equipment" data-equipment-id="${instance.uid}"${disabled}>강화 · ${escapeHtml(costText(cost))}</button></div>`;
+    + `<button class="ghost" data-action="enhance-equipment" data-equipment-id="${instance.uid}"${disabled}>강화 · ${escapeHtml(costText(cost))}</button>`
+    + forgeButton + `</div>`;
 }
 
 function commanderEquipmentSection(state, selectedKit) {
@@ -3310,6 +3390,18 @@ app.addEventListener("click", (event) => {
   if (action === "select-trait") engine.selectTrait(button.dataset.traitId);
   if (action === "craft-equipment") engine.craftEquipment(button.dataset.equipmentId);
   if (action === "discard-equipment") engine.discardEquipment(button.dataset.equipmentId);
+  if (action === "special-forge") {
+    if (!engine.specialForgeEquipment(button.dataset.equipmentId)) showToast("재료가 부족하거나 이미 새긴 장비야.");
+  }
+  if (action === "build-mage-tower") {
+    if (!engine.buildMageTower()) showToast("고철이 부족하거나 이미 최고층이야.");
+  }
+  if (action === "load-tower-spell") {
+    if (!engine.loadMageTowerSpell(button.dataset.spellId || null)) showToast("마탑을 먼저 세워야 해.");
+  }
+  if (action === "build-golem") {
+    if (!engine.buildGolem()) showToast("재료가 부족하거나 이미 최대 보유야.");
+  }
   if (action === "enhance-equipment") engine.enhanceEquipment(button.dataset.equipmentId);
   if (action === "repair-equipment") engine.repairEquipment(button.dataset.equipmentId);
   if (action === "start-memory") engine.startMemoryBattle(button.dataset.encounterId);
