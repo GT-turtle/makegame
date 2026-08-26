@@ -1307,11 +1307,18 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
   const useFieldBattle = Boolean(options.fieldBattle);
   const field = useFieldBattle ? null : createField(seed, regionId);
   const party = [...new Set(partyIds)].filter((unitId) => UNIT_DEFS[unitId]).slice(0, PARTY_LIMIT);
-  const hazardMitigation = party.reduce((total, unitId) => {
+  const partyMitigation = party.reduce((total, unitId) => {
     const unit = UNIT_DEFS[unitId];
     const progress = unitProgress[unitId] || {};
     return total + (unit.regionId === regionId ? 1 : 0) + (progress.secondaryId === region.hazard.techniqueId ? 1 : 0);
   }, 0);
+  // 지역 진행용 목걸이는 **자기 지역에서만** 대응 수치를 준다.
+  // 하나로 모든 지역을 우회하는 범용 해답을 만들지 않는다는 원칙 때문이다
+  // (REGION_PROGRESSION_HAZARDS.md §1).
+  const wardMitigation = equippedUniqueEffects(commander || {})
+    .filter((effect) => effect.type === "regionWard" && effect.regionId === regionId)
+    .reduce((total, effect) => total + (effect.mitigation || 0), 0);
+  const hazardMitigation = partyMitigation + wardMitigation;
   const ambushInterval = Array.isArray(options.ambushInterval) ? options.ambushInterval : [7, 12];
   const firstAmbushRandom = mulberry32(seed + 99173)();
   const firstAmbushStep = ambushInterval[0] + Math.floor(firstAmbushRandom * (ambushInterval[1] - ambushInterval[0] + 1));

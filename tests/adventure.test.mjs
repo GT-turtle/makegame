@@ -1954,6 +1954,83 @@ test("지역별 필드 진행 순서가 문서와 일치한다", () => {
   }
 });
 
+test("지역 진행용 목걸이는 자기 지역에서만 대응 수치를 준다", () => {
+  // 하나로 모든 지역을 우회하는 범용 해답을 만들지 않는다는 원칙
+  // (REGION_PROGRESSION_HAZARDS.md §1 — 개척자의 목걸이가 폐기된 이유).
+  const wear = (defId) => {
+    const commander = createDefaultCommander();
+    if (!defId) return commander;
+    commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+    commander.equipped.necklace = "g0";
+    return commander;
+  };
+  const mitigation = (defId, regionId) =>
+    createRegionRun(regionId, 111, STARTING_PARTY, {}, wear(defId), {}).hazardMitigation;
+
+  const bare = mitigation(null, "west");
+  const own = mitigation("wardingSoulCharm", "west");
+  const other = mitigation("emberwardCharm", "west");
+
+  assert.ok(own > bare, "자기 지역에서는 대응 수치가 오른다");
+  assert.equal(other, bare, "다른 지역 목걸이는 아무 도움이 안 된다");
+
+  // 목걸이만으로는 부족하고 편성도 맞춰야 완전히 막힌다.
+  const ward = EQUIPMENT_DEFS.wardingSoulCharm.uniqueEffect;
+  assert.ok(ward.mitigation < 4, "목걸이 단독으로는 상한(4)에 못 미친다");
+});
+
+test("서부 목걸이를 차면 저주로 인한 동료 이탈이 막힌다", () => {
+  const run = (defId) => {
+    const commander = createDefaultCommander();
+    if (defId) {
+      commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+      commander.equipped.necklace = "g0";
+    }
+    const regionRun = createRegionRun("west", 111, STARTING_PARTY, {}, commander, {});
+    const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
+      { rollSeed: 3, regionId: "west", commander, hazardMitigation: regionRun.hazardMitigation });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 99999;
+    for (const enemy of battle.enemies) enemy.dormant = true;
+    for (let t = 0; t < 600; t += 1) { tickAutoBattle(battle, 100); player.hp = 99999; }
+    return (battle.fledUnits || []).length;
+  };
+
+  assert.ok(run(null) > 0, "맨몸이면 동료가 이탈한다");
+  assert.ok(run("emberwardCharm") > 0, "엉뚱한 지역 목걸이는 소용없다");
+  assert.equal(run("wardingSoulCharm"), 0, "서부 목걸이를 차면 이탈하지 않는다");
+});
+
+test("지역 진행용 목걸이 5종은 문서의 조합 규칙을 따른다", () => {
+  // 규칙: 1필드 보스 핵심 소재 + 그 지역 광석/금속 + 그 지역 약재.
+  const expected = {
+    north: { ward: "frostwardCharm", key: "frostCore" },
+    south: { ward: "antivenomCharm", key: "venomSac" },
+    east: { ward: "spiritAnchorCharm", key: "spiritCore" },
+    west: { ward: "wardingSoulCharm", key: "durahanSoul" },
+    central: { ward: "emberwardCharm", key: "wormCore" }
+  };
+
+  for (const [regionId, { ward, key }] of Object.entries(expected)) {
+    const definition = EQUIPMENT_DEFS[ward];
+    assert.ok(definition, `${ward}가 정의돼야 한다`);
+    assert.equal(definition.slot, "necklace", "지역 진행용은 목걸이다(한 칸뿐이라 진짜 선택이 된다)");
+    assert.equal(definition.uniqueEffect.regionId, regionId);
+
+    const materials = Object.keys(definition.materials);
+    assert.ok(materials.includes(key), `${ward}는 1필드 보스 핵심 소재 ${key}를 쓴다`);
+    assert.equal(materials.length, 3, "핵심 소재 + 광석 + 약재 세 가지");
+    for (const materialId of materials) {
+      assert.ok(MATERIAL_DEFS[materialId], `${materialId}가 재료로 정의돼야 한다`);
+    }
+  }
+
+  // 다섯 지역이 서로 다른 목걸이를 쓴다.
+  const wards = Object.values(EQUIPMENT_DEFS).filter((entry) => entry.uniqueEffect?.type === "regionWard");
+  assert.equal(wards.length, 5);
+  assert.equal(new Set(wards.map((entry) => entry.uniqueEffect.regionId)).size, 5);
+});
+
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {
   // 서부는 크루세이더·네크로맨서 두 직업의 출신지다.
   const first = dungeonClearRewards("west", 1, []);
