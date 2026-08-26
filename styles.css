@@ -4104,3 +4104,140 @@ body.battle-active .modal-wrap { z-index: 3200; }
   border-color: rgba(190, 120, 200, 0.65);
   background: rgba(150, 90, 170, 0.18);
 }
+
+/* 강화·수리 줄. 카드 바로 아래 붙어 확률과 비용을 누르기 전에 보여준다. */
+/* 카드 + 강화 줄을 한 칸으로 묶는다. */
+.equipment-entry { display: flex; flex-direction: column; }
+.equipment-entry .equipment-card { border-radius: 11px 11px 0 0; }
+
+/* 부서진 장비는 카드 자체가 죽어 보이게 한다 — 보너스를 전혀 주지 않으므로. */
+.equipment-card.is-broken { opacity: 0.5; border-color: #7a3b33; }
+.equipment-card.is-broken .equipment-tag { color: #e07a6a; }
+.equipment-plus { color: var(--gold); font-size: 10px; }
+
+.equipment-upkeep {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  margin-top: -3px;
+  border: 1px solid var(--line);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  background: #17171a;
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.equipment-upkeep.broken { border-color: #7a3b33; background: #241715; }
+.equipment-upkeep .upkeep-risk { color: #e07a6a; font-style: normal; }
+.equipment-upkeep .upkeep-safe { color: #8fbf8a; font-style: normal; }
+
+.equipment-upkeep button {
+  font-size: 9px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  white-space: nowrap;
+}
+
+.equipment-upkeep button[disabled] { opacity: 0.4; }
+
+/* 지역 진입 요구치 요약. 지금 파티로 어디까지 갈 수 있는지 한눈에. */
+.gate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+
+.gate-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.gate-row span { font-size: 10px; color: var(--muted); }
+.gate-row small { font-size: 9px; color: #e07a6a; }
+.gate-row.open { border-color: #4f7a4a; }
+.gate-row.open span { color: var(--text); }
+.gate-row.open small { color: #8fbf8a; }
+
+/* 동료 장비 물려주기. */
+.companion-gear-block + .companion-gear-block { margin-top: 8px; }
+
+.companion-gear-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 0;
+}
+
+.companion-gear-row > span {
+  flex: 0 0 44px;
+  font-size: 9px;
+  color: var(--muted);
+  padding-top: 4px;
+}
+
+.companion-gear-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+
+.companion-gear-chip {
+  font-size: 9px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.companion-gear-chip.selected { border-color: var(--gold); background: #272316; color: var(--gold); }
+.companion-gear-chip.broken { opacity: 0.45; border-style: dashed; }
+
+/* 명성과 외교. 우호도 진행을 막대로 보여준다. */
+.favor-grid { display: grid; gap: 4px; }
+
+.favor-row {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.favor-row span { font-size: 10px; z-index: 1; }
+.favor-row small { font-size: 9px; color: var(--muted); z-index: 1; }
+
+.favor-row i {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #2b3a46, #1d262e);
+  border-right: 1px solid #3d5566;
+}
+
+/* 기억의 방. */
+.memory-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+
+.memory-card {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  padding: 10px;
+  border: 1px solid #4a3f5c;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #1d1826, var(--panel));
+  color: var(--text);
+  text-align: left;
+}
+
+.memory-card strong { font-size: 11px; }
+.memory-card small { font-size: 9px; color: var(--muted); }
+.memory-card i { font-size: 9px; font-style: normal; color: #b49ad8; }
+.memory-card[disabled] { opacity: 0.45; }

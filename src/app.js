@@ -1,7 +1,7 @@
 import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
 import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency } from "./core.js";
 import { GameEngine } from "./game.js";
-import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, ENHANCE_MAX, enhanceCost, enhanceOdds, repairCost, combatPowerScore, companionEquippableSlots, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 import {
   DUNGEON_VIEW_SIZE,
   FIELD_VIEW_SIZE,
@@ -11,6 +11,10 @@ import {
   SECONDARY_DEFS,
   STATUS_EFFECT_DEFS,
   UNIT_DEFS,
+  REGION_ENTRY_POWER,
+  regionEntryCheck,
+  partyPowerScore,
+  memorySummonable,
   WORLD_REGION_DEFS,
   currentZone,
   explorationPath
@@ -32,7 +36,10 @@ import {
   routeRisk,
   siteMaterialId,
   suppressionCyclesRemaining,
-  zoneRequirementsMet
+  zoneRequirementsMet,
+  FAVOR_GIFTS,
+  FAVOR_MILESTONES,
+  favorGainPerCycle
 } from "./frontier.js";
 import {
   ESTATE_GATE_DEFS,
@@ -414,6 +421,8 @@ function facilityOverlay(state) {
       <div><span>동행 동료</span><strong>${state.adventure.party.length}/${PARTY_LIMIT}명 편성 · 보유 ${state.adventure.roster.length}/15명</strong><small>플레이어는 직접 조작하고 두 동료는 각자 판단해 싸운다.</small></div>
       <button class="primary" data-action="open-roster" ${ongoing ? "disabled" : ""}>부대 편성·육성</button>
     </article>
+    ${renownSection(state)}
+    ${memoryDungeonSection(state, ongoing)}
     <div class="section-heading"><h2>룬</h2><span>지역마다 발견되는 공용 스탯 룬 · 1개만 장착 가능</span></div>
     <section class="cards rune-cards">${Object.values(RUNE_DEFS).map((rune) => runeCard(state, rune, ongoing)).join("")}</section>
   `;
@@ -2008,6 +2017,90 @@ function bonusText(bonus = {}) {
     .join(" · ");
 }
 
+// 영지 명성과 주변 세력 우호도. 다음 선물까지 얼마나 남았는지 보여준다.
+function renownSection(state) {
+  const renown = state.meta.renown || 0;
+  const favor = state.meta.favor || {};
+  const claimed = state.meta.favorClaimed || {};
+  const gain = favorGainPerCycle(renown);
+
+  const rows = Object.keys(FAVOR_GIFTS).map((regionId) => {
+    const value = Math.round(favor[regionId] || 0);
+    const taken = claimed[regionId] || [];
+    const next = FAVOR_MILESTONES.find((threshold) => !taken.includes(threshold));
+    const giftId = next ? FAVOR_GIFTS[regionId][next] : null;
+    const giftName = giftId ? equipmentDefinition(giftId)?.name || giftId : null;
+    const region = WORLD_REGION_DEFS[regionId];
+    const detail = next
+      ? `${value}/${next} · 다음 선물 ${escapeHtml(giftName || "")}`
+      : `${value} · 받을 선물 없음`;
+    return `<div class="favor-row"><span>${escapeHtml(region?.name || regionId)}</span><small>${detail}</small>`
+      + `<i style="width:${Math.min(100, value)}%"></i></div>`;
+  }).join("");
+
+  return `<div class="section-heading"><h2>명성과 외교</h2><span>명성 ${renown} · 우호도 +${gain.toFixed(1)}/주기</span></div>`
+    + `<div class="favor-grid">${rows}</div>`
+    + `<p class="facility-note">보스를 잡고 던전을 열수록 명성이 오른다. 명성이 높을수록 주변 세력이 우리를 알아보고, 우호도가 임계를 넘으면 설계도를 보내온다. 명성이 0이면 아무도 관심이 없다.</p>`;
+}
+
+// 영지 기억 던전. 직접 쓰러뜨려 본 보스만 다시 세울 수 있다.
+function memoryDungeonSection(state, ongoing) {
+  const remembered = state.meta.rememberedBosses || [];
+  const list = memorySummonable(remembered);
+  const active = state.memory?.battle;
+
+  if (active) {
+    const alive = active.enemies.filter((enemy) => enemy.hp > 0).length;
+    return `<div class="section-heading"><h2>기억의 방</h2><span>재현 진행 중</span></div>`
+      + `<article class="party-management-card"><div><span>${escapeHtml(active.encounterName)}</span>`
+      + `<strong>남은 적 ${alive}</strong><small>재현이라 패배해도 잃는 것은 없다.</small></div>`
+      + `<button class="danger" data-action="abandon-memory">중단</button></article>`;
+  }
+
+  const cards = list.map((entry) => `
+    <button class="memory-card" data-action="start-memory" data-encounter-id="${entry.id}"${ongoing ? " disabled" : ""}>
+      <strong>${escapeHtml(entry.name)}</strong>
+      <small>${entry.regionBoss ? "지역 보스 · 일회성이었던 상대" : "필드 보스"}</small>
+      <i>재현하기</i>
+    </button>`).join("");
+
+  return `<div class="section-heading"><h2>기억의 방</h2><span>겪은 보스 ${list.length}종</span></div>`
+    + (cards
+      ? `<div class="memory-grid">${cards}</div>`
+      : '<p class="facility-note">아직 재현할 기억이 없다. 보스를 직접 쓰러뜨려야 그 형상을 다시 세울 수 있다.</p>')
+    + `<p class="facility-note">마법으로 기억을 재현한 방이다. 부산물은 절반만 나오고 설계도는 나오지 않는다 — 강화와 수리를 위한 자리이지, 새 전설을 여는 길이 아니다.</p>`;
+}
+
+// 장비 한 점의 강화·수리 줄. 카드 아래에 붙어 "지금 몇 단계이고 다음이 얼마나
+// 위험한지"를 누르기 전에 보여준다 — 파손이 있는 시스템이라 확률을 숨기면 안 된다.
+function equipmentUpkeepRow(state, instance, definition) {
+  const level = instance.enhance || 0;
+  const materials = state.meta.materials || {};
+  const affordable = (cost) => Object.entries(cost).every(([id, amount]) => (materials[id] || 0) >= amount);
+  const costText = (cost) => Object.entries(cost)
+    .map(([id, amount]) => `${MATERIAL_DEFS[id]?.name || id} ${amount}`).join(" · ");
+
+  if (instance.broken) {
+    const cost = repairCost(definition, level);
+    const disabled = affordable(cost) ? "" : " disabled";
+    return `<div class="equipment-upkeep broken"><span>부서짐 · +${level} 유지</span>`
+      + `<button class="ghost" data-action="repair-equipment" data-equipment-id="${instance.uid}"${disabled}>수리 · ${escapeHtml(costText(cost))}</button></div>`;
+  }
+
+  if (level >= ENHANCE_MAX) {
+    return `<div class="equipment-upkeep"><span>+${level} · 최대 강화</span></div>`;
+  }
+
+  const odds = enhanceOdds(level);
+  const cost = enhanceCost(definition, level);
+  const disabled = affordable(cost) ? "" : " disabled";
+  const risk = odds.break > 0
+    ? `<em class="upkeep-risk">파손 ${Math.round(odds.break * 100)}%</em>`
+    : '<em class="upkeep-safe">안전</em>';
+  return `<div class="equipment-upkeep"><span>+${level} → +${level + 1} · 성공 ${Math.round(odds.success * 100)}% ${risk}</span>`
+    + `<button class="ghost" data-action="enhance-equipment" data-equipment-id="${instance.uid}"${disabled}>강화 · ${escapeHtml(costText(cost))}</button></div>`;
+}
+
 function commanderEquipmentSection(state, selectedKit) {
   const commander = state.adventure?.commander;
   if (!commander) return "";
@@ -2065,12 +2158,14 @@ function commanderEquipmentSection(state, selectedKit) {
         const isEquipped = equipped[slot] === instance.uid;
         const set = entry.setId ? ARMOR_SET_DEFS[entry.setId] : null;
 
+        // 카드와 강화 줄을 한 칸에 묶는다 — 따로 두면 어느 장비의 줄인지 알 수 없다.
         return `
-          <button class="equipment-card owned${isEquipped ? " selected" : ""}${entry.legendary ? " legendary" : ""}"
+          <div class="equipment-entry${instance.broken ? " broken" : ""}">
+          <button class="equipment-card owned${isEquipped ? " selected" : ""}${entry.legendary ? " legendary" : ""}${instance.broken ? " is-broken" : ""}"
             style="--grade-color:${grade.color}"
             data-action="equip-equipment" data-equipment-id="${instance.uid}" data-slot="${slot}">
-            <strong>${escapeHtml(entry.name)}</strong>
-            <em class="equipment-tag">${escapeHtml(grade.name)}</em>
+            <strong>${escapeHtml(entry.name)}${(instance.enhance || 0) > 0 ? ` <b class="equipment-plus">+${instance.enhance}</b>` : ""}</strong>
+            <em class="equipment-tag">${instance.broken ? "부서짐" : escapeHtml(grade.name)}</em>
             <small>${escapeHtml(bonusText(instanceBonuses(instance)))}</small>
             ${instance.options?.length
               ? `<small class="equipment-rolled">랜덤 ${escapeHtml(bonusText(Object.fromEntries(instance.options.map((o) => [o.key, o.value]))))}</small>`
@@ -2078,7 +2173,9 @@ function commanderEquipmentSection(state, selectedKit) {
             ${set ? `<small class="equipment-set">${escapeHtml(set.name)} · 2세트 ${escapeHtml(bonusText(set.setBonus))}</small>` : ""}
             <i>${isEquipped ? "장착 중 · 눌러서 해제" : "장착하기"}</i>
             <u class="equipment-discard" data-action="discard-equipment" data-equipment-id="${instance.uid}" title="폐기">✕</u>
-          </button>`;
+          </button>
+          ${equipmentUpkeepRow(state, instance, entry)}
+          </div>`;
       }).join("");
 
     const cards = ownedCards + craftCards;
@@ -2103,11 +2200,76 @@ function commanderEquipmentSection(state, selectedKit) {
       </div>`;
   }).join("");
 
+  const stats = playerCombatStats(commander, commander.combatKitId);
+  const power = combatPowerScore(stats);
+  const party = partyPowerScore(commander, state.adventure.party || [], state.adventure.unitProgress || {});
+
   return `
-    <div class="section-heading"><h2>장비</h2><span>전설 컬렉션 ${collection.collectedCount}/${collection.total}</span></div>
+    <div class="section-heading"><h2>장비</h2><span>전투력 ${power} · 파티 ${party} · 전설 ${collection.collectedCount}/${collection.total}</span></div>
+    ${regionGateSummary(state)}
     ${groups}
-    <p class="facility-note">무기는 직업 전용이고 방어구·장신구는 공용이다. 같은 세트를 맞춰 차면 세트 효과가 붙는다. 부위별 슬롯은 열려 있고 채울 장비는 계속 추가된다.</p>
+    ${companionGearSection(state)}
+    <p class="facility-note">무기는 직업 전용이라 동료에게 넘길 수 없다. 방어구·장신구는 공용이라 쓰던 걸 동료에게 물려줄 수 있고, 지역 진입은 파티 전체 전투력으로 판정한다.</p>
   `;
+}
+
+// 지역별 진입 요구치. 지금 파티로 어디까지 갈 수 있는지 한눈에 보여준다.
+function regionGateSummary(state) {
+  const commander = state.adventure.commander;
+  const party = state.adventure.party || [];
+  const progress = state.adventure.unitProgress || {};
+  const rows = Object.keys(REGION_ENTRY_POWER).map((regionId) => {
+    const check = regionEntryCheck(regionId, commander, party, progress);
+    const region = WORLD_REGION_DEFS[regionId];
+    return `<div class="gate-row${check.allowed ? " open" : ""}">`
+      + `<span>${escapeHtml(region?.name || regionId)}</span>`
+      + `<small>${check.allowed ? "진입 가능" : `${check.shortfall} 부족`} · 요구 ${check.required}</small></div>`;
+  }).join("");
+  return `<div class="section-heading"><h2>지역 진입</h2><span>파티 전투력으로 판정</span></div>`
+    + `<div class="gate-grid">${rows}</div>`;
+}
+
+// 동료에게 장비를 물려주는 칸. 보관함은 지휘관과 공유하므로 여기서 고르면
+// 지휘관이나 다른 동료에게서 떨어져 나온다.
+function companionGearSection(state) {
+  const commander = state.adventure.commander;
+  const owned = commander.equipmentOwned || [];
+  const party = state.adventure.party || [];
+  if (!party.length) return "";
+
+  const slots = companionEquippableSlots();
+  const blocks = party.map((unitId) => {
+    const unit = UNIT_DEFS[unitId];
+    if (!unit) return "";
+    const worn = commander.companionEquipped?.[unitId] || {};
+    const wornCount = slots.filter((slot) => worn[slot.id]).length;
+
+    const rows = slots.map((slotDef) => {
+      const candidates = owned.filter((instance) => {
+        const definition = equipmentDefinition(instance.defId);
+        return definition && definition.slot === slotDef.itemSlot;
+      });
+      if (!candidates.length) return "";
+
+      const chips = candidates.map((instance) => {
+        const definition = equipmentDefinition(instance.defId);
+        const isOn = worn[slotDef.id] === instance.uid;
+        const plus = (instance.enhance || 0) > 0 ? ` +${instance.enhance}` : "";
+        return `<button class="companion-gear-chip${isOn ? " selected" : ""}${instance.broken ? " broken" : ""}"`
+          + ` data-action="equip-companion" data-unit-id="${unitId}" data-equipment-id="${instance.uid}" data-slot="${slotDef.id}">`
+          + `${escapeHtml(definition.name)}${plus}</button>`;
+      }).join("");
+
+      return `<div class="companion-gear-row"><span>${slotDef.name}</span><div class="companion-gear-chips">${chips}</div></div>`;
+    }).join("");
+
+    return `<div class="companion-gear-block">
+      <div class="section-heading"><h2>${escapeHtml(unit.name)}</h2><span>${wornCount}/${slots.length} 착용</span></div>
+      ${rows || '<p class="facility-note">물려줄 방어구·장신구가 아직 없다.</p>'}
+    </div>`;
+  }).join("");
+
+  return `<div class="section-heading"><h2>동료 장비</h2><span>쓰던 것을 물려준다</span></div>${blocks}`;
 }
 
 function phaseModal(state) {
@@ -3082,6 +3244,18 @@ app.addEventListener("click", (event) => {
   if (action === "select-trait") engine.selectTrait(button.dataset.traitId);
   if (action === "craft-equipment") engine.craftEquipment(button.dataset.equipmentId);
   if (action === "discard-equipment") engine.discardEquipment(button.dataset.equipmentId);
+  if (action === "enhance-equipment") engine.enhanceEquipment(button.dataset.equipmentId);
+  if (action === "repair-equipment") engine.repairEquipment(button.dataset.equipmentId);
+  if (action === "start-memory") engine.startMemoryBattle(button.dataset.encounterId);
+  if (action === "abandon-memory") engine.abandonMemoryBattle();
+  if (action === "equip-companion") {
+    // 이미 그 칸에 낀 걸 다시 누르면 해제한다(지휘관 장착과 같은 조작감).
+    const unitId = button.dataset.unitId;
+    const slot = button.dataset.slot;
+    const uid = button.dataset.equipmentId;
+    const worn = engine.state.adventure.commander.companionEquipped?.[unitId]?.[slot];
+    engine.equipCompanionEquipment(unitId, worn === uid ? null : uid, slot);
+  }
   if (action === "equip-equipment") {
     // 이미 장착한 걸 다시 누르면 해제 — 스킬 장착 토글과 같은 조작감.
     const slot = button.dataset.slot;
