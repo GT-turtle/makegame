@@ -18,9 +18,9 @@ import {
 } from "./data.js";
 import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState, createInitialMerchantState } from "./frontier.js";
 import { createDefenseDeployments } from "./defense.js";
-import { EQUIPMENT_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, createEmptyEquipped, createEquipmentInstance, findEquipmentInstance, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
+import { EQUIPMENT_DEFS, MASTERY_MAX, PLAYER_KIT_DEFS, createDefaultCommander, newUnitProgress, createEmptyEquipped, createEquipmentInstance, findEquipmentInstance, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 25;
+export const SAVE_VERSION = 26;
 
 // 영지 행복도(state.meta.estate.happiness)가 생산 속도에 미치는 배율.
 // 기준치(70, 신규 영지의 시작값)에서는 정확히 1.0배 — 기존 저장/테스트의 기준 생산량을 그대로 유지한다.
@@ -302,11 +302,11 @@ export function createInitialState() {
       roster: ["snow_guard", "venom_tracker", "formation_officer", "oath_knight", "desert_lancer"],
       party: ["snow_guard", "oath_knight"],
       unitProgress: {
-        snow_guard: { level: 1, xp: 0, secondaryId: null },
-        venom_tracker: { level: 1, xp: 0, secondaryId: null },
-        formation_officer: { level: 1, xp: 0, secondaryId: null },
-        oath_knight: { level: 1, xp: 0, secondaryId: null },
-        desert_lancer: { level: 1, xp: 0, secondaryId: null }
+        snow_guard: newUnitProgress(),
+        venom_tracker: newUnitProgress(),
+        formation_officer: newUnitProgress(),
+        oath_knight: newUnitProgress(),
+        desert_lancer: newUnitProgress()
       },
       unlockedTechniques: ["survival", "poison", "forging", "oath", "mobility"],
       records: {
@@ -1007,6 +1007,34 @@ export function useHerbKit(state, uid) {
   return { healed, pressureReduced: reduced, text: `${ITEM_DEFS.herbKit.name}: ${effects.join(" · ")}` };
 }
 
+// 레벨 → 숙련 전환(v26). 예전 저장본은 { level, xp, secondaryId }를 갖고 있다.
+//
+// 레벨은 스탯을 줬지만 숙련은 주지 않으므로, 환산은 "얼마나 강했나"가 아니라
+// "얼마나 오래 굴렸나"를 옮기는 작업이다. level 1 = 숙련 0으로 두고 그대로 옮긴다.
+// 강함이 줄어드는 건 의도된 것이다 — 그만큼이 장비 축으로 넘어갔다.
+//
+// 끼고 있던 보조 특성(secondaryId)은 1번 슬롯으로 옮긴다. 다만 그 슬롯은 숙련 2에서
+// 열리므로, 특성을 갖고 있었다면 숙련을 최소 2로 올려준다 — 이미 쓰던 걸
+// 마이그레이션이 빼앗지 않기 위해서다.
+export function migrateUnitProgress(baseProgress, rawProgress) {
+  const merged = { ...baseProgress, ...(rawProgress || {}) };
+  return Object.fromEntries(Object.entries(merged).map(([unitId, raw]) => {
+    const legacyTrait = raw?.secondaryId || null;
+    const traitIds = Array.isArray(raw?.traitIds)
+      ? [raw.traitIds[0] ?? legacyTrait ?? null, raw.traitIds[1] ?? null]
+      : [legacyTrait, null];
+    let mastery = Math.max(0, Math.min(MASTERY_MAX, raw?.mastery ?? ((raw?.level || 1) - 1)));
+    if (traitIds[0] && mastery < 2) mastery = 2;
+    if (traitIds[1] && mastery < 4) mastery = 4;
+    return [unitId, {
+      mastery,
+      xp: Math.max(0, raw?.xp || 0),
+      branchId: raw?.branchId || null,
+      traitIds
+    }];
+  }));
+}
+
 export function migrateState(rawState) {
   if (!rawState || typeof rawState !== "object") return createInitialState();
   const previousVersion = Number(rawState.version || 1);
@@ -1061,10 +1089,16 @@ export function migrateState(rawState) {
       unlockedRegionIds: [...new Set(rawState.adventure?.unlockedRegionIds || base.adventure.unlockedRegionIds)],
       roster: [...new Set(rawState.adventure?.roster || base.adventure.roster)],
       party: [...new Set(rawState.adventure?.party || base.adventure.party)].slice(0, 2),
-      unitProgress: { ...base.adventure.unitProgress, ...(rawState.adventure?.unitProgress || {}) },
+      unitProgress: migrateUnitProgress(base.adventure.unitProgress, rawState.adventure?.unitProgress),
       commander: {
         ...base.adventure.commander,
         ...(rawState.adventure?.commander || {}),
+        // 예전 저장본의 level을 숙련도로 환산한다. 레벨은 1부터, 숙련은 0부터라
+        // -1을 하고, 숙련 상한을 넘지 않게 자른다. level 키는 지워서 남은 코드가
+        // 실수로 다시 읽지 않게 한다.
+        mastery: Math.max(0, Math.min(MASTERY_MAX,
+          rawState.adventure?.commander?.mastery ?? ((rawState.adventure?.commander?.level || 1) - 1))),
+        level: undefined,
         skillLoadouts: {
           ...base.adventure.commander.skillLoadouts,
           ...(rawState.adventure?.commander?.skillLoadouts || {})

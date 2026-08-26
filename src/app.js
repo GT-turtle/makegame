@@ -1,7 +1,7 @@
 import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
 import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency } from "./core.js";
 import { GameEngine } from "./game.js";
-import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, ENHANCE_MAX, enhanceCost, enhanceOdds, repairCost, combatPowerScore, companionEquippableSlots, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, ENHANCE_MAX, enhanceCost, enhanceOdds, repairCost, combatPowerScore, companionEquippableSlots, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition , MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress } from "./classes.js";
 import {
   DUNGEON_VIEW_SIZE,
   FIELD_VIEW_SIZE,
@@ -18,7 +18,7 @@ import {
   WORLD_REGION_DEFS,
   currentZone,
   explorationPath
-} from "./adventure.js";
+, SPECIAL_UNIT_DEFS } from "./adventure.js";
 import {
   DISCOVERY_SITE_DEFS,
   FRONTIER_FACTION_DEFS,
@@ -501,25 +501,62 @@ function roleScore(scores = [1, 1, 1]) {
 function rosterUnitCard(state, unit) {
   const owned = state.adventure.roster.includes(unit.id);
   const selected = state.adventure.party.includes(unit.id);
-  const progress = state.adventure.unitProgress[unit.id] || { level: 1, xp: 0, secondaryId: null };
-  const needed = 8 + progress.level * 6;
+  const progress = state.adventure.unitProgress[unit.id] || newUnitProgress();
+  const mastery = progress.mastery || 0;
+  const maxed = mastery >= MASTERY_MAX;
+  const needed = masteryXpNeeded(mastery);
+  const slots = masterySlots(mastery);
+  const traitIds = progress.traitIds || [];
   const region = WORLD_REGION_DEFS[unit.regionId];
-  const secondary = SECONDARY_DEFS[progress.secondaryId];
-  return `
-    <article class="roster-unit-card ${owned ? "owned" : "locked"} ${selected ? "selected" : ""}" style="--unit-color:${unit.color}">
-      <header><span class="unit-portrait ${portraitClass(portraitIndexForUnit(unit))}" aria-hidden="true"></span><div><p class="eyebrow">${region.direction} · ${unit.role}</p><h3>${owned ? unit.name : "합류하지 않은 동료"}</h3><small>${owned ? `Lv.${progress.level} · 경험 ${progress.xp}/${needed}` : `${region.name} 정복으로 합류`}</small></div>${selected ? '<b class="party-mark">출정</b>' : ""}</header>
-      ${owned ? `<p>${unit.primary} · ${unit.weakness}</p>${roleScore(unit.scores)}` : `<p>${region.description}</p>`}
-      ${owned ? `
-        <div class="technique-row"><span>보조 특성</span><b>${secondary ? `${secondary.glyph} ${secondary.name}` : "없음"}</b></div>
+  const branch = MASTERY_BRANCH_DEFS[progress.branchId];
+  const trainCost = Math.max(2, (mastery + 1) * 3);
+
+  // 다음 숙련 단계에서 무엇이 열리는지 보여준다. 숙련이 수치를 주지 않으므로,
+  // "왜 올리는지"가 화면에 보이지 않으면 올릴 이유가 사라진다.
+  const nextStep = MASTERY_STEPS.find((step) => step.mastery > mastery);
+  const masteryLine = maxed
+    ? `숙련 ${mastery} · 최대`
+    : `숙련 ${mastery} · ${progress.xp}/${needed}${nextStep ? ` → ${nextStep.label}` : ""}`;
+
+  // 특성 칸. 열린 칸만 그린다 — 잠긴 칸은 "왜 못 쓰는지"만 알려준다.
+  const traitSlotRows = slots === 0
+    ? `<p class="facility-note">특성 칸은 숙련 ${MASTERY_STEPS.find((step) => step.unlock === "trait").mastery}에서 열린다.</p>`
+    : Array.from({ length: slots }, (_, index) => {
+      const current = SECONDARY_DEFS[traitIds[index]];
+      return `
+        <div class="technique-row"><span>특성 ${index + 1}</span><b>${current ? `${current.glyph} ${current.name}` : "비어 있음"}</b></div>
         <div class="technique-choices">
-          <button class="${!progress.secondaryId ? "selected" : ""}" data-action="assign-technique" data-unit-id="${unit.id}" data-technique-id="">기본</button>
+          <button class="${!traitIds[index] ? "selected" : ""}" data-action="assign-technique" data-unit-id="${unit.id}" data-slot-index="${index}" data-technique-id="">비움</button>
           ${state.adventure.unlockedTechniques.map((techniqueId) => {
             const technique = SECONDARY_DEFS[techniqueId];
-            return `<button class="${progress.secondaryId === techniqueId ? "selected" : ""}" data-action="assign-technique" data-unit-id="${unit.id}" data-technique-id="${techniqueId}" title="${escapeHtml(technique.description)}">${technique.glyph} ${technique.name}</button>`;
+            // 다른 칸이 이미 쓰는 특성은 고를 수 없다(같은 특성 중복 금지).
+            const takenElsewhere = traitIds.some((id, i) => id === techniqueId && i !== index);
+            return `<button class="${traitIds[index] === techniqueId ? "selected" : ""}" data-action="assign-technique" data-unit-id="${unit.id}" data-slot-index="${index}" data-technique-id="${techniqueId}" ${takenElsewhere ? "disabled" : ""} title="${escapeHtml(technique.description)}">${technique.glyph} ${technique.name}</button>`;
           }).join("")}
-        </div>
+        </div>`;
+    }).join("");
+
+  // 분기는 한 번만 고를 수 있다. 고르고 나면 선택지가 아니라 사실로 표시된다.
+  const branchRow = !masteryBranchUnlocked(mastery)
+    ? ""
+    : branch
+      ? `<div class="technique-row"><span>분기</span><b>${branch.glyph} ${branch.name}</b></div>`
+      : `<div class="technique-row"><span>분기</span><b>미정</b></div>
+         <div class="technique-choices">
+           ${Object.values(MASTERY_BRANCH_DEFS).map((entry) =>
+             `<button data-action="assign-branch" data-unit-id="${unit.id}" data-branch-id="${entry.id}" title="${escapeHtml(entry.description)}">${entry.glyph} ${entry.name}</button>`).join("")}
+         </div>`;
+
+  return `
+    <article class="roster-unit-card ${owned ? "owned" : "locked"} ${selected ? "selected" : ""}" style="--unit-color:${unit.color}">
+      <header><span class="unit-portrait ${portraitClass(portraitIndexForUnit(unit))}" aria-hidden="true"></span><div><p class="eyebrow">${region.direction} · ${unit.role}</p><h3>${owned ? unit.name : "합류하지 않은 동료"}</h3><small>${owned ? masteryLine : `${region.name} 정복으로 합류`}</small></div>${selected ? '<b class="party-mark">출정</b>' : ""}</header>
+      ${owned ? `<p>${unit.primary} · ${unit.weakness}</p>${roleScore(unit.scores)}` : `<p>${region.description}</p>`}
+      ${owned && unit.specialPassive ? `<div class="technique-row"><span>고유 패시브</span><b title="${escapeHtml(unit.specialPassive.description)}">${escapeHtml(unit.specialPassive.name)}</b></div>` : ""}
+      ${owned ? `
+        ${branchRow}
+        ${traitSlotRows}
         <div class="roster-actions">
-          <button class="secondary" data-action="train-unit" data-unit-id="${unit.id}" ${state.meta.scrap < Math.max(2, progress.level * 2) ? "disabled" : ""}>훈련 ${Math.max(2, progress.level * 2)}</button>
+          <button class="secondary" data-action="train-unit" data-unit-id="${unit.id}" ${maxed || state.meta.scrap < trainCost ? "disabled" : ""}>${maxed ? "숙련 최대" : `훈련 ${trainCost}`}</button>
           <button class="${selected ? "ghost" : "primary"}" data-action="toggle-party-unit" data-unit-id="${unit.id}">${selected ? "편성 해제" : partyLimitLabel(state)}</button>
         </div>
       ` : ""}
@@ -543,7 +580,14 @@ function rosterOverlay(state) {
         ${Object.values(WORLD_REGION_DEFS).map((region) => `
           <section class="roster-region" style="--region-color:${region.accent}">
             <div class="section-heading"><h2>${region.glyph} ${region.name}</h2><span>${region.subtitle}</span></div>
-            <div class="roster-grid">${region.recruits.map((unitId) => rosterUnitCard(state, UNIT_DEFS[unitId])).join("")}</div>
+            <div class="roster-grid">${region.recruits
+              // 특수 동료는 구조하기 전까지 이 목록에 아예 나타나지 않는다. 잠긴 칸으로라도
+              // 보이면 "지역마다 하나씩 총 다섯"이라는 사실이 UI로 새어나가는데,
+              // 설계 문서가 그걸 금지한다(COMPANION_EVENT_DESIGN.md §6).
+              .concat(Object.values(SPECIAL_UNIT_DEFS)
+                .filter((unit) => unit.regionId === region.id && state.adventure.roster.includes(unit.id))
+                .map((unit) => unit.id))
+              .map((unitId) => rosterUnitCard(state, UNIT_DEFS[unitId])).join("")}</div>
           </section>
         `).join("")}
       </section>
@@ -755,7 +799,7 @@ function squadPreview(state, compact = false) {
   return `
     <section class="squad-preview ${compact ? "compact" : ""}" aria-label="원정 부대 편성">
       <article class="commander-slot">
-        <span class="${portraitClass(0)}"></span><div><strong>직접 조작 · ${escapeHtml(commander.name)}</strong><small>Lv.${commander.level} · 조이스틱 이동/직접 공격</small></div>
+        <span class="${portraitClass(0)}"></span><div><strong>직접 조작 · ${escapeHtml(commander.name)}</strong><small>숙련 ${commander.mastery || 0} · 조이스틱 이동/직접 공격</small></div>
       </article>
       ${party.map((unitId) => {
         const unit = UNIT_DEFS[unitId];
@@ -1999,19 +2043,30 @@ function classOverlay(state) {
 
 const BONUS_LABELS = {
   maxHpBonus: "체력",
+  damageFlat: "공격력",
   damageBonus: "공격력",
+  armorFlat: "방어",
   armorBonus: "방어력",
   cooldownReduction: "재사용 감소",
-  manaRegenBonus: "마나 회복"
+  manaRegenBonus: "마나 회복",
+  criticalChance: "치명타 확률",
+  criticalDamage: "치명타 피해",
+  attackSpeedBonus: "공격 속도",
+  moveSpeedBonus: "이동 속도",
+  statusResistBonus: "상태이상 저항",
+  statusPowerBonus: "상태이상 위력"
 };
 
-// manaRegenBonus만 절대값이고 나머지는 비율이라 표기를 나눈다.
+// 절대값으로 붙는 키와 비율로 붙는 키가 섞여 있어서 표기를 나눈다.
+// damageFlat·armorFlat은 "점수"라 퍼센트로 쓰면 뜻이 완전히 달라진다.
+const FLAT_BONUS_KEYS = new Set(["manaRegenBonus", "damageFlat", "armorFlat"]);
+
 function bonusText(bonus = {}) {
   return Object.entries(bonus)
     .map(([key, value]) => {
       const label = BONUS_LABELS[key] || key;
-      return key === "manaRegenBonus"
-        ? `${label} +${value}`
+      return FLAT_BONUS_KEYS.has(key)
+        ? `${label} +${Math.round(value * 10) / 10}`
         : `${label} +${Math.round(value * 100)}%`;
     })
     .join(" · ");
@@ -3060,10 +3115,16 @@ app.addEventListener("click", (event) => {
     if (!engine.togglePartyUnit(button.dataset.unitId)) showToast("동행 동료는 1~2명으로 편성할 수 있어.");
   }
   if (action === "assign-technique") {
-    if (!engine.assignUnitTechnique(button.dataset.unitId, button.dataset.techniqueId || null)) showToast("지금은 보조 특성을 바꿀 수 없어.");
+    const slotIndex = button.dataset.slotIndex === undefined ? null : Number(button.dataset.slotIndex);
+    if (!engine.assignUnitTechnique(button.dataset.unitId, button.dataset.techniqueId || null, slotIndex)) {
+      showToast("지금은 특성을 바꿀 수 없어. 숙련으로 칸을 먼저 열어야 해.");
+    }
+  }
+  if (action === "assign-branch") {
+    if (!engine.assignUnitBranch(button.dataset.unitId, button.dataset.branchId)) showToast("분기는 숙련 1부터, 한 번만 고를 수 있어.");
   }
   if (action === "train-unit") {
-    if (!engine.trainUnit(button.dataset.unitId)) showToast("훈련에 필요한 고철이 부족해.");
+    if (!engine.trainUnit(button.dataset.unitId)) showToast("고철이 부족하거나 숙련이 이미 최대야.");
   }
   if (action === "fortify-estate") {
     if (!engine.fortifyEstate()) showToast("고철 3개가 필요하거나 최대 단계야.");

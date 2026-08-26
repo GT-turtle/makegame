@@ -42,9 +42,9 @@ import {
   resolveObstacles,
   createFieldBattle,
   REGION_ARMOR_SET
-} from "../src/adventure.js";
+, SPECIAL_UNIT_DEFS } from "../src/adventure.js";
 import { MATERIAL_DEFS } from "../src/data.js";
-import { EQUIPMENT_GRADES, combatPowerBreakdown, combatPowerScore } from "../src/classes.js";
+import { EQUIPMENT_GRADES, combatPowerBreakdown, combatPowerScore, masterySlots, MASTERY_TRAIT_SLOTS, ENHANCE_MAX, playerKitDefinition } from "../src/classes.js";
 import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, LEGENDARY_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, legendariesForRegion, legendaryCollection, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
 
@@ -71,9 +71,39 @@ function gearUp(commander, bySlot, grade = "common") {
 
 // 지역 진입 요구치를 넘기기 위해 파티를 키운다. 진입 게이트 자체를 검증하는
 // 테스트가 아니라면 여기서 요구치를 충족시키고 본론으로 넘어간다.
+// 레벨이 없어졌으므로 요구치를 넘기는 방법은 장비뿐이다 —
+// 이 헬퍼가 장비로만 동작한다는 것 자체가 "성장 = 장비"의 증거다.
 function readyPartyFor(engine) {
+  const commander = engine.state.adventure.commander;
+  let n = 0;
+
+  const give = (defId, slot, unitId) => {
+    const uid = `ready${n++}`;
+    commander.equipmentOwned.push({ uid, defId, grade: "mythic", options: [], enhance: ENHANCE_MAX, broken: false });
+    if (unitId) (commander.companionEquipped[unitId] ||= {})[slot] = uid;
+    else commander.equipped[slot] = uid;
+  };
+
+  // 무기는 직업 잠금이 걸려 있다. 킷과 안 맞는 무기를 쥐여주면 보너스가 통째로
+  // 빠져서 요구치를 못 넘는다 — 지금 킷의 기본 직업에 맞는 무기를 찾아 준다.
+  const baseClassId = playerKitDefinition(commander.combatKitId).baseClassId;
+  const weaponId = Object.values(EQUIPMENT_DEFS)
+    .find((def) => def.slot === "weapon" && def.baseClassId === baseClassId).id;
+
+  give(weaponId, "weapon");
+  give("heavyPlate", "chest");
+  give("guardianCharm", "necklace");
+  give("sagesBand", "ring1");
+  give("sagesBand", "ring2");
+
   for (const unitId of engine.state.adventure.party) {
-    engine.state.adventure.unitProgress[unitId] = { level: 6, xp: 0, secondaryId: null };
+    engine.state.adventure.unitProgress[unitId] = {
+      mastery: 4, xp: 0, branchId: "combat", traitIds: ["survival", "forging"]
+    };
+    give("heavyPlate", "chest", unitId);
+    give("guardianCharm", "necklace", unitId);
+    give("sagesBand", "ring1", unitId);
+    give("sagesBand", "ring2", unitId);
   }
 }
 
@@ -233,7 +263,9 @@ test("게임 저장에는 직접 조작 개척자와 기본 자동전투 동료�
   const storage = new MemoryStorage();
   const engine = new GameEngine(storage);
   assert.equal(engine.state.adventure.commander.name, "개척자");
-  assert.equal(engine.state.adventure.commander.level, 1);
+  // 레벨은 없다. 숙련도로 시작하고, 숙련도는 스탯이 아니라 칸을 연다.
+  assert.equal(engine.state.adventure.commander.mastery, 0);
+  assert.equal(engine.state.adventure.commander.level, undefined);
   assert.deepEqual(engine.state.adventure.roster, STARTING_ROSTER);
   assert.deepEqual(engine.state.adventure.party, STARTING_PARTY);
   assert.equal(engine.startRegionAdventure("north", 7788), true);
@@ -401,15 +433,54 @@ test("필드 조우부터 던전 우두머리와 영지 정산까지 한 원정�
   assert.equal(engine.state.adventure.commander.storedBoss.species, "bear");
 });
 
-test("보유 유닛은 최대 2명까지 편성하고 보조 특성을 교체할 수 있다", () => {
+test("보유 유닛은 최대 2명까지 편성하고, 특성은 숙련으로 연 칸에만 끼울 수 있다", () => {
   const engine = new GameEngine(new MemoryStorage());
   assert.equal(engine.togglePartyUnit("oath_knight"), true);
   assert.equal(engine.state.adventure.party.length, 1);
   assert.equal(engine.togglePartyUnit("desert_lancer"), true);
   assert.equal(engine.state.adventure.party.length, PARTY_LIMIT);
   assert.equal(engine.togglePartyUnit("venom_tracker"), false);
+
+  const progress = engine.state.adventure.unitProgress.snow_guard;
+  // 숙련 0에서는 칸이 없다 — 특성은 숙련의 보상이지 기본 제공이 아니다.
+  assert.equal(masterySlots(progress.mastery), 0);
+  assert.equal(engine.assignUnitTechnique("snow_guard", "oath"), false);
+
+  progress.mastery = 2;
+  assert.equal(masterySlots(progress.mastery), 1);
   assert.equal(engine.assignUnitTechnique("snow_guard", "oath"), true);
-  assert.equal(engine.state.adventure.unitProgress.snow_guard.secondaryId, "oath");
+  assert.equal(progress.traitIds[0], "oath");
+  // 두 번째 칸은 아직 안 열렸다.
+  assert.equal(engine.assignUnitTechnique("snow_guard", "survival"), false);
+
+  progress.mastery = 4;
+  assert.equal(masterySlots(progress.mastery), MASTERY_TRAIT_SLOTS);
+  assert.equal(engine.assignUnitTechnique("snow_guard", "survival"), true);
+  assert.deepEqual(progress.traitIds, ["oath", "survival"]);
+  // 같은 특성을 두 칸에 겹쳐 끼우면 선택이 아니라 수치 두 배가 된다.
+  assert.equal(engine.assignUnitTechnique("snow_guard", "oath", 1), false);
+});
+
+test("특성은 두 칸이 실제 전투 스탯에 함께 반영된다", () => {
+  const build = (traitIds, mastery) => {
+    const commander = createDefaultCommander();
+    const progress = { snow_guard: { mastery, xp: 0, branchId: null, traitIds } };
+    const battle = createAutoBattle("duneRaiders", "t", "field", ["snow_guard"], progress, { commander });
+    return battle.units.find((unit) => !unit.controlled);
+  };
+
+  const none = build([null, null], 4);
+  const one = build(["survival", null], 4);        // 체력 +12%, 방어 +0.04
+  const two = build(["survival", "forging"], 4);   // + 공격 +10%, 방어 +0.03
+
+  assert.ok(one.maxHp > none.maxHp, `한 칸이 반영된다 (${none.maxHp} -> ${one.maxHp})`);
+  assert.ok(two.damage > one.damage, `두 번째 칸도 반영된다 (${one.damage} -> ${two.damage})`);
+  assert.ok(two.armor > one.armor, "두 특성의 방어가 합산된다");
+
+  // 숙련이 모자라면 두 번째 칸은 무시된다 — 마이그레이션이나 리셋으로
+  // 칸 수보다 많이 낀 상태가 되어도 조용히 초과 적용되지 않게.
+  const capped = build(["survival", "forging"], 2);
+  assert.equal(capped.damage, one.damage, "열리지 않은 칸의 특성은 발동하지 않는다");
 });
 
 test("직업은 패시브 1개·스킬 4개·궁 1개를 가지며 전승은 패시브 1개를 더하고 스킬 4개와 궁을 바꾼다", () => {
@@ -492,26 +563,42 @@ test("기본 직업 패시브는 전승 패시브와 별도로 실제 전투에 
   assert.equal(summon.passiveDamageMultiplier, 1);
 });
 
-test("동료는 기본 직업의 패시브를 얻고 스펙이 플레이어 레벨을 따라간다", () => {
+test("동료는 기본 직업의 패시브를 얻고, 스펙은 레벨이 아니라 장비를 따라간다", () => {
   const definition = UNIT_DEFS.winter_berserker;
   assert.equal(definition.baseClassId, "barbarian");
 
-  const lowCommander = createDefaultCommander();
-  const lowBattle = createAutoBattle("duneRaiders", "low", "field", ["winter_berserker"], {}, { commander: lowCommander });
-  const lowCompanion = lowBattle.units.find((unit) => !unit.controlled);
-  assert.equal(lowCompanion.baseClassId, "barbarian");
-  assert.equal(lowCompanion.basePassive.effect, "rageScaling");
+  const build = (setup) => {
+    const commander = createDefaultCommander();
+    setup?.(commander);
+    const battle = createAutoBattle("duneRaiders", "b", "field", ["winter_berserker"], {}, { commander });
+    return battle.units.find((unit) => !unit.controlled);
+  };
 
-  const highCommander = createDefaultCommander();
-  highCommander.level = 10;
-  const highBattle = createAutoBattle("duneRaiders", "high", "field", ["winter_berserker"], {}, { commander: highCommander });
-  const highCompanion = highBattle.units.find((unit) => !unit.controlled);
-  assert.ok(highCompanion.maxHp > lowCompanion.maxHp);
-  assert.ok(highCompanion.damage > lowCompanion.damage);
+  const bare = build();
+  assert.equal(bare.baseClassId, "barbarian");
+  assert.equal(bare.basePassive.effect, "rageScaling");
 
-  lowCompanion.hp = Math.max(1, Math.round(lowCompanion.maxHp * 0.2));
-  tickAutoBattle(lowBattle, 20);
-  assert.ok(lowCompanion.passiveDamageMultiplier > 1);
+  // 레벨은 더 이상 존재하지 않는다. 예전 저장본이 남긴 level 값이 붙어 있어도
+  // 스펙에 아무 영향을 주지 않아야 한다 — 그게 "레벨 없음"의 실제 계약이다.
+  const stale = build((commander) => { commander.level = 10; });
+  assert.equal(stale.maxHp, bare.maxHp, "남아 있는 level 값이 체력을 올리지 않는다");
+  assert.equal(stale.damage, bare.damage, "남아 있는 level 값이 공격력을 올리지 않는다");
+
+  // 성장은 오직 장비로만 일어난다.
+  const geared = build((commander) => {
+    commander.equipmentOwned = [{ uid: "g0", defId: "heavyPlate", grade: "common", options: [] }];
+    commander.companionEquipped = { winter_berserker: { chest: "g0" } };
+  });
+  assert.ok(geared.maxHp > bare.maxHp, `장비가 체력을 올린다 (${bare.maxHp} -> ${geared.maxHp})`);
+  assert.ok(geared.armor > bare.armor, `장비가 방어를 올린다 (${bare.armor} -> ${geared.armor})`);
+
+  const wounded = build();
+  wounded.hp = Math.max(1, Math.round(wounded.maxHp * 0.2));
+  const battle = createAutoBattle("duneRaiders", "low", "field", ["winter_berserker"], {}, { commander: createDefaultCommander() });
+  const companion = battle.units.find((unit) => !unit.controlled);
+  companion.hp = Math.max(1, Math.round(companion.maxHp * 0.2));
+  tickAutoBattle(battle, 20);
+  assert.ok(companion.passiveDamageMultiplier > 1);
 });
 
 test("두 전승의 액티브 10개(스킬 4개+궁 1개 × 2)가 실제 전투 효과로 모두 실행된다", () => {
@@ -2185,19 +2272,29 @@ test("치명타는 민첩에서 나오고 실제 피해에 반영된다", () => 
   assert.ok(critty > plain * 1.4, `치명타가 실제 피해를 올린다 (${plain} -> ${critty})`);
 });
 
-test("공격력은 정수로 반올림하지 않는다", () => {
-  // 기본 공격력이 7 수준이라 반올림하면 +5% 같은 보너스가 통째로 사라진다.
-  // 실제로 심연의 대부(+12%)가 7 -> 7이 되던 버그가 있었다.
-  const commander = createDefaultCommander();
-  commander.combatKitId = "barbarian";
+test("무기 공격력은 곱이 아니라 덧셈으로 붙고, 작은 차이도 사라지지 않는다", () => {
+  // 기본 공격력이 7 수준이라 퍼센트 보너스는 반올림에 통째로 먹혔다.
+  // (심연의 대부 +12%가 7 -> 7이 되던 버그.) 그래서 장비는 고정치를 더하고,
+  // 퍼센트는 룬·버프 같은 배율 층으로만 남긴다.
   const bare = playerCombatStats(createDefaultCommander(), "barbarian");
 
-  commander.equipmentOwned = [{ uid: "g0", defId: "barbarianGreataxe", grade: "common", options: [] }];
-  commander.equipped.weapon = "g0";
-  const armed = playerCombatStats(commander, "barbarian");
+  const armed = (grade) => {
+    const commander = createDefaultCommander();
+    commander.combatKitId = "barbarian";
+    commander.equipmentOwned = [{ uid: "g0", defId: "barbarianGreataxe", grade, options: [] }];
+    commander.equipped.weapon = "g0";
+    return playerCombatStats(commander, "barbarian").damage;
+  };
 
-  assert.ok(armed.damage > bare.damage, `무기 보너스가 반영된다 (${bare.damage} -> ${armed.damage})`);
-  assert.ok(!Number.isInteger(armed.damage), "소수점이 살아 있다(작은 보너스가 사라지지 않는다)");
+  const common = armed("common");
+  assert.equal(Math.round((common - bare.damage) * 1000) / 1000, 6,
+    `일반 등급은 정의된 고정치(6)를 그대로 더한다 (${bare.damage} -> ${common})`);
+
+  // 등급 배율(fine 1.08)은 고정치에 곱해지므로 소수점 차이로 나타난다.
+  // 반올림이 이걸 먹어버리면 등급이 무의미해진다.
+  const fine = armed("fine");
+  assert.ok(fine > common, `상위 등급이 더 세다 (${common} -> ${fine})`);
+  assert.ok(!Number.isInteger(fine), "등급 배율의 소수점이 살아 있다");
 });
 
 test("전투력 점수는 장비를 갖출수록 오른다", () => {
@@ -2327,12 +2424,46 @@ test("전설 장비는 수치가 아니라 보너스 '조합'으로 차별화된
     const kinds = Object.keys(entry.bonus || {});
     assert.ok(kinds.length >= 2, `${entry.id}는 두 가지 이상의 보너스를 함께 준다`);
 
-    for (const [key, value] of Object.entries(entry.bonus)) {
-      // manaRegenBonus만 비율이 아닌 절대값이라 상한이 다르다.
-      const cap = key === "manaRegenBonus" ? 1 : 0.12;
-      assert.ok(value <= cap, `${entry.id}.${key}=${value}가 상한 ${cap}을 넘는다`);
-    }
   }
+
+  // 개별 수치에 상한을 거는 대신 **실제 전투력 기여**를 잰다. 키마다 눈금이
+  // 다르기 때문에(비율 0.06과 점수 9는 비교 자체가 안 된다) 수치 상한은
+  // 제약을 제대로 지키는지 말해주지 못한다. 예전에 그 방식이 카두케우스 57 vs
+  // 요툰베인 367 — 직업만 골라도 6배 차이 나는 상태를 통과시켰다.
+  const weaponContribution = (defId, baseClassId) => {
+    const kitId = Object.values(PLAYER_KIT_DEFS)
+      .find((kit) => kit.baseClassId === baseClassId && !kit.inheritedFrom)?.id
+      ?? Object.values(PLAYER_KIT_DEFS).find((kit) => kit.baseClassId === baseClassId).id;
+    const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), kitId));
+    const commander = createDefaultCommander();
+    commander.combatKitId = kitId;
+    commander.equipmentOwned = [{ uid: "w", defId, grade: "mythic", options: [], enhance: ENHANCE_MAX, broken: false }];
+    commander.equipped.weapon = "w";
+    return combatPowerScore(playerCombatStats(commander, kitId)) - bare;
+  };
+
+  const legendaryWeapons = Object.values(LEGENDARY_DEFS).filter((entry) => entry.slot === "weapon");
+  const contributions = legendaryWeapons.map((entry) => ({
+    id: entry.id, value: weaponContribution(entry.id, entry.baseClassId)
+  }));
+  const lowest = contributions.reduce((a, b) => (a.value <= b.value ? a : b));
+  const highest = contributions.reduce((a, b) => (a.value >= b.value ? a : b));
+  assert.ok(highest.value <= lowest.value * 1.1,
+    `직업별 전설 무기 성능 차가 10%를 넘는다: ${lowest.id} ${lowest.value} vs ${highest.id} ${highest.value}`);
+
+  // 제작 무기도 같은 규칙을 받는다 — 시작 직업 선택이 곧 성능 선택이 되면 안 된다.
+  // EQUIPMENT_DEFS에는 전설도 함께 들어 있어서 걸러낸다.
+  const craftedWeapons = Object.values(EQUIPMENT_DEFS)
+    .filter((def) => def.slot === "weapon" && def.baseClassId && !LEGENDARY_DEFS[def.id]);
+  const crafted = craftedWeapons.map((def) => ({ id: def.id, value: weaponContribution(def.id, def.baseClassId) }));
+  const craftLow = crafted.reduce((a, b) => (a.value <= b.value ? a : b));
+  const craftHigh = crafted.reduce((a, b) => (a.value >= b.value ? a : b));
+  assert.ok(craftHigh.value <= craftLow.value * 1.1,
+    `직업별 제작 무기 성능 차가 10%를 넘는다: ${craftLow.id} ${craftLow.value} vs ${craftHigh.id} ${craftHigh.value}`);
+
+  // 전설이 제작품의 두 배를 넘으면 수집이 선택이 아니라 강제가 된다.
+  assert.ok(highest.value < craftLow.value * 2,
+    `전설이 제작 무기의 두 배를 넘는다 (${craftLow.value} -> ${highest.value})`);
 
   // 전설 무기도 직업 제한을 그대로 받는다(직업군 차별을 만들지 않기 위해,
   // 여섯 직업 각각에 하나씩 있고 장신구 하나만 공용이다).
@@ -2656,4 +2787,80 @@ test("광역 필드 런: 무리를 정리하고 던전 입구까지 걸어가면
   assert.equal(engine.enterAdventureDungeon(), true);
   assert.equal(run.location, "dungeon");
   assert.ok(run.dungeon, "던전이 생성된다");
+});
+
+test("특수 동료 5명은 지역마다 하나씩 있고, 패시브가 실제 전투에서 작동한다", () => {
+  const specials = Object.values(SPECIAL_UNIT_DEFS);
+  assert.equal(specials.length, 5);
+  assert.deepEqual(
+    [...new Set(specials.map((unit) => unit.regionId))].sort(),
+    Object.keys(WORLD_REGION_DEFS).sort(),
+    "지역마다 정확히 하나씩"
+  );
+  for (const unit of specials) {
+    assert.ok(unit.specialPassive?.effect, `${unit.id}는 패시브를 갖는다`);
+    // 지역 모집 목록에 들어가면 "총 5명"이 UI로 새어나간다(설계 문서 §6).
+    assert.ok(!WORLD_REGION_DEFS[unit.regionId].recruits.includes(unit.id),
+      `${unit.id}는 모집 목록에 노출되지 않는다`);
+  }
+
+  const withSpecial = (unitId) => {
+    const battle = createAutoBattle("duneRaiders", "sp", "field", [unitId, "winter_berserker"], {}, {
+      commander: createDefaultCommander()
+    });
+    tickAutoBattle(battle, 20);
+    return battle;
+  };
+  const ally = (battle) => battle.units.find((unit) => unit.defId === "winter_berserker");
+
+  // 등록만 하고 배선을 빠뜨리면 조용히 아무 일도 안 일어난다 —
+  // 다섯 개 전부 실제 값이 바뀌는지 잰다.
+  const baseline = createAutoBattle("duneRaiders", "base", "field", ["snow_guard", "winter_berserker"], {}, {
+    commander: createDefaultCommander()
+  });
+  tickAutoBattle(baseline, 20);
+  const bare = ally(baseline);
+
+  // 쿨감은 "필드에 값이 박혔나"가 아니라 "공격 주기가 실제로 줄었나"로 잰다.
+  // 값만 세팅하고 아무도 안 읽는 배선 누락이 이 프로젝트에서 반복된 실패다.
+  const architectBattle = withSpecial("tower_architect");
+  const architectAlly = ally(architectBattle);
+  architectAlly.cooldown = 0;
+  tickAutoBattle(architectBattle, 4000);
+  assert.ok(architectAlly.passiveCooldownReduction > 0, "마력 회로: 아군 쿨감이 붙는다");
+  assert.ok(architectAlly.cooldown < architectAlly.attackMs,
+    `마력 회로: 공격 주기가 실제로 짧아진다 (${architectAlly.attackMs} -> ${architectAlly.cooldown})`);
+
+  assert.ok(ally(withSpecial("wandering_shaman")).statusPotency > bare.statusPotency, "주술 각인: 상태이상 위력이 오른다");
+  assert.ok(ally(withSpecial("hunted_smith")).armor > bare.armor, "야전 단조: 아군 방어가 오른다");
+  // 지휘 보정은 유닛이 아니라 전투 단위로 집계된다.
+  assert.ok(withSpecial("relic_scholar").commandAura > baseline.commandAura,
+    "유물 해독: 파티 지휘 보정이 오른다");
+
+  // 부활은 쓰러진 다음에만 발동하고, 전투당 한 번뿐이다.
+  const battle = withSpecial("fallen_paladin");
+  const paladin = battle.units.find((unit) => unit.defId === "fallen_paladin");
+  paladin.hp = 0;
+  tickAutoBattle(battle, 20);
+  assert.ok(paladin.hp > 0, "금지된 서약: 쓰러져도 다시 일어선다");
+
+  paladin.hp = 0;
+  tickAutoBattle(battle, 20);
+  assert.equal(paladin.hp, 0, "두 번째는 일어나지 않는다");
+});
+
+test("특수 동료가 쓰러지면 매 틱 얹던 버프는 걷힌다", () => {
+  // 전투 시작 시 한 번 집계되는 것(방어·지휘)은 죽어도 남는다 — 기존 partyArmor와
+  // 같은 규칙이다. 매 틱 얹는 것(쿨감·상태이상 위력)만 걷힌다.
+  const battle = createAutoBattle("duneRaiders", "fade", "field", ["tower_architect", "winter_berserker"], {}, {
+    commander: createDefaultCommander()
+  });
+  tickAutoBattle(battle, 20);
+  const architect = battle.units.find((unit) => unit.defId === "tower_architect");
+  const ally = battle.units.find((unit) => unit.defId === "winter_berserker");
+  assert.ok(ally.passiveCooldownReduction > 0);
+
+  architect.hp = 0;
+  tickAutoBattle(battle, 20);
+  assert.equal(ally.passiveCooldownReduction, 0, "죽은 동료의 쿨감이 남지 않는다");
 });

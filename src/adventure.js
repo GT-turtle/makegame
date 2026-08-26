@@ -1,4 +1,4 @@
-import { ARMOR_SET_DEFS, combatPowerScore, companionBonuses, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_MAX_REDUCTION, ARMOR_SOFTCAP, MASTERY_BRANCH_DEFS, MASTERY_STEPS, MASTERY_TRAIT_SLOTS, MASTERY_MAX, masterySlots, masteryBranchUnlocked, masteryXpNeeded, ARMOR_SET_DEFS, armorReduction, combatPowerScore, companionBonuses, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
 export const DUNGEON_SIZE = 15;
@@ -539,15 +539,36 @@ function tickLegendaryEffects(battle, step) {
 // 동료에게도 장비를 물려주게 된다.
 //
 // 지휘관 혼자로는 어느 지역도 못 넘도록 잡았다. 동료 둘의 몫이 반드시 필요하다.
+//
+// 수치는 레벨을 없앤 뒤 실제로 도달 가능한 대역에 맞춰 다시 잡았다.
+// 2인 파티 기준 실측(맨몸 846 → 신화 +10 1409):
+//
+//   북부   780  맨몸(846)으로 통과. 첫 지역은 열려 있어야 재료를 캘 수 있다.
+//   남부   940  맨몸으로는 못 넘는다. 첫 장비를 제작해야 열린다(일반 +0 = 1082).
+//   동부  1100  일반 장비만으론 빠듯하다. 강화나 특성이 필요하다(일반 +3 = 1162).
+//   서부  1220  등급을 올려야 한다(희귀 +6 = 1259).
+//   중부  1330  희귀 +10 / 전설 +8 / 신화 +6 — 어느 길로 와도 된다.
+//
+// 마지막 관문에 길을 여럿 둔 건 의도적이다. 한 가지 장비만 정답이 되면
+// 파밍이 선택이 아니라 절차가 된다.
 export const REGION_ENTRY_POWER = {
-  north: 700,
-  south: 900,
-  east: 1150,
-  west: 1400,
-  central: 1700
+  north: 780,
+  south: 940,
+  east: 1100,
+  west: 1220,
+  central: 1330
 };
 
 // 파티 전체 전투력. 지휘관 + 동료들의 합이다.
+// 동료의 방어도 지휘관과 같은 감쇠 곡선을 쓴다. 동료 정의의 armor는 이미
+// 감소율(0.28 = 28%)이라 점수로 되돌린 뒤 장비 점수를 더하고 다시 곡선을 태운다.
+// 여기서도 감소율이 1에 닿지 않으므로 동료가 피해를 완전히 무시하는 일은 없다.
+function companionArmor(definition, gear) {
+  const ratio = Math.max(0, Math.min(0.95, definition.armor || 0));
+  const basePoints = ARMOR_SOFTCAP * ratio / (1 - ratio);
+  return armorReduction(basePoints + (gear.armorBonus || 0) * 100 + (gear.armorFlat || 0));
+}
+
 export function partyPowerScore(commander = {}, partyIds = [], unitProgress = {}) {
   const kitId = commander.combatKitId || "crusader";
   let total = combatPowerScore(playerCombatStats(commander, kitId));
@@ -556,19 +577,20 @@ export function partyPowerScore(commander = {}, partyIds = [], unitProgress = {}
     const unit = UNIT_DEFS[unitId];
     if (!unit) continue;
     const gear = companionBonuses(commander, unitId);
-    const progress = unitProgress[unitId] || {};
-    const level = Math.max(1, progress.level || 1);
+    // 특성도 전투력에 들어간다. 숙련도 자체는 들어가지 않는다 —
+    // 숙련은 칸을 열 뿐이고, 힘은 그 칸에 무엇을 끼웠느냐에서 나온다.
+    const trait = mergeTraits(unitTraits(unitProgress[unitId] || {}));
     // 동료는 전투 스탯 산출식이 지휘관과 달라, 같은 저울에 올리기 위해 근사한다.
     total += combatPowerScore({
-      maxHp: unit.maxHp * level * (1 + gear.maxHpBonus),
-      damage: unit.damage * level * (1 + gear.damageBonus),
-      armor: (unit.armor || 0) + gear.armorBonus,
+      maxHp: unit.maxHp * (1 + gear.maxHpBonus + trait.hpBonus),
+      damage: (unit.damage * (1 + trait.damageBonus) + gear.damageFlat) * (1 + gear.damageBonus),
+      armor: companionArmor(unit, { armorBonus: gear.armorBonus + trait.armorBonus, armorFlat: gear.armorFlat }),
       criticalChance: 0.03 + gear.criticalChance,
       criticalDamage: 1.5 + gear.criticalDamage,
       cooldownReduction: gear.cooldownReduction,
-      speed: (unit.speed || 10) * (1 + gear.moveSpeedBonus),
+      speed: (unit.speed || 10) * (1 + gear.moveSpeedBonus + trait.speedBonus),
       statusResistance: (unit.statusResistance || 0) + gear.statusResistBonus,
-      attackMs: Math.max(280, (unit.attackMs || 1200) / (1 + gear.attackSpeedBonus))
+      attackMs: Math.max(280, ((unit.attackMs || 1200) + trait.attackMsBonus) / (1 + gear.attackSpeedBonus))
     });
   }
   return Math.round(total);
@@ -1001,6 +1023,66 @@ export const MONSTER_ECOLOGY_DEFS = {
   ]
 };
 
+// ── 지역별 특수 동료 (docs/COMPANION_EVENT_DESIGN.md §6) ──
+//
+// 지역마다 하나씩, 총 다섯. 구조하면 각자 큰 시스템(마탑·특수룬·특수단조·골렘·부활)을
+// 해금하지만 그건 별도 작업이고, 여기서는 **패시브 하나씩**을 붙인다.
+//
+// 패시브를 고른 기준은 "그 동료가 열어줄 시스템의 맛보기"다. 마탑 설계자는
+// 기술 회전을, 주술사는 상태이상을, 대장장이는 방어를 미리 조금 보여준다.
+// 수치는 일부러 작게 잡았다 — 특수 동료가 "있으면 이기고 없으면 지는" 존재가 되면
+// 숨겨진 발견 요소가 아니라 필수 체크리스트가 된다.
+//
+// recruits에 넣지 않았다. 지역 모집 화면에 잠긴 칸으로 뜨면 "총 5명"이라는 사실이
+// UI로 새어나가는데, 그건 문서가 명시적으로 금지한 것이다(§6).
+export const SPECIAL_UNIT_DEFS = {
+  tower_architect: {
+    id: "tower_architect", name: "마탑 설계자", regionId: "north", role: "유틸", glyph: "▲", color: "#8fb6e0",
+    maxHp: 33, damage: 4, range: 22, speed: 8, attackMs: 1150, armor: 0.07, scores: [1, 1, 4],
+    primary: "마력 회로", weakness: "직접 전투 능력이 낮다.", baseClassId: "archmage", special: true,
+    specialPassive: {
+      id: "arcaneCircuit", name: "마력 회로", effect: "partyCooldown", cooldownReduction: 0.06,
+      description: "아군 전체의 기술 회전을 조금 빠르게 한다."
+    }
+  },
+  wandering_shaman: {
+    id: "wandering_shaman", name: "떠돌이 주술사", regionId: "south", role: "딜·유틸", glyph: "◈", color: "#7fbf8c",
+    maxHp: 31, damage: 5, range: 21, speed: 9, attackMs: 1080, armor: 0.06, poisonDamage: 1, scores: [2, 1, 3],
+    primary: "주술 각인", weakness: "즉발 화력이 없다.", baseClassId: "necromancer", special: true,
+    specialPassive: {
+      id: "runeCarving", name: "주술 각인", effect: "partyStatusPower", statusPotency: 0.18,
+      description: "아군이 거는 상태이상의 위력과 지속시간을 늘린다."
+    }
+  },
+  hunted_smith: {
+    id: "hunted_smith", name: "쫓기던 대장장이", regionId: "east", role: "탱·유틸", glyph: "⚒", color: "#c9925f",
+    maxHp: 46, damage: 6, range: 8, speed: 7, attackMs: 1220, armor: 0.2, scores: [1, 3, 2],
+    primary: "야전 단조", weakness: "원거리 대응이 어렵다.", baseClassId: "crusader", special: true,
+    specialPassive: {
+      id: "fieldForge", name: "야전 단조", effect: "partyArmorPoints", armorFlat: 8,
+      description: "전투 중 아군의 장구를 손봐 방어 점수를 올린다."
+    }
+  },
+  fallen_paladin: {
+    id: "fallen_paladin", name: "타락 직전의 성기사", regionId: "west", role: "탱커", glyph: "†", color: "#b9a2d4",
+    maxHp: 54, damage: 6, range: 8, speed: 7, attackMs: 1240, armor: 0.26, scores: [1, 4, 1],
+    primary: "금지된 서약", weakness: "스스로를 갉아먹는다.", baseClassId: "crusader", special: true,
+    specialPassive: {
+      id: "forbiddenOath", name: "금지된 서약", effect: "reviveOnce", healRatio: 0.35,
+      description: "전투당 한 번, 쓰러져도 체력 일부를 안고 다시 일어난다."
+    }
+  },
+  relic_scholar: {
+    id: "relic_scholar", name: "고고학자", regionId: "central", role: "유틸", glyph: "◎", color: "#d3b273",
+    maxHp: 34, damage: 4, range: 20, speed: 9, attackMs: 1100, armor: 0.09, scores: [1, 2, 4],
+    primary: "유물 해독", weakness: "혼자서는 싸우지 못한다.", baseClassId: "tracker", special: true,
+    specialPassive: {
+      id: "relicReading", name: "유물 해독", effect: "partyCommand", commandAura: 0.08,
+      description: "유물에서 읽어낸 전술로 아군의 피해를 조금 올린다."
+    }
+  }
+};
+
 export const UNIT_DEFS = {
   snow_guard: { id: "snow_guard", name: "설벽 수호자", regionId: "north", role: "탱커", glyph: "▣", color: "#83b8cd", maxHp: 52, damage: 5, range: 7, speed: 7, attackMs: 1200, armor: 0.28, scores: [1, 4, 1], primary: "방패벽", weakness: "기동과 화력이 낮다.", baseClassId: "crusader" },
   winter_berserker: { id: "winter_berserker", name: "빙원 광전사", regionId: "north", role: "딜러", glyph: "Ψ", color: "#a8c8d3", maxHp: 39, damage: 9, range: 8, speed: 10, attackMs: 930, armor: 0.1, finisher: 1.35, scores: [4, 1, 1], primary: "상처 투쟁", weakness: "회복 지원 없이는 오래 버티지 못한다.", baseClassId: "barbarian" },
@@ -1020,7 +1102,9 @@ export const UNIT_DEFS = {
 
   desert_lancer: { id: "desert_lancer", name: "사막 창기병", regionId: "central", role: "딜·탱", glyph: "➶", color: "#d2a25d", maxHp: 41, damage: 7, range: 10, speed: 14, attackMs: 900, armor: 0.13, chargeDamage: 0.25, scores: [3, 2, 1], primary: "돌파 기동", weakness: "좁은 전장과 장기전에 약하다.", baseClassId: "barbarian" },
   glass_alchemist: { id: "glass_alchemist", name: "유리사 연금술사", regionId: "central", role: "딜·유틸", glyph: "⚗", color: "#cf9257", maxHp: 31, damage: 5, range: 22, speed: 8, attackMs: 1080, armor: 0.06, poisonDamage: 1, heal: 2, healMs: 5000, scores: [2, 1, 3], primary: "분진 조합", weakness: "준비 없이 돌입한 전투에 약하다.", baseClassId: "archmage" },
-  caravan_guide: { id: "caravan_guide", name: "대상단 길잡이", regionId: "central", role: "유틸", glyph: "◎", color: "#d4bc7a", maxHp: 36, damage: 4, range: 20, speed: 12, attackMs: 1000, armor: 0.09, commandAura: 0.1, heal: 2, healMs: 4700, scores: [1, 1, 4], primary: "보급 지휘", weakness: "전투를 끝낼 결정력이 부족하다.", baseClassId: "tracker" }
+  caravan_guide: { id: "caravan_guide", name: "대상단 길잡이", regionId: "central", role: "유틸", glyph: "◎", color: "#d4bc7a", maxHp: 36, damage: 4, range: 20, speed: 12, attackMs: 1000, armor: 0.09, commandAura: 0.1, heal: 2, healMs: 4700, scores: [1, 1, 4], primary: "보급 지휘", weakness: "전투를 끝낼 결정력이 부족하다.", baseClassId: "tracker" },
+
+  ...SPECIAL_UNIT_DEFS
 };
 
 export const ENEMY_COMBATANTS = {
@@ -1483,8 +1567,11 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
   const party = [...new Set(partyIds)].filter((unitId) => UNIT_DEFS[unitId]).slice(0, PARTY_LIMIT);
   const partyMitigation = party.reduce((total, unitId) => {
     const unit = UNIT_DEFS[unitId];
-    const progress = unitProgress[unitId] || {};
-    return total + (unit.regionId === regionId ? 1 : 0) + (progress.secondaryId === region.hazard.techniqueId ? 1 : 0);
+    // 두 칸 중 어느 칸에 끼웠든 대응 수치는 한 번만 센다 —
+    // 같은 특성을 겹쳐 끼워 대응을 두 배로 버는 길을 막는다.
+    const hasTechnique = unitTraits(unitProgress[unitId] || {})
+      .some((trait) => trait.id === region.hazard.techniqueId);
+    return total + (unit.regionId === regionId ? 1 : 0) + (hasTechnique ? 1 : 0);
   }, 0);
   // 지역 진행용 목걸이는 **자기 지역에서만** 대응 수치를 준다.
   // 하나로 모든 지역을 우회하는 범용 해답을 만들지 않는다는 원칙 때문이다
@@ -1707,12 +1794,48 @@ export function moveRunPlayer(run, x, y) {
   return ambush ? { moved: true, type: "ambush", feature: ambush } : { moved: true, type: "move", feature };
 }
 
+// 특성 슬롯은 두 칸이다. 두 특성이 같은 스탯을 건드리면 비율은 더하고,
+// 회복 주기처럼 "빠른 쪽이 이기는" 값은 더 좋은 쪽만 취한다.
+// 인자로 배열이 아니라 특성 하나만 와도 되게 열어둔 건 예전 호출부 호환 때문이다.
+export function mergeTraits(input) {
+  const list = (Array.isArray(input) ? input : [input]).filter(Boolean);
+  const merged = {
+    hpBonus: 0, damageBonus: 0, armorBonus: 0, speedBonus: 0, attackMsBonus: 0,
+    partyArmor: 0, commandAura: 0, poisonDamage: 0, heal: 0,
+    healMs: Number.POSITIVE_INFINITY
+  };
+  for (const trait of list) {
+    merged.hpBonus += trait.hpBonus || 0;
+    merged.damageBonus += trait.damageBonus || 0;
+    merged.armorBonus += trait.armorBonus || 0;
+    merged.speedBonus += trait.speedBonus || 0;
+    merged.attackMsBonus += trait.attackMsBonus || 0;
+    merged.partyArmor += trait.partyArmor || 0;
+    merged.commandAura += trait.commandAura || 0;
+    merged.poisonDamage = Math.max(merged.poisonDamage, trait.poisonDamage || 0);
+    merged.heal = Math.max(merged.heal, trait.heal || 0);
+    if (trait.healMs) merged.healMs = Math.min(merged.healMs, trait.healMs);
+  }
+  return merged;
+}
+
+// 동료가 실제로 발동시키는 특성들. 열린 슬롯 수를 넘겨 낀 건 무시한다 —
+// 숙련도를 되돌리는 상황(마이그레이션, 리셋)에서 조용히 초과 적용되지 않게.
+export function unitTraits(progress = {}) {
+  const slots = masterySlots(progress.mastery || 0);
+  return (progress.traitIds || []).slice(0, slots)
+    .map((id) => SECONDARY_DEFS[id])
+    .filter(Boolean);
+}
+
 function createCombatant(definition, id, team, index, progress = {}, secondary = null) {
+  // 레벨 스케일링은 없다. 강함은 기본 스탯 + 장비 + 특성으로만 결정된다.
+  // 숙련도(progress.mastery)는 스탯을 주지 않고 특성 슬롯을 열 뿐이다.
   const unitSide = team === "unit";
-  const level = unitSide ? Math.max(1, progress.level || 1) : 1;
-  const levelScale = definition.preScaled ? 0 : level - 1;
-  const maxHp = Math.max(1, Math.round(definition.maxHp * (1 + levelScale * 0.07 + (secondary?.hpBonus || 0))));
-  const damage = Math.max(1, Math.round(definition.damage * (1 + levelScale * 0.06 + (secondary?.damageBonus || 0))));
+  const trait = mergeTraits(secondary);
+  const maxHp = Math.max(1, Math.round(definition.maxHp * (1 + trait.hpBonus)));
+  const damage = Math.max(1, Math.round(definition.damage * (1 + trait.damageBonus)));
+  const mastery = unitSide ? Math.max(0, progress.mastery || 0) : 0;
   const unitY = [35, 65, 20, 50, 80][index] ?? 50;
   const enemyY = [28, 50, 72, 38, 62][index] ?? 50;
   return {
@@ -1727,16 +1850,16 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
     variant: definition.variant || null,
     portraitIndex: definition.portraitIndex ?? REGION_PORTRAIT_INDEX[definition.regionId] ?? null,
     team,
-    level,
+    mastery,
     hp: maxHp,
     maxHp,
     baseMaxHp: maxHp,
     damage,
     baseDamage: damage,
     range: definition.range,
-    speed: definition.speed * (1 + (secondary?.speedBonus || 0)),
-    attackMs: Math.max(560, definition.attackMs + (secondary?.attackMsBonus || 0)),
-    armor: Math.min(0.58, (definition.armor || 0) + (secondary?.armorBonus || 0)),
+    speed: definition.speed * (1 + trait.speedBonus),
+    attackMs: Math.max(560, definition.attackMs + trait.attackMsBonus),
+    armor: companionArmor(definition, { armorBonus: trait.armorBonus }),
     defense: definition.defense || 0,
     strength: definition.strength || 0,
     agility: definition.agility || 0,
@@ -1755,10 +1878,10 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
     manaRegen: definition.manaRegen || 0,
     hpRegen: definition.hpRegen || 0,
     regenRemainder: 0,
-    heal: Math.max(definition.heal || 0, secondary?.heal || 0),
-    healMs: Math.min(definition.healMs || Number.POSITIVE_INFINITY, secondary?.healMs || Number.POSITIVE_INFINITY),
+    heal: Math.max(definition.heal || 0, trait.heal),
+    healMs: Math.min(definition.healMs || Number.POSITIVE_INFINITY, trait.healMs),
     healCooldown: 900,
-    poisonDamage: Math.max(definition.poisonDamage || 0, secondary?.poisonDamage || 0),
+    poisonDamage: Math.max(definition.poisonDamage || 0, trait.poisonDamage),
     statusOnHit: definition.statusOnHit ? { ...definition.statusOnHit } : null,
     statusEvery: Math.max(1, Number(definition.statusEvery || 1)),
     // 필드 보스가 죽을 때 확정으로 주는 재료(docs/EQUIPMENT_DESIGN.md §5).
@@ -1768,11 +1891,12 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
     finisher: definition.finisher || 1,
     buffCarry: definition.buffCarry || 0,
     chargeDamage: definition.chargeDamage || 0,
-    partyArmor: (definition.partyArmor || 0) + (secondary?.partyArmor || 0),
-    commandAura: (definition.commandAura || 0) + (secondary?.commandAura || 0),
+    partyArmor: (definition.partyArmor || 0) + trait.partyArmor,
+    commandAura: (definition.commandAura || 0) + trait.commandAura,
     cooldown: index * 140,
     x: unitSide ? 14 : 86,
     y: unitSide ? unitY : enemyY,
+    specialPassive: definition.specialPassive ? { ...definition.specialPassive } : null,
     boss: Boolean(definition.boss),
     // 보스 패턴 목록. 있으면 평타 대신 예고 장판을 깐다.
     patterns: [...(definition.patterns || [])],
@@ -1804,14 +1928,16 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
   const companions = selectedParty.map((unitId, index) => {
     const definition = UNIT_DEFS[unitId];
     const progress = unitProgress[unitId] || { level: 1, xp: 0 };
-    const secondary = SECONDARY_DEFS[progress.secondaryId] || null;
+    const traits = unitTraits(progress);
     // 동료가 낀 장비의 보너스. 지휘관과 같은 규칙으로 계산해서 얹는다.
     const gear = companionBonuses(options.commander || {}, definition.id);
     const scaledDefinition = {
       ...definition,
       maxHp: Math.max(1, Math.round(definition.maxHp * playerHpGrowth * COMPANION_POWER_MULTIPLIER * (1 + gear.maxHpBonus))),
-      damage: Math.max(1, Math.round(definition.damage * playerDamageGrowth * COMPANION_POWER_MULTIPLIER * (1 + gear.damageBonus))),
-      armor: Math.min(0.58, (definition.armor || 0) + gear.armorBonus),
+      // 지휘관과 같은 규칙: 장비는 더하고, 퍼센트는 마지막에 곱한다.
+      damage: Math.max(1, Math.round(
+        (definition.damage * playerDamageGrowth * COMPANION_POWER_MULTIPLIER + gear.damageFlat) * (1 + gear.damageBonus))),
+      armor: companionArmor(definition, gear),
       speed: (definition.speed || 10) * (1 + gear.moveSpeedBonus),
       attackMs: Math.max(280, Math.round((definition.attackMs || 1200) / (1 + gear.attackSpeedBonus))),
       criticalChance: Math.max(0, Math.min(1, 0.03 + gear.criticalChance)),
@@ -1819,7 +1945,7 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
       statusResistance: Math.max(0, Math.min(0.75, (definition.statusResistance || 0) + gear.statusResistBonus)),
       preScaled: true
     };
-    const companion = createCombatant(scaledDefinition, `unit-${definition.id}`, "unit", index, progress, secondary);
+    const companion = createCombatant(scaledDefinition, `unit-${definition.id}`, "unit", index, progress, traits);
     companion.baseClassId = definition.baseClassId || null;
     companion.basePassive = definition.baseClassId ? { ...playerBaseClassDefinition(definition.baseClassId).passive } : null;
     return companion;
@@ -1858,9 +1984,20 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     enemy.maxHp = Math.round(enemy.maxHp * encounterEndurance);
     enemy.hp = enemy.maxHp;
   }
-  const partyArmor = units.reduce((sum, unit) => sum + unit.partyArmor, 0);
-  for (const unit of units) unit.armor = Math.min(0.58, unit.armor + partyArmor);
-  const commandAura = Math.min(0.35, units.reduce((sum, unit) => sum + unit.commandAura, 0));
+  // 파티 방어 지원은 감소율에 직접 더하지 않고 점수로 모아 곡선을 태운다.
+  // 예전처럼 더하면 지원 동료 둘만 데려가도 상한에 닿아버렸다.
+  const partyArmorPoints = units.reduce((sum, unit) =>
+    sum + unit.partyArmor * 100 + (unit.specialPassive?.effect === "partyArmorPoints" ? unit.specialPassive.armorFlat || 0 : 0), 0);
+  if (partyArmorPoints > 0) {
+    for (const unit of units) {
+      const ratio = Math.max(0, Math.min(0.95, unit.armor || 0));
+      unit.armor = armorReduction(ARMOR_SOFTCAP * ratio / (1 - ratio) + partyArmorPoints);
+    }
+  }
+  // 고고학자의 유물 해독도 지휘 보정으로 합류한다. battle.commandAura는 전투 시작 시
+  // 한 번 집계되므로, 여기 넣지 않으면 매 틱 값을 고쳐도 아무 데도 닿지 않는다.
+  const commandAura = Math.min(0.35, units.reduce((sum, unit) =>
+    sum + unit.commandAura + (unit.specialPassive?.effect === "partyCommand" ? unit.specialPassive.commandAura || 0 : 0), 0));
   const region = WORLD_REGION_DEFS[options.regionId];
   return {
     encounterId,
@@ -2165,7 +2302,9 @@ function pushBattleLog(battle, text) {
 
 function effectiveArmor(actor) {
   const decayShred = actor.statuses?.decay?.armorShred || 0;
-  return Math.max(0, Math.min(0.58, (actor.armor || 0) - decayShred));
+  // actor.armor는 이미 감쇠 곡선을 거친 피해 감소율이다(classes.js armorReduction).
+  // 여기서 상한을 한 번 더 씌워, 부패의 방어 깎기까지 반영한 뒤에도 1에 닿지 않게 한다.
+  return Math.max(0, Math.min(ARMOR_MAX_REDUCTION, (actor.armor || 0) - decayShred));
 }
 
 function statusStackTotal(target) {
@@ -2355,7 +2494,7 @@ function applyBasePassiveEffect(battle, unit, passive) {
     const missing = unit.hp > 0 ? 1 - unit.hp / unit.maxHp : 0;
     const berserk = unit.positiveEffects?.berserk?.endsAt > battle.elapsed ? unit.positiveEffects.berserk : null;
     unit.passiveDamageMultiplier = 1 + missing * (passive.damagePerMissing || 0.6) + (berserk?.bonus || 0);
-    unit.armor = Math.min(0.58, unit.rageBaseArmor + missing * (passive.armorPerMissing || 0.15));
+    unit.armor = Math.min(ARMOR_MAX_REDUCTION, unit.rageBaseArmor + missing * (passive.armorPerMissing || 0.15));
     unit.hpRegen = unit.rageBaseHpRegen + missing * (passive.hpRegenPerMissing || 1.5);
   } else if (passive.effect === "manaFocus") {
     const manaRatio = unit.maxMana > 0 ? unit.mana / unit.maxMana : 1;
@@ -2389,6 +2528,57 @@ function refreshBaseClassPassive(battle) {
   for (const companion of battle.units) {
     if (companion.id === battle.playerId || companion.hp <= 0 || !companion.basePassive) continue;
     applyBasePassiveEffect(battle, companion, companion.basePassive);
+  }
+  // 특수 동료 패시브는 기본 직업 패시브와 별개로 하나 더 굴린다 —
+  // 특수 동료도 기본 직업을 갖고 있으므로 둘 다 적용되는 게 맞다.
+  for (const companion of battle.units) {
+    if (!companion.specialPassive) continue;
+    applySpecialPassiveEffect(battle, companion, companion.specialPassive);
+  }
+}
+
+// 특수 동료 패시브. 대부분 파티 전체에 얇게 얹는 형태라 매 틱 다시 계산한다 —
+// 쓰러지거나 되살아나면 그 즉시 효과가 붙고 떨어져야 하기 때문이다.
+function applySpecialPassiveEffect(battle, unit, passive) {
+  const state = ensureBasePassiveState(battle, unit.id);
+
+  // 부활은 쓰러진 뒤에 발동하므로 생존 검사보다 먼저 본다.
+  if (passive.effect === "reviveOnce") {
+    if (unit.hp > 0 || state.revived) return;
+    state.revived = true;
+    unit.hp = Math.max(1, Math.round(unit.maxHp * (passive.healRatio || 0.35)));
+    unit.statuses = {};
+    pushBattleLog(battle, `${passive.name}: ${unit.name}이(가) 다시 일어섰다.`);
+    return;
+  }
+
+  // partyArmorPoints와 partyCommand는 여기서 다루지 않는다. 엔진이 그 둘을
+  // 전투 시작 시 한 번만 집계하기 때문에(createAutoBattle의 partyArmorPoints /
+  // commandAura), 매 틱 값을 고쳐도 아무 데도 닿지 않는다. 기존 partyArmor·
+  // commandAura와 같은 통로로 흘려보내는 게 맞다.
+  //
+  // 남는 둘은 매 틱 다시 얹어야 한다. 쿨감은 공격이 나갈 때마다 읽히고,
+  // 상태이상 위력은 다른 효과가 덮어쓸 수 있어서다.
+  const living = battle.units.filter((entry) => entry.hp > 0);
+
+  // 쓰러지면 얹어둔 것을 걷는다. 안 걷으면 죽은 동료의 버프가 전투 내내 남는다.
+  if (unit.hp <= 0) {
+    for (const ally of living) {
+      if (passive.effect === "partyCooldown") ally.passiveCooldownReduction = 0;
+      if (passive.effect === "partyStatusPower" && ally.baseStatusPotency !== undefined) {
+        ally.statusPotency = ally.baseStatusPotency;
+      }
+    }
+    return;
+  }
+
+  for (const ally of living) {
+    if (passive.effect === "partyCooldown") {
+      ally.passiveCooldownReduction = Math.max(ally.passiveCooldownReduction || 0, passive.cooldownReduction || 0);
+    } else if (passive.effect === "partyStatusPower") {
+      ally.baseStatusPotency ??= ally.statusPotency || 1;
+      ally.statusPotency = ally.baseStatusPotency + (passive.statusPotency || 0);
+    }
   }
 }
 
@@ -2590,9 +2780,12 @@ export function tickAutoBattle(battle, deltaMs) {
     }
     if (target.id === battle.playerId && battle.legendary?.lastStand
       && target.hp / target.maxHp <= battle.legendary.lastStand.threshold) {
-      targetArmor = Math.min(0.75, targetArmor + battle.legendary.lastStand.armorBonus);
+      // 방어 점수를 더한 뒤 다시 감쇠 곡선을 태운다. 감소율에 직접 더하면
+      // 이미 방어가 높은 캐릭터에게만 과하게 붙어 상한을 밀어버린다.
+      const basePoints = ARMOR_SOFTCAP * targetArmor / Math.max(0.0001, 1 - targetArmor);
+      targetArmor = armorReduction(basePoints + battle.legendary.lastStand.armorFlat);
     }
-    const armorReduction = 1 - targetArmor;
+    const damageThrough = 1 - targetArmor;
     const activeBuffs = actor.team === "unit"
       ? [battle.command.chargeUntil, battle.command.guardUntil, battle.command.focusUntil].filter((until) => until > battle.elapsed).length
       : 0;
@@ -2601,14 +2794,16 @@ export function tickAutoBattle(battle, deltaMs) {
     const chargeDamage = chargeBoost ? 1.35 + actor.chargeDamage : 1;
     const rawDamage = actor.damage * (actor.passiveDamageMultiplier || 1) * chargeDamage * lowHealthBonus * carryBonus
       * rollCritical(battle, actor);
-    const fullDamage = Math.max(1, Math.round(rawDamage * guardReduction * armorReduction));
+    // Math.max(1, ...) — 방어가 아무리 높아도 피해 0은 나오지 않는다.
+    const fullDamage = Math.max(1, Math.round(rawDamage * guardReduction * damageThrough));
     const isPlayerTarget = target.id === battle.playerId;
     const dodgeChance = (target.team === "unit" && target.basePassive?.effect === "dodgeChance" ? target.basePassive.chance || 0 : 0)
       + (isPlayerTarget ? Math.min(0.3, (actor.maehwaMarks || 0) * 0.05) : 0)
       // 환영 경갑: 피격 자체를 확률로 무효화한다(docs/EQUIPMENT_DESIGN.md §10).
       + (isPlayerTarget ? (battle.legendary?.phantomDodge?.chance || 0) : 0);
     const dodged = dodgeChance > 0 && battleRoll(battle) < dodgeChance;
-    actor.cooldown = actor.attackMs;
+    // 마탑 설계자의 마력 회로 같은 파티 쿨감이 여기서 실제로 공격 주기를 줄인다.
+    actor.cooldown = actor.attackMs * (1 - Math.min(0.35, actor.passiveCooldownReduction || 0));
     actor.telegraphTargetId = null;
     if (dodged) {
       pushBattleLog(battle, `${target.name}이 ${actor.name}의 공격을 회피했다.`);
@@ -2792,7 +2987,7 @@ function applySummonScaling(battle, summon, player, bossSummon = false, armed = 
   summon.maxHp = Math.max(20, Math.round(baseHp * power * (bossSummon ? 1.05 : 0.72)));
   summon.hp = summon.maxHp;
   summon.damage = Math.max(4, Math.round(baseDamage * power * (bossSummon ? 1.0 : 0.82)));
-  summon.armor = Math.min(0.58, (summon.armor || 0) + (bossSummon ? 0.18 : 0.12));
+  summon.armor = Math.min(ARMOR_MAX_REDUCTION, (summon.armor || 0) + (bossSummon ? 0.18 : 0.12));
   summon.attackMs = Math.round(summon.attackMs * (bossSummon ? 1.08 : 1.18));
   if (armed) {
     summon.weaponOverlay = summonWeapon(summon.species);
@@ -2862,7 +3057,7 @@ function applyKitPassive(battle, player) {
   if (battle.playerKitId === "heavyNecromancer") {
     const stacks = battle.passiveState?.[battle.playerId]?.soulStacks || 0;
     player.necroBaseArmor ??= player.armor;
-    player.armor = Math.min(0.58, player.necroBaseArmor + stacks * 0.03);
+    player.armor = Math.min(ARMOR_MAX_REDUCTION, player.necroBaseArmor + stacks * 0.03);
   }
   if (battle.playerKitId === "archeryNecromancer") {
     const stacks = battle.passiveState?.[battle.playerId]?.soulStacks || 0;

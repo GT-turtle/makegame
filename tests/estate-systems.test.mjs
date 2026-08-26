@@ -18,12 +18,14 @@ class MemoryStorage {
   setItem(key, value) { this.values.set(key, value); }
 }
 
+// level 인자는 예전 눈금(1부터)이다. 숙련도는 0부터라 -1로 환산해서 넣는다 —
+// 영지 쪽 상한 계산은 그대로 "대장이 얼마나 여물었나"를 읽는다.
 function unlockWardensWithLeader(engine, leaderId = "winter_berserker", level = 5) {
   const frontier = engine.state.frontier;
   const wardens = frontier.squads.find((squad) => squad.id === "wardens");
   wardens.unlocked = true;
   engine.state.adventure.roster.push(leaderId);
-  engine.state.adventure.unitProgress[leaderId] = { level, xp: 0, secondaryId: null };
+  engine.state.adventure.unitProgress[leaderId] = { mastery: level - 1, xp: 0, branchId: null, traitIds: [null, null] };
   assert.equal(engine.assignUnitToFrontierSquad(leaderId, "wardens"), true);
   return wardens;
 }

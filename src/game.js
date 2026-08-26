@@ -1,5 +1,5 @@
 import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
-import { EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, ENHANCE_MAX, enhanceCost, enhanceOdds, equipmentGradeDefinition, findEquipmentInstance, releaseEquipmentEverywhere, repairCost, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem } from "./classes.js";
+import { MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, ENHANCE_MAX, enhanceCost, enhanceOdds, equipmentGradeDefinition, findEquipmentInstance, releaseEquipmentEverywhere, repairCost, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem } from "./classes.js";
 import {
   activeWorkerCount,
   addMaterial,
@@ -526,7 +526,7 @@ export class GameEngine {
     if (!frontier || !adventure || !squad || squad.id === "vanguard" || !squad.unlocked) return false;
     if (!TROOP_TYPE_DEFS[troopType] || amount <= 0) return false;
     const leaderId = squad.memberIds[0] || null;
-    const leaderLevel = leaderId ? (adventure.unitProgress[leaderId]?.level || 1) : 1;
+    const leaderLevel = leaderId ? (adventure.unitProgress[leaderId]?.mastery || 0) + 1 : 1;
     const cap = troopCapForLeaderLevel(leaderLevel);
     if (squadTroopTotal(squad) + amount > cap) return false;
     const cost = troopRecruitCost(troopType, amount);
@@ -750,7 +750,7 @@ export class GameEngine {
     const faction = frontier?.factions[factionId];
     if (!adventure || !definition || !faction?.met || !adventure.roster.includes(unitId) || this.state.estateDefense?.campaign) return false;
     if (adventure.party.includes(unitId) || this.frontierUnitBusy(unitId)) return false;
-    const level = adventure.unitProgress[unitId]?.level || 1;
+    const level = (adventure.unitProgress[unitId]?.mastery || 0) + 1;
     const roll = deterministicFrontierRoll(frontier, `${factionId}|${unitId}|${operation}|${faction.intel}`);
     const success = roll + level * 0.035 > (operation === "agitate" ? 0.48 : 0.3);
     if (success) {
@@ -828,7 +828,7 @@ export class GameEngine {
       const zoneDefinition = FRONTIER_ZONE_DEFS[zoneId];
       const leaderId = squad.memberIds[0] || null;
       // 대장 전투력(기존 로직 유지) + 병종별 병력 수 x 병종 기본 전투력 x 상성 배율 x 대장 시너지 배율
-      const leaderPower = squad.memberIds.reduce((sum, unitId) => sum + (this.state.adventure.unitProgress[unitId]?.level || 1) + 2, 0);
+      const leaderPower = squad.memberIds.reduce((sum, unitId) => sum + (this.state.adventure.unitProgress[unitId]?.mastery || 0) + 3, 0);
       let troopPower = 0;
       for (const troopType of Object.keys(TROOP_TYPE_DEFS)) {
         const count = squad.troops?.[troopType] || 0;
@@ -879,7 +879,7 @@ export class GameEngine {
       for (const site of zone.sites.filter((entry) => entry.status === "developed")) {
         const definition = DISCOVERY_SITE_DEFS[site.typeId];
         const materialId = site.materialId || siteMaterialId(definition, FRONTIER_ZONE_DEFS[zoneId].regionId);
-        const escortLevel = site.escortUnitId ? (this.state.adventure.unitProgress[site.escortUnitId]?.level || 1) : 0;
+        const escortLevel = site.escortUnitId ? (this.state.adventure.unitProgress[site.escortUnitId]?.mastery || 0) + 1 : 0;
         const escortPower = site.escortUnitId ? 12 + escortLevel * 5 : 0;
         const risk = routeRisk(frontier, zoneId, site, escortPower);
         const roll = deterministicFrontierRoll(frontier, `${site.id}|shipment|${site.delivered}`) * 100;
@@ -903,7 +903,7 @@ export class GameEngine {
             const targetSquad = frontier.squads.find((entry) => entry.id !== "vanguard" && entry.mission?.zoneId === zoneId)
               || frontier.squads.find((entry) => entry.id === frontier.homeSquadId && entry.unlocked);
             if (targetSquad) {
-              const leaderLevel = targetSquad.memberIds[0] ? (this.state.adventure.unitProgress[targetSquad.memberIds[0]]?.level || 1) : 1;
+              const leaderLevel = targetSquad.memberIds[0] ? (this.state.adventure.unitProgress[targetSquad.memberIds[0]]?.mastery || 0) + 1 : 1;
               if (squadTroopTotal(targetSquad) < troopCapForLeaderLevel(leaderLevel)) {
                 const troopType = SITE_TROOP_TYPE[site.typeId] || "infantry";
                 targetSquad.troops[troopType] = (targetSquad.troops[troopType] || 0) + 1;
@@ -1238,27 +1238,30 @@ export class GameEngine {
       commanderRef.unlockedBlueprints.push(weaponId);
       blueprintText.push(EQUIPMENT_DEFS[weaponId]?.name || weaponId);
     }
+    // 경험치는 레벨이 아니라 **숙련도**로 들어간다. 숙련도는 스탯을 주지 않고
+    // 분기와 특성 슬롯만 연다 — 던전을 도는 보람은 남기되 그 보상이 수치가 아니라
+    // 선택지가 되게 하려는 것이다(classes.js MASTERY_STEPS).
     const levelMessages = [];
     for (const [unitId, earnedXp] of Object.entries(run.unitXp || {})) {
-      const progress = adventure.unitProgress[unitId] ||= { level: 1, xp: 0, secondaryId: null };
+      const progress = adventure.unitProgress[unitId] ||= newUnitProgress();
       progress.xp += Math.max(0, earnedXp);
-      let needed = 8 + progress.level * 6;
-      while (progress.xp >= needed) {
-        progress.xp -= needed;
-        progress.level += 1;
-        levelMessages.push(`${UNIT_DEFS[unitId]?.name || unitId} Lv.${progress.level}`);
-        needed = 8 + progress.level * 6;
+      while (progress.mastery < MASTERY_MAX && progress.xp >= masteryXpNeeded(progress.mastery)) {
+        progress.xp -= masteryXpNeeded(progress.mastery);
+        progress.mastery += 1;
+        const step = MASTERY_STEPS.find((entry) => entry.mastery === progress.mastery);
+        const name = UNIT_DEFS[unitId]?.name || unitId;
+        levelMessages.push(step ? `${name} 숙련 ${progress.mastery} · ${step.label} 개방` : `${name} 숙련 ${progress.mastery}`);
       }
+      if (progress.mastery >= MASTERY_MAX) progress.xp = 0;
     }
-    const commander = adventure.commander ||= { name: "개척자", level: 1, xp: 0 };
+    const commander = adventure.commander ||= { name: "개척자", mastery: 0, xp: 0 };
     commander.xp += Math.max(0, run.commanderXp || 0);
-    let commanderNeeded = 10 + commander.level * 7;
-    while (commander.xp >= commanderNeeded) {
-      commander.xp -= commanderNeeded;
-      commander.level += 1;
-      levelMessages.unshift(`${commander.name} Lv.${commander.level}`);
-      commanderNeeded = 10 + commander.level * 7;
+    while ((commander.mastery || 0) < MASTERY_MAX && commander.xp >= masteryXpNeeded(commander.mastery || 0)) {
+      commander.xp -= masteryXpNeeded(commander.mastery || 0);
+      commander.mastery = (commander.mastery || 0) + 1;
+      levelMessages.unshift(`${commander.name} 숙련 ${commander.mastery}`);
     }
+    if ((commander.mastery || 0) >= MASTERY_MAX) commander.xp = 0;
     let recruited = null;
     if (completed) {
       adventure.records[run.regionId].victories += 1;
@@ -1278,7 +1281,7 @@ export class GameEngine {
       recruited = region.recruits.find((unitId) => !adventure.roster.includes(unitId)) || null;
       if (recruited) {
         adventure.roster.push(recruited);
-        adventure.unitProgress[recruited] = { level: 1, xp: 0, secondaryId: null };
+        adventure.unitProgress[recruited] = newUnitProgress();
       }
       const advancedTechnique = { north: "spirit", south: "alchemy", east: "tactics", west: "mana", central: "alchemy" }[run.regionId];
       if (advancedTechnique && !adventure.unlockedTechniques.includes(advancedTechnique)) adventure.unlockedTechniques.push(advancedTechnique);
@@ -1324,13 +1327,48 @@ export class GameEngine {
     return true;
   }
 
-  assignUnitTechnique(unitId, techniqueId = null) {
+  // 특성은 슬롯에 끼운다. 슬롯 수는 숙련도가 정한다(0/1/2칸).
+  // slotIndex를 안 주면 빈 칸을 찾아 넣고, 빈 칸이 없으면 실패한다 — 조용히
+  // 다른 특성을 밀어내지 않기 위해서다.
+  assignUnitTechnique(unitId, techniqueId = null, slotIndex = null) {
     const adventure = this.state.adventure;
     if (adventure.run || this.state.estateDefense?.battle || this.state.estateDefense?.campaign || !adventure.roster.includes(unitId)) return false;
     if (techniqueId && (!SECONDARY_DEFS[techniqueId] || !adventure.unlockedTechniques.includes(techniqueId))) return false;
-    const progress = adventure.unitProgress[unitId] ||= { level: 1, xp: 0, secondaryId: null };
-    progress.secondaryId = techniqueId || null;
-    this.addLog(`${UNIT_DEFS[unitId].name}: 보조 특성 ${techniqueId ? SECONDARY_DEFS[techniqueId].name : "해제"}`, "item");
+
+    const progress = adventure.unitProgress[unitId] ||= newUnitProgress();
+    const slots = masterySlots(progress.mastery);
+    if (slots <= 0) return false;
+    progress.traitIds = (progress.traitIds || []).slice(0, slots);
+
+    let index = slotIndex;
+    if (index === null) {
+      index = techniqueId
+        ? progress.traitIds.findIndex((id) => !id)
+        : progress.traitIds.findIndex((id) => id === techniqueId);
+      if (index < 0 && techniqueId && progress.traitIds.length < slots) index = progress.traitIds.length;
+    }
+    if (index === null || index < 0 || index >= slots) return false;
+
+    // 같은 특성을 두 칸에 겹쳐 끼우면 수치만 두 배가 된다 — 선택이 아니라 계산이 된다.
+    if (techniqueId && progress.traitIds.some((id, i) => id === techniqueId && i !== index)) return false;
+
+    while (progress.traitIds.length < slots) progress.traitIds.push(null);
+    progress.traitIds[index] = techniqueId || null;
+    this.addLog(`${UNIT_DEFS[unitId].name}: ${index + 1}번 특성 ${techniqueId ? SECONDARY_DEFS[techniqueId].name : "해제"}`, "item");
+    this.emit();
+    return true;
+  }
+
+  // 동료의 분기. 숙련 1부터 고를 수 있고, 한 번 정하면 바꿀 수 없다 —
+  // 되돌릴 수 있으면 선택이 아니라 설정이 된다.
+  assignUnitBranch(unitId, branchId) {
+    const adventure = this.state.adventure;
+    if (adventure.run || !adventure.roster.includes(unitId)) return false;
+    if (!MASTERY_BRANCH_DEFS[branchId]) return false;
+    const progress = adventure.unitProgress[unitId] ||= newUnitProgress();
+    if (!masteryBranchUnlocked(progress.mastery) || progress.branchId) return false;
+    progress.branchId = branchId;
+    this.addLog(`${UNIT_DEFS[unitId].name}: ${MASTERY_BRANCH_DEFS[branchId].name}의 길을 택했다.`, "good");
     this.emit();
     return true;
   }
@@ -1338,18 +1376,20 @@ export class GameEngine {
   trainUnit(unitId) {
     const adventure = this.state.adventure;
     if (adventure.run || this.state.estateDefense?.battle || this.state.estateDefense?.campaign || !adventure.roster.includes(unitId)) return false;
-    const progress = adventure.unitProgress[unitId] ||= { level: 1, xp: 0, secondaryId: null };
-    const cost = Math.max(2, progress.level * 2);
+    const progress = adventure.unitProgress[unitId] ||= newUnitProgress();
+    if (progress.mastery >= MASTERY_MAX) return false;
+    const cost = Math.max(2, (progress.mastery + 1) * 3);
     if (this.state.meta.scrap < cost) return false;
     this.state.meta.scrap -= cost;
     progress.xp += 4;
-    const needed = 8 + progress.level * 6;
+    const needed = masteryXpNeeded(progress.mastery);
     if (progress.xp >= needed) {
       progress.xp -= needed;
-      progress.level += 1;
-      this.addLog(`${UNIT_DEFS[unitId].name}이 Lv.${progress.level}로 성장했다.`, "good");
+      progress.mastery += 1;
+      const step = MASTERY_STEPS.find((entry) => entry.mastery === progress.mastery);
+      this.addLog(`${UNIT_DEFS[unitId].name} 숙련 ${progress.mastery}${step ? ` · ${step.label} 개방` : ""}`, "good");
     } else {
-      this.addLog(`${UNIT_DEFS[unitId].name} 훈련 완료. 경험 ${progress.xp}/${needed}`, "item");
+      this.addLog(`${UNIT_DEFS[unitId].name} 훈련 완료. 숙련 경험 ${progress.xp}/${needed}`, "item");
     }
     this.emit();
     return true;

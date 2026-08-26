@@ -24,9 +24,9 @@ import {
   workerProficiency
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
-import { ENEMY_COMBATANTS, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, STARTING_PARTY, createAutoBattle, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle } from "../src/adventure.js";
+import { ENEMY_COMBATANTS, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, createAutoBattle, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle } from "../src/frontier.js";
-import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, enhanceCost, enhanceOdds, repairCost } from "../src/classes.js";
+import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, enhanceCost, enhanceOdds, masterySlots, repairCost } from "../src/classes.js";
 import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
@@ -972,7 +972,7 @@ test("강화하면 보너스가 오르고, 부서지면 아무것도 주지 않�
   const plain = instanceBonuses({ ...base, enhance: 0, broken: false });
   const forged = instanceBonuses({ ...base, enhance: 5, broken: false });
   assert.ok(forged.maxHpBonus > plain.maxHpBonus, "강화하면 자체 보너스가 오른다");
-  assert.ok(forged.armorBonus > plain.armorBonus, "굴린 옵션이 아닌 기본 보너스도 오른다");
+  assert.ok(forged.armorFlat > plain.armorFlat, "굴린 옵션이 아닌 기본 보너스도 오른다");
 
   const broken = instanceBonuses({ ...base, enhance: 5, broken: true });
   assert.deepEqual(broken, {}, "부서지면 끼고 있어도 없는 것과 같다");
@@ -1097,25 +1097,54 @@ test("지역마다 파티 전투력 요구치가 있고 1지역부터 걸린다"
   assert.equal(engine.startRegionAdventure("central", 1), false, "실제로 진입이 막힌다");
 });
 
-test("동료를 키우거나 장비를 물려주면 진입 요구치를 넘는다", () => {
+test("진입 요구치는 레벨이 아니라 특성과 장비로 넘는다", () => {
   const engine = new GameEngine(new MemoryStorage());
   const adventure = engine.state.adventure;
-  const bare = partyPowerScore(adventure.commander, adventure.party, adventure.unitProgress);
-
-  // 동료 레벨을 올리면 파티 전투력이 오른다.
-  for (const unitId of adventure.party) {
-    adventure.unitProgress[unitId] = { level: 6, xp: 0, secondaryId: null };
-  }
-  const levelled = partyPowerScore(adventure.commander, adventure.party, adventure.unitProgress);
-  assert.ok(levelled > bare, "동료를 키우면 오른다");
-  assert.equal(engine.startRegionAdventure("central", 1), true, "이제 들어갈 수 있다");
-
-  // 장비를 물려줘도 오른다.
   const commander = adventure.commander;
-  commander.equipmentOwned = [{ uid: "a1", defId: "heavyPlate", grade: "mythic", options: [], enhance: 5, broken: false }];
-  commander.companionEquipped = { [adventure.party[0]]: { chest: "a1" } };
-  const geared = partyPowerScore(commander, adventure.party, adventure.unitProgress);
-  assert.ok(geared > levelled, "장비를 물려주면 더 오른다");
+  const power = () => partyPowerScore(commander, adventure.party, adventure.unitProgress);
+  const bare = power();
+
+  // 예전 저장본이 남긴 level 값은 이제 아무 힘이 없다. 이게 "레벨 없음"의 계약이다.
+  for (const unitId of adventure.party) {
+    adventure.unitProgress[unitId] = { level: 6, mastery: 0, xp: 0, branchId: null, traitIds: [null, null] };
+  }
+  assert.equal(power(), bare, "남은 level 값은 전투력을 올리지 않는다");
+  assert.equal(engine.startRegionAdventure("central", 1), false, "레벨만으론 들어갈 수 없다");
+
+  // 숙련도 자체도 스탯을 주지 않는다 — 칸을 열 뿐이다.
+  for (const unitId of adventure.party) adventure.unitProgress[unitId].mastery = 4;
+  assert.equal(power(), bare, "숙련도 자체는 전투력을 올리지 않는다");
+
+  // 그 칸에 특성을 끼우면 비로소 오른다.
+  for (const unitId of adventure.party) adventure.unitProgress[unitId].traitIds = ["survival", "forging"];
+  const withTraits = power();
+  assert.ok(withTraits > bare, `특성을 끼우면 오른다 (${bare} -> ${withTraits})`);
+
+  // 그래도 마지막 지역은 장비 없이 못 넘는다.
+  assert.equal(engine.startRegionAdventure("central", 1), false, "특성만으로는 아직 부족하다");
+
+  let n = 0;
+  const give = (defId, slot, unitId) => {
+    const uid = `g${n++}`;
+    commander.equipmentOwned.push({ uid, defId, grade: "mythic", options: [], enhance: 10, broken: false });
+    if (unitId) (commander.companionEquipped[unitId] ||= {})[slot] = uid;
+    else commander.equipped[slot] = uid;
+  };
+  give("crusaderBastardSword", "weapon");
+  give("heavyPlate", "chest");
+  give("guardianCharm", "necklace");
+  give("sagesBand", "ring1");
+  give("sagesBand", "ring2");
+  for (const unitId of adventure.party) {
+    give("heavyPlate", "chest", unitId);
+    give("guardianCharm", "necklace", unitId);
+    give("sagesBand", "ring1", unitId);
+    give("sagesBand", "ring2", unitId);
+  }
+
+  const geared = power();
+  assert.ok(geared > withTraits, `장비를 물려주면 더 오른다 (${withTraits} -> ${geared})`);
+  assert.equal(engine.startRegionAdventure("central", 1), true, "장비를 갖추면 들어갈 수 있다");
 });
 
 test("명성이 쌓이면 주변 세력이 설계도를 선물해온다", () => {
@@ -1174,4 +1203,45 @@ test("던전을 정복하면 개방되고, 개척 주기마다 영지에 정기 
   const cappedTick = engine.state.meta.scrap - beforeCapped;
   assert.ok(cappedTick > secondTick, "클리어를 쌓으면 수익이 오른다");
   assert.ok(cappedTick <= 7, `회차 보너스에 상한이 있다 (실제 ${cappedTick})`);
+});
+
+test("v25 이전 저장본의 레벨과 보조 특성은 숙련·특성 슬롯으로 옮겨진다", () => {
+  // 레벨 6짜리 동료 하나, 특성을 끼운 동료 하나, 아무것도 안 한 동료 하나.
+  const legacy = {
+    version: 25,
+    adventure: {
+      commander: { name: "개척자", level: 4, xp: 3 },
+      unitProgress: {
+        snow_guard: { level: 6, xp: 5, secondaryId: null },
+        oath_knight: { level: 1, xp: 0, secondaryId: "oath" },
+        desert_lancer: { level: 1, xp: 0, secondaryId: null }
+      }
+    }
+  };
+
+  const state = migrateState(legacy);
+  const progress = state.adventure.unitProgress;
+
+  // 레벨 6 = 숙련 5. 눈금이 1부터 0부터로 바뀐 만큼만 옮긴다.
+  assert.equal(progress.snow_guard.mastery, 5);
+  assert.equal(progress.snow_guard.xp, 5);
+  assert.deepEqual(progress.snow_guard.traitIds, [null, null]);
+
+  // 쓰던 특성은 1번 칸으로 옮기고, 그 칸이 열릴 만큼 숙련을 올려준다.
+  // 마이그레이션이 이미 쓰던 걸 빼앗으면 안 된다.
+  assert.equal(progress.oath_knight.traitIds[0], "oath");
+  assert.ok(progress.oath_knight.mastery >= 2, "특성을 갖고 있으면 그 칸이 열린 숙련이 된다");
+  assert.equal(masterySlots(progress.oath_knight.mastery) >= 1, true);
+
+  assert.equal(progress.desert_lancer.mastery, 0);
+  assert.equal(state.adventure.commander.mastery, 3);
+  assert.equal(state.adventure.commander.level, undefined, "level 키는 남지 않는다");
+  assert.equal(state.version, SAVE_VERSION);
+
+  // 옮긴 뒤 실제로 특성이 발동한다 — 값만 옮기고 동작이 안 되면 의미가 없다.
+  const battle = createAutoBattle("duneRaiders", "m", "field", ["oath_knight"], progress, {
+    commander: createDefaultCommander()
+  });
+  const companion = battle.units.find((unit) => !unit.controlled);
+  assert.ok(companion.heal >= SECONDARY_DEFS.oath.heal, "옮겨진 특성이 전투에서 실제로 작동한다");
 });

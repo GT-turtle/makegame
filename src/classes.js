@@ -726,7 +726,7 @@ export function equipmentGradeDefinition(gradeId) {
 // 넣지 않았다. 그 스탯들이 생기면 여기 풀에 추가하면 된다.
 export const EQUIPMENT_OPTION_POOLS = {
   weapon: [
-    { key: "damageBonus", min: 0.02, max: 0.06 },
+    { key: "damageFlat", min: 1, max: 4 },
     { key: "cooldownReduction", min: 0.01, max: 0.04 },
     { key: "criticalChance", min: 0.01, max: 0.05 },
     { key: "criticalDamage", min: 0.05, max: 0.25 },
@@ -735,7 +735,7 @@ export const EQUIPMENT_OPTION_POOLS = {
   ],
   armor: [
     { key: "maxHpBonus", min: 0.02, max: 0.07 },
-    { key: "armorBonus", min: 0.01, max: 0.03 },
+    { key: "armorFlat", min: 2, max: 8 },
     { key: "statusResistBonus", min: 0.02, max: 0.08 },
     { key: "moveSpeedBonus", min: 0.02, max: 0.06 },
     { key: "cooldownReduction", min: 0.01, max: 0.03 }
@@ -743,7 +743,7 @@ export const EQUIPMENT_OPTION_POOLS = {
   accessory: [
     { key: "manaRegenBonus", min: 0.1, max: 0.5 },
     { key: "cooldownReduction", min: 0.01, max: 0.04 },
-    { key: "damageBonus", min: 0.01, max: 0.04 },
+    { key: "damageFlat", min: 1, max: 3 },
     { key: "criticalChance", min: 0.01, max: 0.04 },
     { key: "moveSpeedBonus", min: 0.02, max: 0.07 },
     { key: "statusResistBonus", min: 0.02, max: 0.06 }
@@ -961,24 +961,31 @@ export function findEquipmentInstance(commander, uid) {
 // 굴리냐"를 바꾸는 쪽이어야 한다(docs/CHOICE_DESIGN.md).
 export const EQUIPMENT_DEFS = {
   // --- 무기: 직업 전용 ---
-  crusaderBastardSword: { id: "crusaderBastardSword", slot: "weapon", name: "성광의 바스타드 소드", baseClassId: "crusader", weaponType: "bastardSword", materials: { ingot: 4, blackSteel: 1 }, bonus: { damageBonus: 0.08 }, description: "한손·양손을 모두 쓰는 바스타드 소드. 공격력이 증가한다." },
-  barbarianGreataxe: { id: "barbarianGreataxe", slot: "weapon", name: "심연의 대부", baseClassId: "barbarian", weaponType: "greataxe", materials: { ingot: 5, blackSteel: 1 }, bonus: { damageBonus: 0.12 }, description: "무게 자체가 무기인 특대 도끼. 공격력이 크게 증가한다." },
-  necromancerArmorSword: { id: "necromancerArmorSword", slot: "weapon", name: "귀곡의 아머 소드", baseClassId: "necromancer", weaponType: "armorSword", materials: { ingot: 3, herb: 2 }, bonus: { cooldownReduction: 0.06 }, description: "갑주째 베어내는 아머 소드. 스킬 재사용 대기시간이 감소한다." },
-  trackerShortBow: { id: "trackerShortBow", slot: "weapon", name: "초원의 단궁", baseClassId: "tracker", weaponType: "shortBow", materials: { wood: 4, ingot: 2 }, bonus: { damageBonus: 0.08 }, description: "달리면서도 쏘기 좋은 몽고풍 단궁. 공격력이 증가한다." },
-  maehwaSabre: { id: "maehwaSabre", slot: "weapon", name: "일섬의 매화도", baseClassId: "maehwa", weaponType: "sabre", materials: { ingot: 3, wood: 1 }, bonus: { cooldownReduction: 0.06 }, description: "정교하게 벼려낸 매화도. 스킬 재사용 대기시간이 감소한다." },
-  archmageStaff: { id: "archmageStaff", slot: "weapon", name: "현자의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { wood: 3, ingot: 2 }, bonus: { cooldownReduction: 0.1 }, description: "마력 순환을 돕는 대형 지팡이. 스킬 재사용 대기시간이 크게 감소한다." },
+  // 무기의 본체는 damageFlat이다. 기본 공격력이 7~10이라 퍼센트로는 체감이 없었고,
+  // 등급·강화 배율이 이 고정치에 곱해지므로 성장이 실제로 눈에 보인다.
+  // 쿨감을 함께 가진 무기는 damageFlat 4, 순수 공격 무기는 6 — 총량은 맞추고
+  // 방향만 다르게 둔다(직업 간 성능 차를 두지 않는다는 원칙).
+  crusaderBastardSword: { id: "crusaderBastardSword", slot: "weapon", name: "성광의 바스타드 소드", baseClassId: "crusader", weaponType: "bastardSword", materials: { ingot: 4, blackSteel: 1 }, bonus: { damageFlat: 6 }, description: "한손·양손을 모두 쓰는 바스타드 소드. 공격력이 증가한다." },
+  barbarianGreataxe: { id: "barbarianGreataxe", slot: "weapon", name: "심연의 대부", baseClassId: "barbarian", weaponType: "greataxe", materials: { ingot: 5, blackSteel: 1 }, bonus: { damageFlat: 6 }, description: "무게 자체가 무기인 특대 도끼. 공격력이 크게 증가한다." },
+  necromancerArmorSword: { id: "necromancerArmorSword", slot: "weapon", name: "귀곡의 아머 소드", baseClassId: "necromancer", weaponType: "armorSword", materials: { ingot: 3, herb: 2 }, bonus: { damageFlat: 5, cooldownReduction: 0.06 }, description: "갑주째 베어내는 아머 소드. 공격력이 오르고 스킬 재사용 대기시간이 감소한다." },
+  trackerShortBow: { id: "trackerShortBow", slot: "weapon", name: "초원의 단궁", baseClassId: "tracker", weaponType: "shortBow", materials: { wood: 4, ingot: 2 }, bonus: { damageFlat: 6 }, description: "달리면서도 쏘기 좋은 몽고풍 단궁. 공격력이 증가한다." },
+  maehwaSabre: { id: "maehwaSabre", slot: "weapon", name: "일섬의 매화도", baseClassId: "maehwa", weaponType: "sabre", materials: { ingot: 3, wood: 1 }, bonus: { damageFlat: 5, cooldownReduction: 0.06 }, description: "정교하게 벼려낸 매화도. 공격력이 오르고 스킬 재사용 대기시간이 감소한다." },
+  archmageStaff: { id: "archmageStaff", slot: "weapon", name: "현자의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { wood: 3, ingot: 2 }, bonus: { damageFlat: 4, cooldownReduction: 0.12 }, description: "마력 순환을 돕는 대형 지팡이. 공격력이 오르고 스킬 재사용 대기시간이 크게 감소한다." },
 
   // --- 방어구: 직업 제한 없음. 셋 다 "버티기 / 굴리기 / 마력" 방향이 갈린다 ---
   // 지금은 셋 다 몸통(chest)이다. 투구·장갑·신발·망토 슬롯은 구조만 열어두고
   // 채울 아이템은 아직 설계 중이다.
-  heavyPlate: { id: "heavyPlate", slot: "chest", armorClass: "heavy", setId: "ironbound", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorBonus: 0.04 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
-  scoutLeather: { id: "scoutLeather", slot: "chest", armorClass: "light", setId: "ranger", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorBonus: 0.02, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
-  wardenRobe: { id: "wardenRobe", slot: "chest", armorClass: "cloth", setId: "warden", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorBonus: 0.02, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
+  // 방어구는 armorFlat(방어 점수)이 본체다. 예전의 armorBonus는 "감소율에 직접 더하는"
+  // 값이라 몇 장만 겹쳐도 상한에 닿았다. 점수는 감쇠 곡선을 거치므로 얼마든지 쌓아도
+  // 안전하고, 쌓을수록 이득이 줄어 자연히 다른 스탯으로 눈을 돌리게 된다.
+  heavyPlate: { id: "heavyPlate", slot: "chest", armorClass: "heavy", setId: "ironbound", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorFlat: 12 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
+  scoutLeather: { id: "scoutLeather", slot: "chest", armorClass: "light", setId: "ranger", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorFlat: 6, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
+  wardenRobe: { id: "wardenRobe", slot: "chest", armorClass: "cloth", setId: "warden", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorFlat: 6, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
 
   // --- 장신구: 직업 제한 없음. 각각 방어구 하나와 세트를 이룬다 ---
   guardianCharm: { id: "guardianCharm", slot: "necklace", setId: "ironbound", name: "수호의 부적", materials: { herb: 3, ingot: 1 }, bonus: { maxHpBonus: 0.09 }, description: "낡은 수호 부적. 최대 체력이 오른다." },
   sagesBand: { id: "sagesBand", slot: "ring", setId: "ranger", name: "현자의 고리", materials: { ore: 2, herb: 2 }, bonus: { cooldownReduction: 0.05 }, description: "사색을 돕는 고리. 스킬 재사용 대기시간이 감소한다." },
-  runeSigil: { id: "runeSigil", slot: "necklace", setId: "warden", name: "룬 각인 인장", materials: { ore: 3, ingot: 1 }, bonus: { damageBonus: 0.05 }, description: "각인된 인장. 공격력이 오른다." }
+  runeSigil: { id: "runeSigil", slot: "necklace", setId: "warden", name: "룬 각인 인장", materials: { ore: 3, ingot: 1 }, bonus: { damageFlat: 3 }, description: "각인된 인장. 공격력이 오른다." }
 };
 
 // 방어구 세트. 설계도는 낱개가 아니라 "세트 단위"로 습득한다 — 하나를 얻으면
@@ -987,7 +994,7 @@ export const EQUIPMENT_DEFS = {
 // 하나의 선택이 된다. 보너스를 작게 둔 건 "선택이 강함이 아니라 방향을 바꾼다"는
 // 원칙(docs/CHOICE_DESIGN.md) 때문이다.
 export const ARMOR_SET_DEFS = {
-  ironbound: { id: "ironbound", name: "층철 세트", pieces: ["heavyPlate", "guardianCharm"], setBonus: { armorBonus: 0.02 }, description: "버티는 방향. 세트 완성 시 방어력이 조금 더 오른다." },
+  ironbound: { id: "ironbound", name: "층철 세트", pieces: ["heavyPlate", "guardianCharm"], setBonus: { armorFlat: 6 }, description: "버티는 방향. 세트 완성 시 방어력이 조금 더 오른다." },
   ranger: { id: "ranger", name: "순찰자 세트", pieces: ["scoutLeather", "sagesBand"], setBonus: { cooldownReduction: 0.03 }, description: "굴리는 방향. 세트 완성 시 기술 회전이 조금 더 빨라진다." },
   warden: { id: "warden", name: "감시자 세트", pieces: ["wardenRobe", "runeSigil"], setBonus: { manaRegenBonus: 0.4 }, description: "마력 방향. 세트 완성 시 마나 회복이 조금 더 빨라진다." }
 };
@@ -1047,7 +1054,7 @@ const REGION_WARD_DEFS = {
   wardingSoulCharm: {
     id: "wardingSoulCharm", slot: "ring", name: "정화 서약 반지",
     materials: { durahanSoul: 1, zinc: 2, chamomile: 2 },
-    bonus: { armorBonus: 0.02, maxHpBonus: 0.04 },
+    bonus: { armorFlat: 6, maxHpBonus: 0.04 },
     uniqueEffect: { type: "regionWard", regionId: "west", mitigation: 3 },
     description: "듀라한의 영혼을 아연에 가두고 카모마일로 달랬다. 동료에게 스미는 저주를 늦춘다."
   },
@@ -1073,7 +1080,7 @@ const LEGENDARY_GEAR_DEFS = {
     id: "dragonRampart", slot: "chest", armorClass: "heavy", legendary: true,
     name: "고룡의 성벽",
     materials: { dragonScale: 2, chitinPlate: 2, cursedPlate: 2 },
-    bonus: { maxHpBonus: 0.1, armorBonus: 0.03 },
+    bonus: { maxHpBonus: 0.1, armorFlat: 16 },
     // 중간급 피해만 강제로 깎는다. 보스 대형 기믹(40% 초과)은 그대로 맞으므로
     // "잡공격은 무시하되 큰 건 피해야 하는" 중갑이 된다.
     uniqueEffect: { type: "damageBand", floorRatio: 0.05, capRatio: 0.4 },
@@ -1083,7 +1090,7 @@ const LEGENDARY_GEAR_DEFS = {
     id: "warchiefPlate", slot: "chest", armorClass: "heavy", legendary: true,
     name: "대전사의 전투갑주",
     materials: { chitinPlate: 2, warchiefAxe: 1, shamanStone: 2 },
-    bonus: { maxHpBonus: 0.08, damageBonus: 0.04 },
+    bonus: { maxHpBonus: 0.08, damageFlat: 4 },
     // 중갑의 둔중함을 깨는 공격형 중갑.
     uniqueEffect: { type: "battleTempo", attackSpeed: 0.1, moveSpeed: 0.12 },
     lore: "오크 대전사의 도끼를 녹여 덧댄 갑주. 무겁지만 몸이 앞선다."
@@ -1103,7 +1110,7 @@ const LEGENDARY_GEAR_DEFS = {
     id: "phantomLeather", slot: "chest", armorClass: "light", legendary: true,
     name: "환영 경갑",
     materials: { spiritCore: 2, serpentHide: 2, bearSinew: 1 },
-    bonus: { armorBonus: 0.02, cooldownReduction: 0.06 },
+    bonus: { armorFlat: 10, cooldownReduction: 0.06 },
     uniqueEffect: { type: "phantomDodge", chance: 0.15 },
     lore: "입은 자의 윤곽이 흐려진다. 노려도 빗나가는 일이 생긴다."
   },
@@ -1133,7 +1140,7 @@ const LEGENDARY_GEAR_DEFS = {
     id: "frostWardRing", slot: "ring", legendary: true,
     name: "동토 수호반지",
     materials: { frostCore: 2, bearSinew: 1 },
-    bonus: { maxHpBonus: 0.04, armorBonus: 0.02 },
+    bonus: { maxHpBonus: 0.04, armorFlat: 6 },
     // 북부 환경 대응용이 아니라 "냉기 적·빙결 상태이상"에 대한 전투 장신구다.
     // 환경 패널티를 장비 하나로 우회하지 않는다는 원칙과 구분된다.
     uniqueEffect: { type: "statusWard", statusId: "frost", reduceMs: 1400, resist: 0.4 },
@@ -1155,7 +1162,7 @@ const LEGENDARY_GEAR_DEFS = {
     id: "abyssInkRing", slot: "ring", legendary: true,
     name: "심연 먹물반지",
     materials: { inkSac: 1, soulStone: 2 },
-    bonus: { damageBonus: 0.03 },
+    bonus: { damageFlat: 2 },
     uniqueEffect: { type: "onHitStatus", statusId: "decay", chance: 0.25 },
     lore: "먹물낭을 봉인한 반지. 닿은 자리가 썩어 들어간다."
   },
@@ -1163,7 +1170,7 @@ const LEGENDARY_GEAR_DEFS = {
     id: "venomFangRing", slot: "ring", legendary: true,
     name: "거미독 반지",
     materials: { spiderFang: 2, venomSac: 1 },
-    bonus: { damageBonus: 0.03 },
+    bonus: { damageFlat: 2 },
     // 독에 걸린 적에게만 강해진다 — 독을 거는 수단과 함께 써야 값을 한다.
     uniqueEffect: { type: "statusExecute", statusId: "poison", bonus: 0.3, applyDecay: true },
     lore: "독니를 물린 반지. 독이 도는 상처를 더 깊게 헤집는다."
@@ -1172,7 +1179,7 @@ const LEGENDARY_GEAR_DEFS = {
     id: "oniBreakerRing", slot: "ring", legendary: true,
     name: "오니 파괴반지",
     materials: { oniHorn: 2, greatMandible: 1 },
-    bonus: { damageBonus: 0.05 },
+    bonus: { damageFlat: 3 },
     // 같은 대상을 계속 때릴수록 관통이 쌓인다. 대상을 바꾸거나 손을 놓으면 초기화된다 —
     // 한 놈을 물고 늘어지는 운용을 보상한다.
     uniqueEffect: { type: "armorPierceStack", perStack: 0.03, maxStacks: 5, resetMs: 3000 },
@@ -1184,7 +1191,7 @@ const LEGENDARY_GEAR_DEFS = {
     materials: { dragonBone: 1, dragonScale: 2 },
     bonus: { maxHpBonus: 0.09 },
     // 체력이 낮을수록 단단해진다 — 두 반지 탱킹 빌드의 한 축.
-    uniqueEffect: { type: "lastStand", threshold: 0.4, armorBonus: 0.12 },
+    uniqueEffect: { type: "lastStand", threshold: 0.4, armorFlat: 40 },
     lore: "용의 뼈를 깎은 반지. 궁지에 몰릴수록 단단해진다."
   },
 
@@ -1201,7 +1208,7 @@ const LEGENDARY_GEAR_DEFS = {
     id: "titanOathAmulet", slot: "necklace", legendary: true,
     name: "거신의 맹세",
     materials: { golemCore: 1, ancientAlloy: 2, oniHorn: 1 },
-    bonus: { damageBonus: 0.04, maxHpBonus: 0.04 },
+    bonus: { damageFlat: 3, maxHpBonus: 0.04 },
     // 일정 횟수를 때릴 때마다 대상 주변이 터진다. 단일 대상을 치는 행위가
     // 주기적으로 광역이 되므로, "언제 터질지 세면서 몰아넣는" 운용이 생긴다.
     // 반지가 전부 자기 강화라면 목걸이는 전장의 모양을 바꾸는 쪽이다.
@@ -1225,49 +1232,49 @@ export const LEGENDARY_DEFS = {
     id: "durandal", slot: "weapon", legendary: true, regionId: "west",
     name: "뒤랑달", baseClassId: "crusader", weaponType: "bastardSword",
     materials: { ingot: 8, blackSteel: 3, ore: 4 },
-    bonus: { damageBonus: 0.07, armorBonus: 0.03 },
+    bonus: { damageFlat: 9, armorFlat: 8 },
     lore: "부러지지 않는 성기사의 검. 롤랑의 전설에서 이름을 따왔다."
   },
   tyrfing: {
     id: "tyrfing", slot: "weapon", legendary: true, regionId: "west",
     name: "티르빙", baseClassId: "necromancer", weaponType: "armorSword",
     materials: { ingot: 6, blackSteel: 3, herb: 5 },
-    bonus: { cooldownReduction: 0.05, damageBonus: 0.05 },
+    bonus: { cooldownReduction: 0.05, damageFlat: 9 },
     lore: "뽑으면 반드시 피를 봐야 하는 저주받은 검. 북구 전승의 티르빙."
   },
   jotunbane: {
     id: "jotunbane", slot: "weapon", legendary: true, regionId: "north",
     name: "요툰베인", baseClassId: "barbarian", weaponType: "greataxe",
     materials: { ingot: 8, frostIron: 4, blackSteel: 2 },
-    bonus: { damageBonus: 0.1, maxHpBonus: 0.06 },
+    bonus: { damageFlat: 9, maxHpBonus: 0.14 },
     lore: "거인을 베어 넘긴 설산의 도끼. 북구의 거인 살해 전승에서."
   },
   caduceus: {
     id: "caduceus", slot: "weapon", legendary: true, regionId: "north",
     name: "카두케우스", baseClassId: "archmage", weaponType: "staff",
     materials: { wood: 6, frostIron: 3, herb: 4 },
-    bonus: { cooldownReduction: 0.09, manaRegenBonus: 0.6 },
+    bonus: { cooldownReduction: 0.09, manaRegenBonus: 0.6, damageFlat: 8 },
     lore: "두 마리 뱀이 감긴 전령의 지팡이. 마탑이 보관하던 유물."
   },
   moya: {
     id: "moya", slot: "weapon", legendary: true, regionId: "east",
     name: "막야", baseClassId: "maehwa", weaponType: "sabre",
     materials: { ingot: 5, mountainIron: 4, wood: 3 },
-    bonus: { cooldownReduction: 0.06, damageBonus: 0.06 },
+    bonus: { cooldownReduction: 0.06, damageFlat: 9 },
     lore: "장인 부부가 몸을 던져 벼려낸 자웅 한 쌍 중 하나. 동방 간장·막야 설화."
   },
   gandiva: {
     id: "gandiva", slot: "weapon", legendary: true, regionId: "south",
     name: "간디바", baseClassId: "tracker", weaponType: "shortBow",
     materials: { wood: 8, ingot: 4, herb: 5 },
-    bonus: { damageBonus: 0.09, cooldownReduction: 0.04 },
+    bonus: { damageFlat: 9, cooldownReduction: 0.05 },
     lore: "천 년을 시위가 늘어지지 않는 활. 남방 서사시의 대궁."
   },
   solomonSeal: {
     id: "solomonSeal", slot: "ring", legendary: true, regionId: "central",
     name: "솔로몬의 인장", baseClassId: null,
     materials: { glassSand: 5, ore: 4, herb: 4 },
-    bonus: { maxHpBonus: 0.06, damageBonus: 0.04, manaRegenBonus: 0.3 },
+    bonus: { maxHpBonus: 0.06, damageFlat: 3, manaRegenBonus: 0.3 },
     lore: "정령을 부리고 봉인했다는 반지. 사막 대상단이 전하는 이야기."
   }
 };
@@ -1346,6 +1353,61 @@ export function combatPowerBreakdown(stats = {}) {
   return rows.sort((a, b) => b.score - a.score);
 }
 
+// 방어 점수 → 피해 감소율. 점수가 오를수록 이득이 줄고, 아무리 높아도 1에
+// 도달하지 않는다 — "방어를 올리면 피해가 0이 되는" 구간을 만들지 않기 위해서다.
+//
+//   감소율 = 점수 / (점수 + ARMOR_SOFTCAP)
+//
+// 소프트캡을 80으로 잡은 건 기존 밸런스를 흔들지 않기 위해서다. 크루세이더의
+// 기본 방어 0.18은 18점이 되고 18/(18+80) = 0.184로 거의 그대로 나온다.
+// 여기에 장비를 쌓으면 40점 → 0.33, 100점 → 0.56, 300점 → 0.79로 완만히 오른다.
+// ── 숙련도 ──
+//
+// 레벨은 없다. 숙련도는 **스탯을 1도 주지 않는다** — 강함은 오직 기본 스탯과
+// 장비에서 나온다. 숙련도가 하는 일은 두 가지뿐이다.
+//
+//   1. 분기(전투/생산)를 연다 — 이 동료를 어디에 쓸지 정하는 갈림길.
+//   2. 특성 슬롯을 연다 — 최대 두 칸.
+//
+// 이렇게 나눈 이유: 던전을 도는 보람("경험치")은 남기되, 그 보상이 수치가
+// 아니라 **선택지**가 되게 하려는 것이다. 수치로 주면 결국 레벨이 되고,
+// 장비로 성장한다는 축이 무너진다.
+export const MASTERY_BRANCH_DEFS = {
+  combat: { id: "combat", name: "전투 숙련", glyph: "⚔", description: "원정과 토벌에 나선다. 전투 특성을 고를 수 있다." },
+  labor:  { id: "labor",  name: "생산 숙련", glyph: "⚒", description: "영지에 남아 생산을 맡는다. 시설 산출이 오른다." }
+};
+
+// 숙련 단계별로 열리는 것. 값을 넘기지 않고 "칸"만 준다.
+export const MASTERY_STEPS = [
+  { mastery: 1, unlock: "branch", label: "분기 선택" },
+  { mastery: 2, unlock: "trait",  label: "특성 슬롯 1" },
+  { mastery: 4, unlock: "trait",  label: "특성 슬롯 2" }
+];
+export const MASTERY_MAX = 6;
+export const MASTERY_TRAIT_SLOTS = 2;
+
+// 다음 숙련 단계까지 필요한 경험치. 뒤로 갈수록 완만히 비싸진다.
+export function masteryXpNeeded(mastery) {
+  return 12 + Math.max(0, mastery) * 10;
+}
+
+// 지금 숙련도에서 열려 있는 특성 슬롯 수(0~2).
+export function masterySlots(mastery) {
+  return MASTERY_STEPS.filter((step) => step.unlock === "trait" && (mastery || 0) >= step.mastery).length;
+}
+
+export function masteryBranchUnlocked(mastery) {
+  return (mastery || 0) >= MASTERY_STEPS[0].mastery;
+}
+
+export const ARMOR_SOFTCAP = 80;
+export const ARMOR_MAX_REDUCTION = 0.85;   // 감소율 상한. 최소 피해는 별도로 1 이상 보장된다.
+
+export function armorReduction(points) {
+  const value = Math.max(0, Number(points) || 0);
+  return Math.min(ARMOR_MAX_REDUCTION, value / (value + ARMOR_SOFTCAP));
+}
+
 export function equipmentDefinition(equipmentId) {
   return EQUIPMENT_DEFS[equipmentId] || null;
 }
@@ -1364,6 +1426,8 @@ export function equippedBonuses(commander = {}, baseClassId = null) {
     // 기존 5종
     damageBonus: 0, cooldownReduction: 0, maxHpBonus: 0, armorBonus: 0, manaRegenBonus: 0,
     // 확장 6종 — 랜덤 옵션 풀을 넓히려면 소비처가 먼저 있어야 한다.
+    damageFlat: 0,         // 공격력 고정 가산 — 장비의 주된 기여
+    armorFlat: 0,          // 방어 수치 고정 가산(비율이 아니라 점수)
     criticalChance: 0,     // 치명타 확률
     criticalDamage: 0,     // 치명타 피해 배율 가산
     attackSpeedBonus: 0,   // 공격 주기 단축
@@ -1419,7 +1483,9 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
   const kit = playerKitDefinition(kitId);
   const baseClass = playerBaseClassDefinition(kit.baseClassId);
   const profile = baseClass.statProfile;
-  const level = Math.max(1, Number(commander.level || 1));
+  // 레벨은 없앴다. 기본 능력치는 직업이 정한 고정값이고, 성장은 전부 장비 몫이다.
+  // grownValue에 1을 넘겨 "성장분 0"으로 고정한다 — 함수 자체는 남겨둔다.
+  const level = 1;
   const strength = grownValue(profile, "strength", level);
   const agility = grownValue(profile, "agility", level);
   const intelligence = grownValue(profile, "intelligence", level);
@@ -1443,10 +1509,23 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
   const rune = runeDefinition(commander.equippedRuneId);
   const maxHp = Math.round(kit.stats.maxHp + Math.max(0, level - 1) * (2.2 + strength * 0.055))
     * (rune?.id === "redRune" ? 1.08 : 1) * (1 + gear.maxHpBonus);
-  const damage = Math.round(kit.stats.damage + Math.max(0, level - 1) * (0.26 + strength * 0.012 + intelligence * 0.01))
+  // 공격력 = (기본 + 장비 고정치) × 버프 배율.
+  // 장비는 곱이 아니라 **더한다** — 기본값이 작을 때 퍼센트는 체감이 없고,
+  // 장비를 여럿 낄수록 곱이 폭주한다. 퍼센트는 룬·버프처럼 마지막 층으로만 남긴다.
+  const damage = (kit.stats.damage
+      + Math.max(0, level - 1) * (0.26 + strength * 0.012 + intelligence * 0.01)
+      + gear.damageFlat)
     * (rune?.id === "greenRune" ? 1.08 : 1) * (1 + gear.damageBonus);
-  const armor = Math.min(0.58, kit.stats.armor + Math.max(0, level - 1) * 0.0025
-    + (rune?.id === "yellowRune" ? 0.03 : 0) + gear.armorBonus);
+
+  // 방어는 "점수"로 모아 감쇠 곡선으로 피해감소율을 낸다.
+  // 점수가 아무리 높아도 감소율이 1에 닿지 않아 피해 0이 나오지 않는다.
+  const armorPoints = Math.max(0,
+    kit.stats.armor * 100
+    + Math.max(0, level - 1) * 0.25
+    + (rune?.id === "yellowRune" ? 3 : 0)
+    + gear.armorBonus * 100
+    + gear.armorFlat);
+  const armor = armorReduction(armorPoints);
   // 공격 주기는 짧을수록 빠르다. 장비 공격속도는 주기를 나눈다(합산이 아니라 배율).
   const attackMs = Math.max(280, Math.round(
     kit.stats.attackMs * (rune?.id === "purpleRune" ? 0.94 : 1) / (1 + gear.attackSpeedBonus)));
@@ -1493,10 +1572,16 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
   };
 }
 
+// 동료 진행 상태. level은 없다 — mastery는 스탯을 주지 않고 칸만 연다.
+// traitIds는 두 칸짜리 배열이고, 실제로 몇 칸이 살아 있는지는 masterySlots가 정한다.
+export function newUnitProgress() {
+  return { mastery: 0, xp: 0, branchId: null, traitIds: [null, null] };
+}
+
 export function createDefaultCommander() {
   return {
     name: "개척자",
-    level: 1,
+    mastery: 0,
     xp: 0,
     combatKitId: DEFAULT_PLAYER_KIT_ID,
     storedBoss: null,
