@@ -900,14 +900,14 @@ export function armorSetDefinition(setId) {
 // 획득: 그 지역 던전을 LEGENDARY_CLEAR_REQUIREMENT회 이상 클리어하면 설계도가 나온다.
 // 설계도 3단계(무기→방어구 세트→두 번째 무기)를 모두 받은 뒤의 장기 목표이자
 // 컬렉션 요소다.
-// ── 지역 진행용 목걸이 (docs/EQUIPMENT_DESIGN.md §11 · REGION_PROGRESSION_HAZARDS.md) ──
+// ── 지역 진행용 반지 (docs/EQUIPMENT_DESIGN.md §11 · REGION_PROGRESSION_HAZARDS.md) ──
 //
 // `1필드 보스 핵심 소재 + 그 지역 광석/금속 + 그 지역 약재`로 만든다.
 // 상위 필드로 올라가기 전에 그 지역의 압박에 대응하는 세팅을 갖추게 하는 장치다.
 //
-// **목걸이로 만든 이유**: 목적이 "세팅을 반쯤 강제로 교체하게 만드는 것"인데,
-// 반지는 두 칸이라 남는 칸에 끼우면 그만이라 교체 압박이 사라진다. 목걸이는 한 칸뿐이라
-// 전설 목걸이를 실제로 포기해야 해서 진짜 선택이 된다.
+// **반지로 만든 이유**: 반지가 두 칸이라 "한 칸은 지역 대응 / 한 칸은 전투용"으로
+// 나눠 낄 수 있다. 지역을 넘나들 때 목걸이까지 통째로 갈아끼우게 하면 전설 목걸이가
+// 사실상 사장되므로, 지역 대응은 여유가 있는 반지 쪽이 맞다.
 //
 // **자기 지역에서만 통한다**(regionWard.regionId). 하나로 모든 지역을 우회하는
 // 범용 해답을 만들지 않는다는 원칙 때문이다.
@@ -917,35 +917,35 @@ export function armorSetDefinition(setId) {
 // 하나는 더 필요하다 — 장비와 편성 두 축을 다 만지게 하려는 배분이다.
 const REGION_WARD_DEFS = {
   frostwardCharm: {
-    id: "frostwardCharm", slot: "necklace", name: "설한 방호 목걸이",
+    id: "frostwardCharm", slot: "ring", name: "설한 방호 반지",
     materials: { frostCore: 1, manganese: 2, rhodiola: 2 },
     bonus: { manaRegenBonus: 0.5 },
     uniqueEffect: { type: "regionWard", regionId: "north", mitigation: 3 },
     description: "빙결 마도핵을 망간에 물리고 로디올라를 덧댔다. 북부의 마력 유실을 늦춘다."
   },
   antivenomCharm: {
-    id: "antivenomCharm", slot: "necklace", name: "해독 목걸이",
+    id: "antivenomCharm", slot: "ring", name: "해독 반지",
     materials: { venomSac: 1, aluminum: 2, cinchonaBark: 2 },
     bonus: { maxHpBonus: 0.05 },
     uniqueEffect: { type: "regionWard", regionId: "south", mitigation: 3 },
     description: "맹독낭을 기나나무 껍질로 중화했다. 남부의 독기와 오염을 버틴다."
   },
   spiritAnchorCharm: {
-    id: "spiritAnchorCharm", slot: "necklace", name: "영기 고정 목걸이",
+    id: "spiritAnchorCharm", slot: "ring", name: "영기 고정 반지",
     materials: { spiritCore: 1, titanium: 2, cordyceps: 2 },
     bonus: { cooldownReduction: 0.04 },
     uniqueEffect: { type: "regionWard", regionId: "east", mitigation: 3 },
     description: "영핵을 티타늄에 봉했다. 동부 영물이 몸에 걸린 것을 씻어내지 못하게 붙든다."
   },
   wardingSoulCharm: {
-    id: "wardingSoulCharm", slot: "necklace", name: "정화 서약 목걸이",
+    id: "wardingSoulCharm", slot: "ring", name: "정화 서약 반지",
     materials: { durahanSoul: 1, zinc: 2, chamomile: 2 },
     bonus: { armorBonus: 0.02, maxHpBonus: 0.04 },
     uniqueEffect: { type: "regionWard", regionId: "west", mitigation: 3 },
     description: "듀라한의 영혼을 아연에 가두고 카모마일로 달랬다. 동료에게 스미는 저주를 늦춘다."
   },
   emberwardCharm: {
-    id: "emberwardCharm", slot: "necklace", name: "내열 목걸이",
+    id: "emberwardCharm", slot: "ring", name: "내열 반지",
     materials: { wormCore: 1, copper: 2, aloeVera: 2 },
     bonus: { maxHpBonus: 0.05 },
     uniqueEffect: { type: "regionWard", regionId: "central", mitigation: 3 },
@@ -1089,6 +1089,17 @@ const LEGENDARY_GEAR_DEFS = {
     bonus: { maxHpBonus: 0.04, cooldownReduction: 0.03 },
     uniqueEffect: { type: "statusShrug", reduceMs: 1200 },
     lore: "영핵을 매단 목걸이. 몸에 붙은 것이 오래 머물지 못한다."
+  },
+  titanOathAmulet: {
+    id: "titanOathAmulet", slot: "necklace", legendary: true,
+    name: "거신의 맹세",
+    materials: { golemCore: 1, ancientAlloy: 2, oniHorn: 1 },
+    bonus: { damageBonus: 0.04, maxHpBonus: 0.04 },
+    // 일정 횟수를 때릴 때마다 대상 주변이 터진다. 단일 대상을 치는 행위가
+    // 주기적으로 광역이 되므로, "언제 터질지 세면서 몰아넣는" 운용이 생긴다.
+    // 반지가 전부 자기 강화라면 목걸이는 전장의 모양을 바꾸는 쪽이다.
+    uniqueEffect: { type: "chargedBurst", everyHits: 5, radius: 22, damageMultiplier: 1.6 },
+    lore: "고대 병기의 동력핵을 심장 자리에 매단 목걸이. 벼른 힘이 다섯 번째에 터진다."
   },
   fallenRelicAmulet: {
     id: "fallenRelicAmulet", slot: "necklace", legendary: true,

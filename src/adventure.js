@@ -604,6 +604,22 @@ function legendaryOutgoingMultiplier(battle, target) {
   return 1;
 }
 
+// 거신의 맹세: 일정 횟수를 때릴 때마다 대상 주변이 터진다.
+// 단일 대상 공격이 주기적으로 광역이 되므로 "언제 터질지 세면서 몰아넣는" 운용이 생긴다.
+// 기본 공격만 센다 - 스킬까지 세면 직업마다 발동 빈도가 제각각이 된다.
+function applyChargedBurst(battle, player, target) {
+  const burst = battle.legendary?.chargedBurst;
+  if (!burst) return;
+  const state = battle.legendaryState;
+  state.burstHits = (state.burstHits || 0) + 1;
+  if (state.burstHits % burst.everyHits !== 0) return;
+
+  const result = damageArea(battle, player, target, burst.radius, burst.damageMultiplier);
+  pushBattleLog(battle, result.targets.length
+    ? `거신의 맹세: 벼른 힘이 터져 적 ${result.targets.length}명에게 ${result.totalDamage} 피해`
+    : "거신의 맹세: 벼른 힘이 허공에서 터졌다");
+}
+
 // 적중 시 붙는 것들(상태이상 부여·회복 감소).
 function applyLegendaryOnHit(battle, player, target) {
   if (target.hp <= 0) return;
@@ -3286,6 +3302,7 @@ export function issuePlayerAction(battle, action) {
     target.lastHit = 260;
     if (stealthy) delete player.positiveEffects.stealth;
     applyLegendaryOnHit(battle, player, target);
+    applyChargedBurst(battle, player, target);
     if (target.hp > 0 && battle.playerKitId === "spiritBarbarian") applyCombatStatus(battle, target, "bleed", player, { stacks: 1 });
     if (target.hp > 0 && battle.playerKitId === "heavyTracker" && player.positiveEffects?.siegeMode?.endsAt > battle.elapsed) knockback(player, target, 5, battle);
     if (target.hp > 0 && player.positiveEffects?.decayOnHit?.endsAt > battle.elapsed) {

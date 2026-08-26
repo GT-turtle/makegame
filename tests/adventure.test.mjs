@@ -1954,14 +1954,14 @@ test("지역별 필드 진행 순서가 문서와 일치한다", () => {
   }
 });
 
-test("지역 진행용 목걸이는 자기 지역에서만 대응 수치를 준다", () => {
+test("지역 진행용 반지는 자기 지역에서만 대응 수치를 준다", () => {
   // 하나로 모든 지역을 우회하는 범용 해답을 만들지 않는다는 원칙
   // (REGION_PROGRESSION_HAZARDS.md §1 — 개척자의 목걸이가 폐기된 이유).
   const wear = (defId) => {
     const commander = createDefaultCommander();
     if (!defId) return commander;
     commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
-    commander.equipped.necklace = "g0";
+    commander.equipped.ring1 = "g0";
     return commander;
   };
   const mitigation = (defId, regionId) =>
@@ -1976,15 +1976,15 @@ test("지역 진행용 목걸이는 자기 지역에서만 대응 수치를 준�
 
   // 목걸이만으로는 부족하고 편성도 맞춰야 완전히 막힌다.
   const ward = EQUIPMENT_DEFS.wardingSoulCharm.uniqueEffect;
-  assert.ok(ward.mitigation < 4, "목걸이 단독으로는 상한(4)에 못 미친다");
+  assert.ok(ward.mitigation < 4, "반지 단독으로는 상한(4)에 못 미친다");
 });
 
-test("서부 목걸이를 차면 저주로 인한 동료 이탈이 막힌다", () => {
+test("서부 반지를 차면 저주로 인한 동료 이탈이 막힌다", () => {
   const run = (defId) => {
     const commander = createDefaultCommander();
     if (defId) {
       commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
-      commander.equipped.necklace = "g0";
+      commander.equipped.ring1 = "g0";
     }
     const regionRun = createRegionRun("west", 111, STARTING_PARTY, {}, commander, {});
     const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
@@ -1997,11 +1997,11 @@ test("서부 목걸이를 차면 저주로 인한 동료 이탈이 막힌다", (
   };
 
   assert.ok(run(null) > 0, "맨몸이면 동료가 이탈한다");
-  assert.ok(run("emberwardCharm") > 0, "엉뚱한 지역 목걸이는 소용없다");
-  assert.equal(run("wardingSoulCharm"), 0, "서부 목걸이를 차면 이탈하지 않는다");
+  assert.ok(run("emberwardCharm") > 0, "엉뚱한 지역 반지는 소용없다");
+  assert.equal(run("wardingSoulCharm"), 0, "서부 반지를 차면 이탈하지 않는다");
 });
 
-test("지역 진행용 목걸이 5종은 문서의 조합 규칙을 따른다", () => {
+test("지역 진행용 반지 5종은 문서의 조합 규칙을 따른다", () => {
   // 규칙: 1필드 보스 핵심 소재 + 그 지역 광석/금속 + 그 지역 약재.
   const expected = {
     north: { ward: "frostwardCharm", key: "frostCore" },
@@ -2014,7 +2014,7 @@ test("지역 진행용 목걸이 5종은 문서의 조합 규칙을 따른다", 
   for (const [regionId, { ward, key }] of Object.entries(expected)) {
     const definition = EQUIPMENT_DEFS[ward];
     assert.ok(definition, `${ward}가 정의돼야 한다`);
-    assert.equal(definition.slot, "necklace", "지역 진행용은 목걸이다(한 칸뿐이라 진짜 선택이 된다)");
+    assert.equal(definition.slot, "ring", "지역 진행용은 반지다(두 칸이라 지역 대응과 전투용을 나눠 낀다)");
     assert.equal(definition.uniqueEffect.regionId, regionId);
 
     const materials = Object.keys(definition.materials);
@@ -2029,6 +2029,82 @@ test("지역 진행용 목걸이 5종은 문서의 조합 규칙을 따른다", 
   const wards = Object.values(EQUIPMENT_DEFS).filter((entry) => entry.uniqueEffect?.type === "regionWard");
   assert.equal(wards.length, 5);
   assert.equal(new Set(wards.map((entry) => entry.uniqueEffect.regionId)).size, 5);
+});
+
+test("거신의 맹세는 정해진 횟수마다 대상 주변을 터뜨린다", () => {
+  const wear = (defId) => {
+    const commander = createDefaultCommander();
+    if (!defId) return commander;
+    commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+    commander.equipped.necklace = "g0";
+    return commander;
+  };
+
+  const swing = (defId, swings) => {
+    const battle = createAutoBattle("frostColossusPack", null, null, STARTING_PARTY, {},
+      { rollSeed: 9, commander: wear(defId) });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 99999;
+    for (const enemy of battle.enemies) { enemy.dormant = false; enemy.maxHp = enemy.hp = 99999; }
+    const target = battle.enemies[0];
+
+    let hits = 0;
+    let bursts = 0;
+    for (let i = 0; i < swings; i += 1) {
+      player.x = target.x - 3;
+      player.y = target.y;
+      if (issuePlayerAction(battle, "attack")) hits += 1;
+      tickAutoBattle(battle, 100);
+      player.hp = 99999;
+      bursts += battle.log.filter((line) => /거신의 맹세/.test(line.text || line)).length;
+      battle.log = [];
+    }
+    return { hits, bursts };
+  };
+
+  assert.equal(swing(null, 40).bursts, 0, "목걸이가 없으면 터지지 않는다");
+
+  const every = LEGENDARY_DEFS.titanOathAmulet.uniqueEffect.everyHits;
+  const armed = swing("titanOathAmulet", 60);
+  assert.ok(armed.hits >= every, "충분히 때렸다");
+  assert.equal(armed.bursts, Math.floor(armed.hits / every),
+    `${every}회마다 정확히 한 번 터진다 (때린 ${armed.hits}회 → ${armed.bursts}번)`);
+});
+
+test("거신의 맹세 폭발은 뭉친 적을 함께 때린다", () => {
+  // 단일 대상 공격이 주기적으로 광역이 되는 게 이 목걸이의 정체성이다.
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "titanOathAmulet", grade: "common", options: [] }];
+  commander.equipped.necklace = "g0";
+
+  const battle = createAutoBattle("frostColossusPack", null, null, STARTING_PARTY, {},
+    { rollSeed: 9, commander });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+  const target = battle.enemies[0];
+  for (const enemy of battle.enemies) {
+    enemy.dormant = false;
+    enemy.maxHp = enemy.hp = 99999;
+    enemy.x = target.x + 2;
+    enemy.y = target.y + 2;
+  }
+
+  // 기본 공격에는 쿨다운이 있어 tick 수보다 실제 타격이 훨씬 적다.
+  // everyHits를 채우려면 넉넉히 돌려야 한다.
+  const every = LEGENDARY_DEFS.titanOathAmulet.uniqueEffect.everyHits;
+  for (let i = 0; i < every * 20; i += 1) {
+    player.x = target.x - 3;
+    player.y = target.y;
+    issuePlayerAction(battle, "attack");
+    tickAutoBattle(battle, 100);
+    player.hp = 99999;
+    for (const enemy of battle.enemies) { enemy.x = target.x + 2; enemy.y = target.y + 2; }
+  }
+
+  const burstLog = battle.log.map((line) => line.text || line).find((text) => /거신의 맹세: 벼른 힘이 터져/.test(text));
+  assert.ok(burstLog, "폭발이 발동했다");
+  const hitCount = Number((burstLog.match(/적 (\d+)명/) || [])[1] || 0);
+  assert.ok(hitCount > 1, `뭉친 적 여럿을 함께 때린다 (${hitCount}명)`);
 });
 
 test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {
