@@ -2798,7 +2798,8 @@ test("특수 동료 5명은 지역마다 하나씩 있고, 패시브가 실제 �
     "지역마다 정확히 하나씩"
   );
   for (const unit of specials) {
-    assert.ok(unit.specialPassive?.effect, `${unit.id}는 패시브를 갖는다`);
+    // 넷은 동료 본인에게, 서부 성기사 하나만 플레이어에게 붙는다.
+    assert.ok(unit.specialPassive?.effect || unit.grantsPlayerPassive?.effect, `${unit.id}는 패시브를 갖는다`);
     // 지역 모집 목록에 들어가면 "총 5명"이 UI로 새어나간다(설계 문서 §6).
     assert.ok(!WORLD_REGION_DEFS[unit.regionId].recruits.includes(unit.id),
       `${unit.id}는 모집 목록에 노출되지 않는다`);
@@ -2837,16 +2838,35 @@ test("특수 동료 5명은 지역마다 하나씩 있고, 패시브가 실제 �
   assert.ok(withSpecial("relic_scholar").commandAura > baseline.commandAura,
     "유물 해독: 파티 지휘 보정이 오른다");
 
-  // 부활은 쓰러진 다음에만 발동하고, 전투당 한 번뿐이다.
-  const battle = withSpecial("fallen_paladin");
-  const paladin = battle.units.find((unit) => unit.defId === "fallen_paladin");
-  paladin.hp = 0;
-  tickAutoBattle(battle, 20);
-  assert.ok(paladin.hp > 0, "금지된 서약: 쓰러져도 다시 일어선다");
+});
 
-  paladin.hp = 0;
+test("흑마법의 비밀은 성기사를 구조하면 플레이어에게 붙는다", () => {
+  // 이 하나만 동료가 아니라 플레이어를 되살린다. 그리고 편성과 무관하다 —
+  // 구조해서 명부에 있으면, 데려가지 않아도 효과가 남는다.
+  const build = (roster) => createAutoBattle("duneRaiders", "oath", "field", ["winter_berserker"], {}, {
+    commander: createDefaultCommander(), roster
+  });
+
+  const without = build([]);
+  assert.equal(without.grantedPassives.length, 0, "구조 전에는 아무것도 없다");
+  const player = without.units.find((unit) => unit.controlled);
+  player.hp = 0;
+  tickAutoBattle(without, 20);
+  assert.equal(player.hp, 0, "구조 전에는 부활하지 않는다");
+
+  // 성기사를 편성하지 않고 명부에만 두었는데도 붙는다.
+  const battle = build(["fallen_paladin"]);
+  assert.equal(battle.grantedPassives[0].id, "forbiddenOath");
+  assert.ok(!battle.units.some((unit) => unit.defId === "fallen_paladin"), "편성하지 않았다");
+
+  const hero = battle.units.find((unit) => unit.controlled);
+  hero.hp = 0;
   tickAutoBattle(battle, 20);
-  assert.equal(paladin.hp, 0, "두 번째는 일어나지 않는다");
+  assert.ok(hero.hp > 0, `플레이어가 다시 일어선다 (0 -> ${hero.hp})`);
+
+  hero.hp = 0;
+  tickAutoBattle(battle, 20);
+  assert.equal(hero.hp, 0, "전투당 한 번뿐이다");
 });
 
 test("특수 동료가 쓰러지면 매 틱 얹던 버프는 걷힌다", () => {

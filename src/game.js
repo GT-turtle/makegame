@@ -1,5 +1,5 @@
 import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
-import { MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, ENHANCE_MAX, enhanceCost, enhanceOdds, equipmentGradeDefinition, findEquipmentInstance, releaseEquipmentEverywhere, repairCost, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem } from "./classes.js";
+import { MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, ENHANCE_MAX, enhanceCost, enhanceOdds, equipmentGradeDefinition, findEquipmentInstance, releaseEquipmentEverywhere, repairCost, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem , SPECIAL_RUNE_DROP_RATE, specialRuneUnlocked , canSpecialForge, rollSpecialForgeOption } from "./classes.js";
 import {
   activeWorkerCount,
   addMaterial,
@@ -30,7 +30,7 @@ import {
   revealFloor,
   synergyItemUids,
   useHerbKit
-} from "./core.js";
+, mulberry32 } from "./core.js";
 import {
   ENCOUNTER_DEFS,
   ENEMY_COMBATANTS,
@@ -57,7 +57,7 @@ import {
   memoryRewards,
   memorySummonable,
   regionEntryCheck
-} from "./adventure.js";
+, GOLEM_UNIT_DEFS, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , SPECIAL_UNIT_DEFS } from "./adventure.js";
 import {
   DISCOVERY_SITE_DEFS,
   FRONTIER_FACTION_DEFS,
@@ -93,7 +93,7 @@ import {
   FAVOR_MILESTONES,
   FAVOR_GIFTS,
   favorGainPerCycle
-} from "./frontier.js";
+, MAGE_TOWER_SPELL_DEFS, MAGE_TOWER_MAX_LEVEL, MAGE_TOWER_BUILD_COST, mageTowerCharges, mageTowerSupport, mageTowerUnlocked } from "./frontier.js";
 import {
   ESTATE_GATE_DEFS,
   GATE_GARRISON_LIMIT,
@@ -291,7 +291,8 @@ export class GameEngine {
     const clearCount = (adventure.records[regionId]?.victories || 0) + 1;
     const run = createRegionRun(regionId, seed, party, adventure.unitProgress, adventure.commander, {
       fieldBattle: true,
-      clearCount
+      clearCount,
+      roster: adventure.roster
     });
     if (!run) return false;
     adventure.selectedRegionId = regionId;
@@ -374,6 +375,7 @@ export class GameEngine {
       {
         subregionId: zoneId,
         purpose,
+        roster: adventure.roster,
         bossEncounterId: definition.bossEncounterId,
         ambushInterval: { safe: [8, 13], watch: [6, 10], danger: [4, 8] }[definition.tier]
       }
@@ -798,6 +800,9 @@ export class GameEngine {
     const frontier = this.state.frontier;
     if (!frontier || this.state.adventure?.run || this.state.estateDefense?.battle || this.state.estateDefense?.campaign) return false;
     frontier.cycle += 1;
+    // 마탑 강령은 주기마다 다시 찬다. 아껴서 모아뒀다 한 번에 쏟는 걸 막아야
+    // "이번 주기 어디에 쓸까"라는 결정이 매 주기 돌아온다.
+    if (this.state.meta.estate.mageTower) this.state.meta.estate.mageTower.chargesUsed = 0;
     this.refreshFrontierSquads();
 
     // 중상 회복: 병력(N주기 후 자동 복귀)과 대장(동료, 회복 후 재배치 가능 — 영구 사망 없음)
@@ -840,7 +845,16 @@ export class GameEngine {
       const power = leaderPower + troopPower;
       const tierDifficulty = { safe: 0, watch: 10, danger: 22 }[zoneDefinition.tier] ?? 10;
       const difficulty = tierDifficulty + zone.threat * 0.5;
-      const successChance = Math.max(8, Math.min(96, 72 + (power - difficulty))) / 100;
+      // 마탑 강령. 원정의 중간 과정은 그리지 않고 수치로 정산하므로 마탑의 개입도
+      // 성공률로 들어간다. 주기당 횟수가 정해져 있어 "어느 임무에 쓰느냐"가 결정이 된다.
+      const tower = this.state.meta.estate.mageTower;
+      const towerSupport = mageTowerSupport(tower, type);
+      if (towerSupport > 0) {
+        tower.chargesUsed = (tower.chargesUsed || 0) + 1;
+        this.addFrontierEvent(
+          `마탑이 ${zoneDefinition.name}에 ${MAGE_TOWER_SPELL_DEFS[tower.loadedSpellId].name}을 내렸다.`, "good");
+      }
+      const successChance = Math.max(8, Math.min(96, 72 + (power - difficulty))) / 100 + towerSupport;
       const roll = deterministicFrontierRoll(frontier, `${squad.id}|mission-result|${zoneId}|${type}`);
       const success = roll < successChance;
       if (success && type === "suppress") {
@@ -1283,6 +1297,8 @@ export class GameEngine {
         adventure.roster.push(recruited);
         adventure.unitProgress[recruited] = newUnitProgress();
       }
+      this.rescueSpecialCompanion(run.regionId, run.seed);
+      this.rollSpecialRuneDrop(run.regionId, run.seed);
       const advancedTechnique = { north: "spirit", south: "alchemy", east: "tactics", west: "mana", central: "alchemy" }[run.regionId];
       if (advancedTechnique && !adventure.unlockedTechniques.includes(advancedTechnique)) adventure.unlockedTechniques.push(advancedTechnique);
       if (run.capturedBoss) commander.storedBoss = { ...run.capturedBoss };
@@ -1320,6 +1336,10 @@ export class GameEngine {
     } else {
       if (adventure.party.length >= PARTY_LIMIT) return false;
       if (this.frontierUnitBusy(unitId)) return false;
+      // 골렘은 파티에 못 들어간다. 분대장 자리를 대신 채우는 독립 병기이지
+      // 추가 전투원이 아니다 — 데려갈 수 있게 두면 늘어나는 게 원정 수가 아니라
+      // 그냥 화력이 되어 설계 의도가 뒤집힌다.
+      if (UNIT_DEFS[unitId].construct) return false;
       adventure.party.push(unitId);
     }
     this.refreshFrontierSquads();
@@ -2332,6 +2352,9 @@ export class GameEngine {
     const definition = RUNE_DEFS[runeId];
     const commander = this.state.adventure.commander;
     if (this.state.adventure?.run || this.state.estateDefense?.campaign || !definition) return false;
+    // 특수 룬은 살 수 없다. 낮은 확률로 떨어지는 것 자체가 이 룬의 가치라서,
+    // 고철로 살 수 있게 두면 그 장치가 통째로 무의미해진다.
+    if (definition.special) return false;
     if (commander.runesOwned.includes(runeId)) return false;
     if (this.state.meta.scrap < definition.cost) return false;
     this.state.meta.scrap -= definition.cost;
@@ -2339,6 +2362,49 @@ export class GameEngine {
     this.addLog(`${definition.name} 획득.`, "item");
     this.emit();
     return true;
+  }
+
+  // 특수 동료 구조. 그 지역의 일반 동료 셋을 모두 영입한 뒤에야 나타난다 —
+  // 문서가 요구하는 "발견형 콘텐츠"에 가장 가까운 형태다. 미리 예고하지 않고,
+  // 도감이나 남은 인원 수를 보여주지도 않는다(COMPANION_EVENT_DESIGN.md §5).
+  //
+  // 구조 자체가 다섯 시스템(마탑·특수룬·특수단조·골렘·흑마법)의 트리거다.
+  rescueSpecialCompanion(regionId, seed = 0) {
+    const adventure = this.state.adventure;
+    const region = WORLD_REGION_DEFS[regionId];
+    // 그 지역 일반 동료를 다 모으기 전에는 나타나지 않는다.
+    if (!region.recruits.every((unitId) => adventure.roster.includes(unitId))) return null;
+
+    const special = Object.values(SPECIAL_UNIT_DEFS)
+      .find((unit) => unit.regionId === regionId && !adventure.roster.includes(unit.id));
+    if (!special) return null;
+
+    adventure.roster.push(special.id);
+    adventure.unitProgress[special.id] = newUnitProgress();
+    this.addLog(`${special.name}을 구조했다.`, "good");
+    return special.id;
+  }
+
+  // 특수 룬 드랍 판정. 해당 지역을 정복했고, 그 지역 특수 동료를 이미 구조했을
+  // 때만 굴린다 — 구조가 트리거고, 낮은 확률이 밸런스 장치다.
+  rollSpecialRuneDrop(regionId, seed = 0) {
+    const commander = this.state.adventure.commander;
+    const roster = this.state.adventure.roster;
+    const candidates = Object.values(RUNE_DEFS).filter((rune) =>
+      rune.special
+      && rune.regionId === regionId
+      && specialRuneUnlocked(rune, roster)
+      && !commander.runesOwned.includes(rune.id));
+    if (!candidates.length) return null;
+
+    // 정산마다 결과가 흔들리지 않게 원정 시드에서 굴린다.
+    const roll = mulberry32(((seed || 1) * 2654435761) >>> 0)();
+    if (roll >= SPECIAL_RUNE_DROP_RATE) return null;
+
+    const rune = candidates[0];
+    commander.runesOwned.push(rune.id);
+    this.addLog(`${rune.name}을 얻었다. 주술사가 새겨둔 문양이 살아 있다.`, "good");
+    return rune.id;
   }
 
   equipRune(runeId) {
@@ -2511,6 +2577,82 @@ export class GameEngine {
 
   // 장비 강화. 성공하면 단계가 오르고, 실패하면 그대로거나 부서진다.
   // 부서져도 사라지지는 않는다 — 파괴가 아니라 파손이라 수리하면 다시 쓴다.
+  // 골렘 복원. 중부 특수 동료(고고학자)를 구조해야 열린다.
+  // 명부에 유닛으로 올려서 분대장 자리를 채우게 한다 — 동료를 쓰지 않고도
+  // 분대가 하나 더 돌아가므로 늘어나는 건 화력이 아니라 동시 원정 수다.
+  buildGolem() {
+    const adventure = this.state.adventure;
+    if (adventure.run || this.state.estateDefense?.campaign) return false;
+    if (!golemUnlocked(adventure.roster)) return false;
+    // 정의는 미리 다 만들어져 있다. 아직 명부에 없는 첫 번째 자리를 쓴다.
+    const unitId = Object.keys(GOLEM_UNIT_DEFS).find((id) => !adventure.roster.includes(id));
+    if (!unitId) return false;
+    if (!this.spendMaterials(GOLEM_MATERIALS)) return false;
+
+    adventure.roster.push(unitId);
+    adventure.unitProgress[unitId] = newUnitProgress();
+    this.addLog("고대 골렘을 복원했다. 원정대 하나를 통째로 맡길 수 있다.", "good");
+    this.emit();
+    return true;
+  }
+
+  // 마탑 건축·증축. 북부 특수 동료(마탑 설계자)를 구조해야 열린다.
+  buildMageTower() {
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    if (!mageTowerUnlocked(this.state.adventure.roster)) return false;
+    const tower = this.state.meta.estate.mageTower ||= { level: 0, loadedSpellId: null, chargesUsed: 0 };
+    if (tower.level >= MAGE_TOWER_MAX_LEVEL) return false;
+    // 층이 올라갈수록 비싸진다 — 강령 횟수가 곧바로 성공률이라 싸면 안 된다.
+    const cost = MAGE_TOWER_BUILD_COST.scrap * (tower.level + 1);
+    if (this.state.meta.scrap < cost) return false;
+    this.state.meta.scrap -= cost;
+    tower.level += 1;
+    this.addLog(tower.level === 1
+      ? "마탑을 세웠다. 이제 원정에 강령을 실을 수 있다."
+      : `마탑 ${tower.level}층. 주기당 강령 ${mageTowerCharges(tower.level)}회.`, "good");
+    this.emit();
+    return true;
+  }
+
+  // 강령 장전. 출발 전에 어떤 마법을 걸어둘지 고른다.
+  loadMageTowerSpell(spellId) {
+    if (this.state.adventure?.run) return false;
+    const tower = this.state.meta.estate.mageTower;
+    if (!tower?.level) return false;
+    if (spellId !== null && !MAGE_TOWER_SPELL_DEFS[spellId]) return false;
+    tower.loadedSpellId = spellId;
+    this.addLog(spellId ? `마탑에 ${MAGE_TOWER_SPELL_DEFS[spellId].name}을 장전했다.` : "마탑 장전 해제.", "item");
+    this.emit();
+    return true;
+  }
+
+  // 특수 단조. 등급이 정한 칸수를 한 칸 넘겨서 옵션을 새긴다.
+  // 동부 대장장이를 구조해야 열리고, 장비 하나당 한 번뿐이다.
+  specialForgeEquipment(uid) {
+    const commander = this.state.adventure.commander;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+
+    const instance = findEquipmentInstance(commander, uid);
+    if (!canSpecialForge(instance, this.state.adventure.roster)) return false;
+
+    // 강화와 같은 재료를 쓰되 두 배다. 옵션 한 칸은 강화 한 단계보다 무겁다.
+    const cost = Object.fromEntries(
+      Object.entries(enhanceCost(instance)).map(([key, value]) => [key, value * 2]));
+    if (!this.spendMaterials(cost)) return false;
+
+    // 대장장이 숙련이 옵션 수치에 영향을 준다 — 제작과 같은 규칙이다.
+    const proficiency = workerProficiency(this.state, "blacksmith").level;
+    const seed = (this.state.meta.craftSeed = (this.state.meta.craftSeed || 1) + 1);
+    const option = rollSpecialForgeOption(instance, proficiency, mulberry32((seed * 2246822519) >>> 0));
+    if (!option) return false;
+
+    instance.options = [...(instance.options || []), option];
+    instance.specialForged = true;
+    this.addLog(`${EQUIPMENT_DEFS[instance.defId]?.name || "장비"}에 특수 옵션을 새겼다.`, "good");
+    this.emit();
+    return true;
+  }
+
   enhanceEquipment(uid) {
     const commander = this.state.adventure.commander;
     if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;

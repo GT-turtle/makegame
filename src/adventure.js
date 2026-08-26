@@ -1035,6 +1035,54 @@ export const MONSTER_ECOLOGY_DEFS = {
 //
 // recruits에 넣지 않았다. 지역 모집 화면에 잠긴 칸으로 뜨면 "총 5명"이라는 사실이
 // UI로 새어나가는데, 그건 문서가 명시적으로 금지한 것이다(§6).
+// ── 복원 골렘 (중부 · 고고학자) ────────────────────────────────────────
+//
+// 중부 필드 보스 centralGolem을 복원해 우리 쪽 병기로 쓴다. 스탯은 그 적 정의를
+// 그대로 깎아서 가져온다 — 사용자 결정("적군 골렘 가져다 쓰면 된다").
+//
+// **파티에 넣을 수 없다.** 골렘은 추가 전투원이 아니라 분대장 자리를 대신 채우는
+// 독립 병기다. 동료를 쓰지 않고도 분대가 하나 더 돌아가므로, 늘어나는 건 화력이
+// 아니라 **동시에 굴릴 수 있는 원정 수**다(docs/COMPANION_EVENT_DESIGN.md §중부).
+//
+// UNIT_DEFS에 넣은 건 분대 코드가 명부의 유닛을 전제로 짜여 있어서다. 새 경로를
+// 파는 대신 기존 통로를 쓰고, 파티 편성만 따로 막는다.
+export const GOLEM_UNIT_ID = "restored_golem";
+
+// 한 번에 굴릴 수 있는 골렘 수. 무한히 찍으면 원정이 전부 자동화되고
+// 플레이어가 직접 나갈 이유가 사라진다.
+export const GOLEM_MAX_COUNT = 2;
+export const GOLEM_SOURCE_UNIT_ID = "relic_scholar";
+
+// 골렘 정의는 **미리 다 만들어 둔다**(최대 수만큼). 복원할 때 UNIT_DEFS를 런타임에
+// 늘리면 저장을 불러왔을 때 그 정의가 사라져서, 명부에는 있는데 정의가 없는
+// 유닛이 생긴다. 개수가 둘뿐이라 미리 박아두는 편이 훨씬 안전하다.
+const GOLEM_BASE = {
+  name: "복원 골렘", regionId: "central", role: "병기", glyph: "G",
+    color: "#9a8f74", species: "construct",
+  // 적 정의(centralGolem)의 절반 정도. 원본은 필드 보스라 그대로 쓰면 과하다.
+  maxHp: 107, damage: 8, range: 10, speed: 4, attackMs: 1850, armor: 0.26,
+  scores: [2, 4, 1], primary: "자동 토벌", weakness: "스스로 판단하지 못한다.",
+  baseClassId: "crusader", construct: true,
+  materials: { golemCore: 1, ancientAlloy: 3 }
+};
+
+export const GOLEM_UNIT_DEFS = Object.fromEntries(
+  Array.from({ length: GOLEM_MAX_COUNT }, (unused, index) => {
+    const id = `${GOLEM_UNIT_ID}-${index + 1}`;
+    return [id, { ...GOLEM_BASE, id, name: `${GOLEM_BASE.name} ${index + 1}호` }];
+  })
+);
+
+export const GOLEM_MATERIALS = GOLEM_BASE.materials;
+
+export function golemUnlocked(roster = []) {
+  return roster.includes(GOLEM_SOURCE_UNIT_ID);
+}
+
+export function golemCount(roster = []) {
+  return roster.filter((id) => id.startsWith(GOLEM_UNIT_ID)).length;
+}
+
 export const SPECIAL_UNIT_DEFS = {
   tower_architect: {
     id: "tower_architect", name: "마탑 설계자", regionId: "north", role: "유틸", glyph: "▲", color: "#8fb6e0",
@@ -1067,8 +1115,12 @@ export const SPECIAL_UNIT_DEFS = {
     id: "fallen_paladin", name: "타락 직전의 성기사", regionId: "west", role: "탱커", glyph: "†", color: "#b9a2d4",
     maxHp: 54, damage: 6, range: 8, speed: 7, attackMs: 1240, armor: 0.26, scores: [1, 4, 1],
     primary: "금지된 서약", weakness: "스스로를 갉아먹는다.", baseClassId: "crusader", special: true,
-    specialPassive: {
-      id: "forbiddenOath", name: "금지된 서약", effect: "reviveOnce", healRatio: 0.35,
+    // 이 하나만 동료 본인이 아니라 **플레이어**에게 붙는다. 편성하지 않아도
+    // 구조해서 명부에 있기만 하면 금지된 지식이 플레이어에게 남는다
+    // (docs/COMPANION_EVENT_DESIGN.md §서부 — 흑마법의 비밀).
+    // 동료의 죽음이 아니라 플레이어의 죽음을 되돌리는 게 이 보상의 요점이다.
+    grantsPlayerPassive: {
+      id: "forbiddenOath", name: "흑마법의 비밀", effect: "reviveOnce", healRatio: 0.35,
       description: "전투당 한 번, 쓰러져도 체력 일부를 안고 다시 일어난다."
     }
   },
@@ -1104,7 +1156,8 @@ export const UNIT_DEFS = {
   glass_alchemist: { id: "glass_alchemist", name: "유리사 연금술사", regionId: "central", role: "딜·유틸", glyph: "⚗", color: "#cf9257", maxHp: 31, damage: 5, range: 22, speed: 8, attackMs: 1080, armor: 0.06, poisonDamage: 1, heal: 2, healMs: 5000, scores: [2, 1, 3], primary: "분진 조합", weakness: "준비 없이 돌입한 전투에 약하다.", baseClassId: "archmage" },
   caravan_guide: { id: "caravan_guide", name: "대상단 길잡이", regionId: "central", role: "유틸", glyph: "◎", color: "#d4bc7a", maxHp: 36, damage: 4, range: 20, speed: 12, attackMs: 1000, armor: 0.09, commandAura: 0.1, heal: 2, healMs: 4700, scores: [1, 1, 4], primary: "보급 지휘", weakness: "전투를 끝낼 결정력이 부족하다.", baseClassId: "tracker" },
 
-  ...SPECIAL_UNIT_DEFS
+  ...SPECIAL_UNIT_DEFS,
+  ...GOLEM_UNIT_DEFS
 };
 
 export const ENEMY_COMBATANTS = {
@@ -1618,10 +1671,14 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
     ambushInterval,
     nextAmbushStep: firstAmbushStep,
     party,
-    commander: { name: "개척자", level: 1, xp: 0, ...commander },
+    commander: { name: "개척자", mastery: 0, xp: 0, ...commander },
     commanderXp: 0,
-    unitProgress: Object.fromEntries(party.map((unitId) => [unitId, { level: 1, xp: 0, ...(unitProgress[unitId] || {}) }])),
+    unitProgress: Object.fromEntries(party.map((unitId) =>
+      [unitId, { mastery: 0, xp: 0, branchId: null, traitIds: [null, null], ...(unitProgress[unitId] || {}) }])),
     unitXp: Object.fromEntries(party.map((unitId) => [unitId, 0])),
+    // 구조한 특수 동료가 남긴 플레이어 패시브를 판정하려면 명부가 필요하다.
+    // 편성(party)이 아니라 명부(roster) 전체다 — 데려가지 않아도 효과는 남는다.
+    roster: [...(options.roster || [])],
     hazardMitigation,
     cargo: { scrap: 0, materials: {}, weaponBlueprints: [] },
     encountersWon: 0,
@@ -1654,6 +1711,7 @@ function maybeStartIrregularAmbush(run) {
     regionId: run.regionId,
     hazardMitigation: run.hazardMitigation,
     commander: run.commander,
+    roster: run.roster,
     awaitingPlayerStart: true,
     enemyCopies: 2
   });
@@ -1750,6 +1808,7 @@ export function moveRunPlayer(run, x, y) {
       regionId: run.regionId,
       hazardMitigation: run.hazardMitigation,
       commander: run.commander,
+      roster: run.roster,
       forceBoss: Boolean(feature.boss),
       awaitingPlayerStart: true,
       enemyCopies: feature.boss ? 1 : 2
@@ -2035,6 +2094,12 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     legendaryOnHit: equippedUniqueEffects(options.commander || {}, playerKit.baseClassId)
       .filter((effect) => effect.type === "onHitStatus"),
     legendaryState: { lastPlayerHitAt: 0, lastCleanseAt: -999999 },
+    // 구조한 특수 동료가 플레이어에게 남긴 패시브. 명부(roster)에서 매번 다시
+    // 읽는다 — 별도 해금 플래그를 두면 구조 경로가 늘어날 때마다 동기화가 어긋난다.
+    grantedPassives: Object.values(SPECIAL_UNIT_DEFS)
+      .filter((unit) => unit.grantsPlayerPassive && (options.roster || []).includes(unit.id))
+      .map((unit) => ({ ...unit.grantsPlayerPassive })),
+    grantedState: {},
     playerSkillIds: playerSkills,
     playerPassive: { ...playerKit.passive },
     storedBoss: options.commander?.storedBoss ? { ...options.commander.storedBoss } : null,
@@ -2534,6 +2599,21 @@ function refreshBaseClassPassive(battle) {
   for (const companion of battle.units) {
     if (!companion.specialPassive) continue;
     applySpecialPassiveEffect(battle, companion, companion.specialPassive);
+  }
+  applyGrantedPassives(battle, player);
+}
+
+// 구조한 특수 동료가 플레이어에게 남긴 패시브. 편성과 무관하게 작동한다 —
+// 서부 성기사를 구조했다면 그를 데려가지 않아도 금지된 지식은 플레이어에게 있다.
+function applyGrantedPassives(battle, player) {
+  if (!player || !battle.grantedPassives?.length) return;
+  for (const passive of battle.grantedPassives) {
+    if (passive.effect !== "reviveOnce") continue;
+    if (player.hp > 0 || battle.grantedState[passive.id]) continue;
+    battle.grantedState[passive.id] = true;
+    player.hp = Math.max(1, Math.round(player.maxHp * (passive.healRatio || 0.35)));
+    player.statuses = {};
+    pushBattleLog(battle, `${passive.name}: 죽음을 한 번 되돌렸다.`);
   }
 }
 

@@ -426,6 +426,63 @@ export function stepMerchantCycle(frontier, merchant) {
 //
 // 부락 친목도(아래)와는 다른 축이다 — 친목도는 교역으로 오르고 가방 아이템
 // 레시피를 주지만, 우호도는 명성으로 오르고 장비 설계도를 준다.
+// ── 마탑 (북부 · 마탑 설계자) ──────────────────────────────────────────
+//
+// 원정의 중간 과정은 화면에 그리지 않고 수치로 정산한다. 그래서 마탑의 개입도
+// "전장에 장판을 깐다"가 아니라 **성공률을 올린다**로 들어간다.
+//
+// 핵심은 횟수를 아깝게 두는 것이다. 주기당 1~3회뿐이라 "어느 임무에 쓰느냐"가
+// 진짜 결정이 된다. 열 번 쓸 수 있으면 그냥 상시 보너스가 되고, 그건 마탑이
+// 아니라 스탯 하나 더 준 것과 같다.
+//
+// 마법 종류는 상황을 가린다 — 아무 임무에나 최선인 마법은 두지 않는다.
+export const MAGE_TOWER_SPELL_DEFS = {
+  blizzard: {
+    id: "blizzard", name: "블리자드", glyph: "❄",
+    // 넓게 퍼진 무리를 얼려 잡는다. 잡졸이 많은 토벌에 강하다.
+    bonus: { suppress: 0.22, recon: 0.06 },
+    description: "넓은 범위를 얼린다. 순환 토벌 성공률이 크게 오른다."
+  },
+  meteor: {
+    id: "meteor", name: "메테오", glyph: "☄",
+    // 무작위 낙하라 넓은 구역을 훑는 데 좋다. 탐사 쪽 보정이 크다.
+    bonus: { suppress: 0.1, recon: 0.2 },
+    description: "구역 전체에 화염구가 떨어진다. 탐사 성공률이 크게 오른다."
+  },
+  thunderbolt: {
+    id: "thunderbolt", name: "낙뢰", glyph: "⚡",
+    // 단발 고화력. 어느 쪽이든 고르게 밀어준다 — 대신 최고점은 없다.
+    bonus: { suppress: 0.15, recon: 0.15 },
+    description: "단발 낙뢰로 핵심을 끊는다. 두 임무에 고르게 작용한다."
+  }
+};
+
+export const MAGE_TOWER_UNIT_ID = "tower_architect";
+export const MAGE_TOWER_MAX_LEVEL = 3;
+export const MAGE_TOWER_BUILD_COST = { scrap: 30 };
+
+export function mageTowerUnlocked(roster = []) {
+  return roster.includes(MAGE_TOWER_UNIT_ID);
+}
+
+// 주기당 쓸 수 있는 강령 횟수. 1층 1회, 3층 3회.
+export function mageTowerCharges(level) {
+  return Math.max(0, Math.min(MAGE_TOWER_MAX_LEVEL, level || 0));
+}
+
+// 이번 임무에 강령을 실을 수 있는가.
+export function mageTowerReady(tower) {
+  if (!tower || !tower.level || !tower.loadedSpellId) return false;
+  return (tower.chargesUsed || 0) < mageTowerCharges(tower.level);
+}
+
+// 임무 종류에 맞는 성공률 보정. 장전한 마법이 상황과 안 맞으면 적게 붙는다.
+export function mageTowerSupport(tower, missionType) {
+  if (!mageTowerReady(tower)) return 0;
+  const spell = MAGE_TOWER_SPELL_DEFS[tower.loadedSpellId];
+  return spell?.bonus?.[missionType === "suppress" ? "suppress" : "recon"] || 0;
+}
+
 export const RENOWN_SOURCES = {
   bossDefeated: 12,      // 지역 던전 정복
   dungeonOpened: 8,      // 반복 던전 개방

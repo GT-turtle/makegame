@@ -611,8 +611,32 @@ export const RUNE_DEFS = {
   greenRune: { id: "greenRune", name: "녹색 룬", regionId: "south", glyph: "◆", cost: 10, description: "공격력이 증가한다." },
   purpleRune: { id: "purpleRune", name: "자색 룬", regionId: "east", glyph: "◆", cost: 10, description: "공격 속도가 증가한다." },
   yellowRune: { id: "yellowRune", name: "황색 룬", regionId: "west", glyph: "◆", cost: 10, description: "방어력이 증가한다." },
-  redRune: { id: "redRune", name: "적색 룬", regionId: "central", glyph: "◆", cost: 10, description: "체력이 증가한다." }
+  redRune: { id: "redRune", name: "적색 룬", regionId: "central", glyph: "◆", cost: 10, description: "체력이 증가한다." },
+
+  // 주술 각인 룬 — 남부 특수 동료(떠돌이 주술사)를 구조해야 드랍이 열린다.
+  //
+  // 다른 다섯 룬과 **나란히** 놓인 여섯 번째다. 각 룬이 한 계열을 맡듯 이 룬은
+  // 상태이상 계열을 맡는다. 걸고 버티는 두 방향을 한 룬에 묶은 건, 상태이상
+  // 빌드가 "거는 쪽"과 "버티는 쪽" 중 하나만으로는 성립하지 않기 때문이다.
+  //
+  // 강함이 아니라 방향을 바꾸는 룬이라 다른 룬을 죽이지 않는다. 상태이상을
+  // 안 쓰는 빌드에는 그냥 안 맞는 룬이다.
+  hexRune: {
+    id: "hexRune", name: "주술 각인 룬", regionId: "south", glyph: "◈", cost: 10,
+    // 드랍률을 낮게 둬서 획득 자체를 사건으로 만든다(RUNE_DROP_RATE).
+    special: true, sourceUnitId: "wandering_shaman",
+    statusPowerBonus: 0.15, statusResistBonus: 0.1,
+    description: "거는 상태이상이 강해지고, 받는 상태이상을 덜 탄다."
+  }
 };
+
+// 특수 룬 드랍률. 일반 룬보다 훨씬 낮다 — 낮은 확률 자체가 밸런스 장치다.
+export const SPECIAL_RUNE_DROP_RATE = 0.06;
+
+// 이 룬을 드랍시킬 수 있는가. 해당 특수 동료를 구조해야 열린다.
+export function specialRuneUnlocked(rune, roster = []) {
+  return !rune?.special || roster.includes(rune.sourceUnitId);
+}
 
 export function runeDefinition(runeId) {
   return RUNE_DEFS[runeId] || null;
@@ -796,6 +820,42 @@ export function rollEquipmentOptions(slotId, gradeId, proficiencyLevel = 0, next
     options.push({ key: option.key, value: rollOptionValue(option, proficiencyLevel, nextRoll()) });
   }
   return options;
+}
+
+// ── 특수 단조 (동부 · 쫓기던 대장장이) ────────────────────────────────────
+//
+// 등급이 정한 칸수를 **한 칸 넘겨서** 옵션을 하나 더 새긴다. 옵션 교체가 아니라
+// 추가인 이유는 사용자 결정이다 — 교체는 이미 굴린 결과를 되돌리는 거라
+// 리롤 노가다가 되고, 추가는 "이 장비를 더 벼릴까"라는 한 번의 결정이 된다.
+//
+// 장비 하나에 한 번만 된다. 무한히 새기면 등급 체계가 무의미해진다.
+// 이미 그 슬롯 풀을 다 쓴 장비(신화 등급이 5칸 전부 굴린 경우)에는 더 새길 게 없다.
+export const SPECIAL_FORGE_UNIT_ID = "hunted_smith";
+
+export function specialForgeUnlocked(roster = []) {
+  return roster.includes(SPECIAL_FORGE_UNIT_ID);
+}
+
+// 이 장비에 특수 옵션을 새길 수 있는가.
+export function canSpecialForge(instance, roster = []) {
+  if (!specialForgeUnlocked(roster) || !instance || instance.broken) return false;
+  if (instance.specialForged) return false;
+  const definition = equipmentDefinition(instance.defId);
+  if (!definition) return false;
+  const pool = equipmentOptionPool(definition.slot);
+  const used = new Set((instance.options || []).map((option) => option.key));
+  return pool.some((option) => !used.has(option.key));
+}
+
+// 이미 붙은 옵션과 겹치지 않는 것 중에서 하나를 굴린다. 같은 키를 두 번 새기면
+// 수치만 두 배가 되고 "옵션이 하나 늘었다"는 느낌이 사라진다.
+export function rollSpecialForgeOption(instance, proficiencyLevel = 0, nextRoll = Math.random) {
+  const definition = equipmentDefinition(instance.defId);
+  const used = new Set((instance.options || []).map((option) => option.key));
+  const pool = equipmentOptionPool(definition.slot).filter((option) => !used.has(option.key));
+  if (!pool.length) return null;
+  const option = pool[Math.min(pool.length - 1, Math.floor(nextRoll() * pool.length))];
+  return { key: option.key, value: rollOptionValue(option, proficiencyLevel, nextRoll()), special: true };
 }
 
 // ── 강화 ────────────────────────────────────────────────────────────────
@@ -1552,8 +1612,8 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
     maxMana: Math.round(grownValue(profile, "maxMana", level)),
     manaRegen,
     statusResistance: Math.max(0, Math.min(0.75,
-      grownValue(profile, "statusResistance", level) + gear.statusResistBonus)),
-    statusPotency: 1 + intelligence * 0.02 + gear.statusPowerBonus,
+      grownValue(profile, "statusResistance", level) + gear.statusResistBonus + (rune?.statusResistBonus || 0))),
+    statusPotency: 1 + intelligence * 0.02 + gear.statusPowerBonus + (rune?.statusPowerBonus || 0),
     healingPower: 1 + defense * 0.012 + divineAffinity * 0.025,
     summonPower: 1 + intelligence * 0.018 + natureAffinity * 0.025 + (kit.inheritedId === "heavy" ? defense * 0.012 : 0),
     speed,

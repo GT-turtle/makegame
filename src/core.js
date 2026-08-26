@@ -246,18 +246,13 @@ export function createInitialState() {
       // 직접 쓰러뜨려 본 보스. 영지 기억 던전에서 다시 세울 수 있는 목록이다.
       rememberedBosses: [],
       blueprints: ["frontierMantle"],
+      // 선언된 재료는 **전부** 0으로 깔고 시작 보유분만 덮어쓴다.
+      // 예전엔 손으로 적은 43개만 있어서 보스 부산물 30종이 통째로 빠져 있었다
+      // (golemCore, frostCore, durahanSoul 등). 키가 없으면 보유량이 undefined라
+      // 소모·표시 계산이 조용히 어긋난다.
       materials: {
-        wood: 4, food: 4,
-        ore: 4, ingot: 2, magnetiteJacobsite: 0,
-        bauxite: 0, pyrolusite: 0, aluminum: 0, manganese: 0,
-        cassiterite: 0, stannite: 0, rutile: 0, ilmenite: 0, tin: 0, titanium: 0,
-        sphalerite: 0, smithsonite: 0, zinc: 0,
-        malachite: 0, chalcopyrite: 0, copper: 0,
-        herb: 2, rhodiola: 0, arnica: 0, cinchonaBark: 0, clove: 0, cordyceps: 0, ginseng: 0,
-        chamomile: 0, lavender: 0, willowBark: 0, aloeVera: 0, myrrh: 0,
-        runeFragment: 0,
-        frostIron: 0, venomSac: 0, mountainIron: 0, manaStone: 0, glassSand: 0,
-        sunShard: 0, sporeGland: 0, blackSteel: 0, watcherEye: 0
+        ...Object.fromEntries(Object.keys(MATERIAL_DEFS).map((id) => [id, 0])),
+        wood: 4, food: 4, ore: 4, ingot: 2, herb: 2
       },
       estate: {
         tick: 0,
@@ -270,7 +265,10 @@ export function createInitialState() {
           blacksmith: { workHours: 0, cycle: 0, yieldRemainder: 0, materialRemainders: {} }
         },
         productionCompanions: {},
-        happiness: 70
+        happiness: 70,
+        // 마탑 — 북부 특수 동료(마탑 설계자)를 구조해야 지을 수 있다.
+        // level 0은 아직 없는 상태다.
+        mageTower: { level: 0, loadedSpellId: null, chargesUsed: 0 }
       },
       merchant: createInitialMerchantState(frontier),
       villageFriendship: { north: 0, south: 0, east: 0, west: 0, central: 0 },

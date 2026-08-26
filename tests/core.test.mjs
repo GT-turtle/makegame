@@ -24,9 +24,9 @@ import {
   workerProficiency
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
-import { ENEMY_COMBATANTS, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, createAutoBattle, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle } from "../src/adventure.js";
-import { FAVOR_GIFTS, favorGainPerCycle } from "../src/frontier.js";
-import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, enhanceCost, enhanceOdds, masterySlots, repairCost } from "../src/classes.js";
+import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle } from "../src/adventure.js";
+import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport } from "../src/frontier.js";
+import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
 import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
@@ -1244,4 +1244,164 @@ test("v25 이전 저장본의 레벨과 보조 특성은 숙련·특성 슬롯�
   });
   const companion = battle.units.find((unit) => !unit.controlled);
   assert.ok(companion.heal >= SECONDARY_DEFS.oath.heal, "옮겨진 특성이 전투에서 실제로 작동한다");
+});
+
+// ==========================
+// 특수 동료가 여는 다섯 시스템
+// ==========================
+
+function rescueSpecial(engine, regionId) {
+  const adventure = engine.state.adventure;
+  for (const unitId of WORLD_REGION_DEFS[regionId].recruits) {
+    if (!adventure.roster.includes(unitId)) {
+      adventure.roster.push(unitId);
+      adventure.unitProgress[unitId] = newUnitProgress();
+    }
+  }
+  return engine.rescueSpecialCompanion(regionId);
+}
+
+test("특수 동료는 그 지역 동료를 다 모은 뒤에야 구조된다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const adventure = engine.state.adventure;
+
+  // 아직 북부 동료를 다 모으지 않았다 — 나타나지 않는다.
+  assert.equal(engine.rescueSpecialCompanion("north"), null);
+  assert.ok(!adventure.roster.includes("tower_architect"));
+
+  assert.equal(rescueSpecial(engine, "north"), "tower_architect");
+  assert.ok(adventure.roster.includes("tower_architect"));
+  // 두 번 구조되지 않는다.
+  assert.equal(engine.rescueSpecialCompanion("north"), null);
+});
+
+test("주술 각인 룬은 주술사를 구조해야 떨어지고, 살 수는 없다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const commander = engine.state.adventure.commander;
+  engine.state.meta.scrap = 999;
+
+  // 여섯 번째 룬이지 상위 룬이 아니다 — 다른 다섯과 나란히 한 계열을 맡는다.
+  assert.equal(RUNE_DEFS.hexRune.regionId, "south");
+  assert.equal(engine.purchaseRune("hexRune"), false, "특수 룬은 고철로 살 수 없다");
+
+  // 구조 전에는 아무리 굴려도 안 나온다.
+  for (let seed = 1; seed <= 400; seed += 1) engine.rollSpecialRuneDrop("south", seed);
+  assert.ok(!commander.runesOwned.includes("hexRune"), "구조 전에는 절대 안 나온다");
+
+  rescueSpecial(engine, "south");
+  let dropped = false;
+  for (let seed = 1; seed <= 400 && !dropped; seed += 1) {
+    dropped = engine.rollSpecialRuneDrop("south", seed) === "hexRune";
+  }
+  assert.equal(dropped, true, "구조 후에는 낮은 확률로 떨어진다");
+
+  // 장착하면 상태이상 두 방향이 실제로 오른다.
+  const bare = playerCombatStats(createDefaultCommander(), "crusader");
+  assert.equal(engine.equipRune("hexRune"), true);
+  const runed = playerCombatStats(commander, "crusader");
+  assert.ok(runed.statusPotency > bare.statusPotency, "거는 상태이상이 강해진다");
+  assert.ok(runed.statusResistance > bare.statusResistance, "받는 상태이상을 덜 탄다");
+});
+
+test("특수 단조는 등급이 정한 칸수를 한 칸 넘겨 새기고, 장비당 한 번뿐이다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  for (const key of Object.keys(engine.state.meta.materials)) engine.state.meta.materials[key] = 99999;
+  const commander = engine.state.adventure.commander;
+  commander.equipmentOwned = [{
+    uid: "f1", defId: "heavyPlate", grade: "common",
+    options: rollEquipmentOptions("chest", "common", 0, () => 0.5), enhance: 0, broken: false
+  }];
+  const instance = commander.equipmentOwned[0];
+  const baseCount = instance.options.length;
+  assert.equal(baseCount, EQUIPMENT_GRADE_DEFS.common.optionCount);
+
+  // 대장장이를 구조하기 전에는 안 된다.
+  assert.equal(engine.specialForgeEquipment("f1"), false);
+
+  rescueSpecial(engine, "east");
+  assert.equal(engine.specialForgeEquipment("f1"), true);
+  assert.equal(instance.options.length, baseCount + 1, "등급 칸수를 한 칸 넘긴다");
+  assert.equal(instance.options.at(-1).special, true);
+
+  // 같은 키를 두 번 새기면 수치만 두 배가 된다.
+  assert.equal(new Set(instance.options.map((o) => o.key)).size, instance.options.length, "옵션 키가 겹치지 않는다");
+  assert.equal(engine.specialForgeEquipment("f1"), false, "장비당 한 번뿐이다");
+
+  // 새긴 옵션이 실제 보너스로 들어간다.
+  assert.ok(Object.keys(instanceBonuses(instance)).length >= baseCount + 1);
+});
+
+test("마탑은 원정 성공률을 올리고, 강령 횟수는 주기마다 다시 찬다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.state.meta.scrap = 999;
+
+  assert.equal(engine.buildMageTower(), false, "설계자를 구조하기 전에는 못 짓는다");
+  rescueSpecial(engine, "north");
+  assert.equal(engine.buildMageTower(), true);
+
+  const tower = engine.state.meta.estate.mageTower;
+  assert.equal(tower.level, 1);
+  assert.equal(mageTowerCharges(tower.level), 1);
+
+  // 장전하지 않으면 아무 보정도 없다 — 지어두기만 해서는 소용없다.
+  assert.equal(mageTowerSupport(tower, "suppress"), 0);
+  assert.equal(engine.loadMageTowerSpell("blizzard"), true);
+
+  // 마법이 상황을 가린다. 블리자드는 토벌에 강하고 탐사엔 약하다.
+  const suppress = mageTowerSupport(tower, "suppress");
+  const survey = mageTowerSupport(tower, "survey");
+  assert.ok(suppress > survey, `블리자드는 토벌 쪽이 크다 (${survey} -> ${suppress})`);
+
+  // 횟수를 다 쓰면 더는 안 붙는다.
+  tower.chargesUsed = mageTowerCharges(tower.level);
+  assert.equal(mageTowerSupport(tower, "suppress"), 0, "횟수를 다 쓰면 붙지 않는다");
+
+  engine.advanceFrontierCycle();
+  assert.equal(tower.chargesUsed, 0, "주기가 지나면 다시 찬다");
+  assert.ok(mageTowerSupport(tower, "suppress") > 0);
+
+  // 층을 올리면 횟수가 는다.
+  assert.equal(engine.buildMageTower(), true);
+  assert.equal(mageTowerCharges(engine.state.meta.estate.mageTower.level), 2);
+});
+
+test("복원 골렘은 분대장은 되지만 파티에는 들어가지 못한다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  for (const key of Object.keys(engine.state.meta.materials)) engine.state.meta.materials[key] = 99999;
+  const adventure = engine.state.adventure;
+
+  assert.equal(engine.buildGolem(), false, "고고학자를 구조하기 전에는 못 만든다");
+  rescueSpecial(engine, "central");
+  assert.equal(engine.buildGolem(), true);
+
+  const golemId = adventure.roster.find((id) => id.startsWith(GOLEM_UNIT_ID));
+  assert.ok(golemId, "명부에 올라간다");
+  assert.ok(UNIT_DEFS[golemId], "정의가 미리 만들어져 있어 저장을 불러와도 남는다");
+
+  // 파티에는 못 들어간다 — 늘어나는 건 화력이 아니라 동시 원정 수여야 한다.
+  assert.equal(engine.togglePartyUnit(golemId), false);
+  assert.ok(!adventure.party.includes(golemId));
+
+  // 분대장 자리는 채운다.
+  const wardens = engine.state.frontier.squads.find((squad) => squad.id === "wardens");
+  wardens.unlocked = true;
+  assert.equal(engine.assignUnitToFrontierSquad(golemId, "wardens"), true, "분대장은 될 수 있다");
+
+  // 상한을 넘겨 찍을 수 없다.
+  assert.equal(engine.buildGolem(), true);
+  assert.equal(golemCount(adventure.roster), GOLEM_MAX_COUNT);
+  assert.equal(engine.buildGolem(), false, "상한을 넘지 않는다");
+});
+
+test("선언된 재료는 모두 초기 상태에 존재한다", () => {
+  // 키가 없으면 보유량이 undefined가 되어 소모·표시 계산이 조용히 어긋난다.
+  // 실제로 보스 부산물 30종(golemCore, frostCore, durahanSoul 등)이 통째로
+  // 빠져 있었고, 그 재료를 쓰는 제작이 전부 실패하고 있었다.
+  const state = createInitialState();
+  const missing = Object.keys(MATERIAL_DEFS).filter((id) => !(id in state.meta.materials));
+  assert.deepEqual(missing, [], "선언된 재료가 초기 상태에 다 있어야 한다");
+  for (const [id, amount] of Object.entries(state.meta.materials)) {
+    assert.equal(typeof amount, "number", `${id}는 숫자여야 한다`);
+    assert.ok(MATERIAL_DEFS[id], `${id}는 선언된 재료여야 한다`);
+  }
 });
