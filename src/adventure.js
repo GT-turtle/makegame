@@ -116,6 +116,47 @@ export function playerDodgeDefinition(kitId) {
 // 새 패턴을 추가할 때 반드시 확인할 것(테스트로도 고정해뒀다).
 export const BOSS_PATTERN_DEFS = {
   // 원형 장판 — 기본기. 플레이어 발밑에 깔린다.
+  // ── 연쇄 장판 (kind: "chain") ──────────────────────────────────────────
+  //
+  // 보스에서 대상 쪽으로 줄지어 깔리고 **순서대로** 터진다. 무작위 연발
+  // (volleyCount)이 운으로 피하는 것이라면, 이건 순서를 읽으면 확실히 피한다.
+  //
+  // 정답 동작이 다르다는 게 핵심이다:
+  //   원형 장판 → 아무 방향으로나 벗어나면 된다
+  //   연쇄 장판 → 뒤로 물러나면 다음 칸에 걸린다. **옆으로** 빠져야 한다
+  //
+  // 회피 가능성: 첫 칸은 예고시간 안에 반경을 벗어나면 되고(원형과 같은 기준),
+  // 뒤 칸들은 옆으로 한 번만 빠지면 전부 벗어난다 — 칸이 일직선이기 때문이다.
+  // chainIntervalMs가 짧아도 부당하지 않은 이유가 이것이다.
+  stoneRow: {
+    id: "stoneRow", name: "석주 연쇄", kind: "chain",
+    telegraphMs: 1100, radius: 11, damageMultiplier: 1.35,
+    chainCount: 4, chainSpacing: 17, chainIntervalMs: 260,
+    cooldownMs: 8600, aim: "target"
+  },
+
+  // 남부. 촉수가 순서대로 내리꽂힌다. 칸이 좁고 촘촘해서 더 정확히 읽어야 한다.
+  tentacleCascade: {
+    id: "tentacleCascade", name: "촉수 연타", kind: "chain",
+    telegraphMs: 1000, radius: 9, damageMultiplier: 1.2,
+    chainCount: 5, chainSpacing: 13, chainIntervalMs: 220,
+    status: { id: "bleed", stacks: 1 },
+    cooldownMs: 9000, aim: "target"
+  },
+
+  // 서부. 맞을 때마다 저주가 쌓인다 — 지역 효과(공포 → 이탈)와 이어진다.
+  // 칸이 크고 느려서 피하기는 쉽지만, 한 번 잘못 읽으면 대가가 크다.
+  cursedProcession: {
+    id: "cursedProcession", name: "저주 행렬", kind: "chain",
+    telegraphMs: 1250, radius: 13, damageMultiplier: 1.3,
+    chainCount: 3, chainSpacing: 19, chainIntervalMs: 340,
+    // 서부 저주는 상태이상이 아니라 별도 누적치다(battle.curse). 여기서는
+    // 출혈로 두고, 저주 누적은 지역 효과 쪽에서만 굴린다 — 존재하지 않는
+    // 상태 id를 쓰면 조용히 아무 일도 일어나지 않는다.
+    status: { id: "bleed", stacks: 2 },
+    cooldownMs: 9400, aim: "target"
+  },
+
   groundSlam: {
     id: "groundSlam", name: "대지 강타", kind: "circle",
     telegraphMs: 1050, radius: 15, damageMultiplier: 1.7,
@@ -352,7 +393,7 @@ function pushZone(battle, actor, pattern, shape, delayMs = 0) {
 }
 
 // 예고를 깐다. 이 시점에는 피해가 없고, fireAt이 되어야 터진다.
-function spawnBossZone(battle, actor, pattern, target) {
+export function spawnBossZone(battle, actor, pattern, target) {
   const center = pattern.aim === "self" ? actor : target;
 
   if (pattern.kind === "line") {
@@ -377,6 +418,26 @@ function spawnBossZone(battle, actor, pattern, target) {
     pushZone(battle, actor, pattern, { x: actor.x, y: actor.y, radius: 7 });
   } else if (pattern.kind === "summon") {
     pushZone(battle, actor, pattern, { x: actor.x, y: actor.y, radius: 6 });
+  } else if (pattern.kind === "chain") {
+    // 순서대로 터지는 장판. volleyCount(무작위 연발)와 다른 점은 **배치가
+    // 정해져 있다**는 것이다. 무작위로 흩뿌리면 운으로 피하지만, 줄지어 깔면
+    // 순서를 읽는 순간 안전한 경로가 보인다 — 그게 이 패턴이 요구하는 것이다.
+    //
+    // 보스에서 대상 쪽으로 뻗는다. 첫 칸이 대상 발밑이라
+    // "뒤로 물러나면 다음 칸에 걸리고, 옆으로 빠지면 전부 피한다"가 성립한다.
+    const angle = Math.atan2(target.y - actor.y, target.x - actor.x);
+    const count = Math.max(2, pattern.chainCount || 4);
+    const baseDistance = Math.hypot(target.x - actor.x, target.y - actor.y);
+    for (let i = 0; i < count; i += 1) {
+      const distance = baseDistance + i * pattern.chainSpacing;
+      pushZone(battle, actor, pattern, {
+        x: actor.x + Math.cos(angle) * distance,
+        y: actor.y + Math.sin(angle) * distance,
+        radius: pattern.radius,
+        // 몇 번째 칸인지. 예고를 단계별로 다르게 그려 순서를 보여준다.
+        chainIndex: i
+      }, i * pattern.chainIntervalMs);
+    }
   } else if (pattern.volleyCount > 1) {
     // 시간차 연속 장판. 첫 발은 대상 위치, 이후는 주변으로 흩뿌린다.
     for (let i = 0; i < pattern.volleyCount; i += 1) {
@@ -395,9 +456,11 @@ function spawnBossZone(battle, actor, pattern, target) {
   actor.patternReadyAt[pattern.id] = battle.elapsed + pattern.cooldownMs;
   // 시전 중에는 움직이거나 평타를 치지 않는다 — 예고와 본체 행동이 겹치면
   // 무엇을 보고 피해야 하는지 알 수 없게 된다.
-  const castMs = pattern.volleyCount > 1
-    ? pattern.telegraphMs + (pattern.volleyCount - 1) * pattern.volleyIntervalMs
-    : pattern.telegraphMs;
+  const castMs = pattern.kind === "chain"
+    ? pattern.telegraphMs + (Math.max(2, pattern.chainCount || 4) - 1) * pattern.chainIntervalMs
+    : pattern.volleyCount > 1
+      ? pattern.telegraphMs + (pattern.volleyCount - 1) * pattern.volleyIntervalMs
+      : pattern.telegraphMs;
   actor.castingUntil = battle.elapsed + castMs;
   pushBattleLog(battle, `${actor.name}: ${pattern.name} 준비`);
 }
@@ -1337,7 +1400,7 @@ export const ENEMY_COMBATANTS = {
     maxHp: 300, damage: 15, range: 16, speed: 6, attackMs: 1700, armor: 0.16,
     color: "#4f7382", boss: true, preScaled: true,
     patterns: ["tentacleLash", "inkSpray", "coilCrush"],
-    phase2Patterns: ["coreBurst", "tentacleLash", "callPack"],
+    phase2Patterns: ["tentacleCascade", "coreBurst", "callPack"],
     phaseMode: "replace", phase2Form: "risen",
     byproducts: { tentacleRoot: 3, inkSac: 2 }
   },
@@ -1356,7 +1419,7 @@ export const ENEMY_COMBATANTS = {
     maxHp: 310, damage: 16, range: 12, speed: 7, attackMs: 1650, armor: 0.22,
     color: "#8d7ba0", boss: true, preScaled: true,
     patterns: ["wraithCharge", "curseWave", "relicBurst"],
-    phase2Patterns: ["coreBurst", "ruinCharge", "callPack"],
+    phase2Patterns: ["cursedProcession", "ruinCharge", "coreBurst"],
     phaseMode: "replace", phase2Form: "cursed",
     byproducts: { fallenRelic: 2, cursedPlate: 3 }
   },
@@ -1364,8 +1427,8 @@ export const ENEMY_COMBATANTS = {
     name: "거신병", species: "construct", variant: "중부 지역 보스", glyph: "G",
     maxHp: 340, damage: 15, range: 13, speed: 4, attackMs: 1900, armor: 0.26,
     color: "#b08a55", boss: true, preScaled: true,
-    patterns: ["groundSlam", "chargeRush", "quakeRoar"],
-    phase2Patterns: ["coreBurst", "ruinCharge", "callPack"],
+    patterns: ["groundSlam", "chargeRush", "callPack"],
+    phase2Patterns: ["coreBurst", "quakeRoar", "ruinCharge"],
     phaseMode: "replace", phase2Form: "coreExposed",
     byproducts: { glassSand: 4, sunShard: 2 }
   },
@@ -1378,8 +1441,11 @@ export const ENEMY_COMBATANTS = {
     name: "설산의 타이탄", species: "titan", variant: "지역 보스", glyph: "T",
     maxHp: 320, damage: 14, range: 11, speed: 3, attackMs: 1900, armor: 0.2,
     color: "#8fa6bd", boss: true, preScaled: true,
+    // 2페이즈에 연쇄를 넣어 "옆으로 빠지는" 축을 준다. 최종 티어 넷이 2페이즈가
+    // 전부 같던 것을 여기서부터 가른다(BOSS_PATTERN_CONCEPT.md §2).
+    // replace 모드라 1페이즈 패턴은 2페이즈에 하나도 남지 않는다.
     patterns: ["groundSlam", "chargeRush", "quakeRoar"],
-    phase2Patterns: ["coreBurst", "ruinCharge", "callPack"],
+    phase2Patterns: ["coreBurst", "stoneRow", "ruinCharge"],
     phaseMode: "replace",
     phase2Form: "coreExposed",
     byproducts: { frostIron: 3, bearHide: 2 }

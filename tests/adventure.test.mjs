@@ -43,7 +43,7 @@ import {
   resolveObstacles,
   createFieldBattle,
   REGION_ARMOR_SET
-, SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES , MONSTER_SPECIES_PENDING_ART } from "../src/adventure.js";
+, SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES , MONSTER_SPECIES_PENDING_ART , spawnBossZone } from "../src/adventure.js";
 import { MATERIAL_DEFS } from "../src/data.js";
 import { EQUIPMENT_GRADES, combatPowerBreakdown, combatPowerScore, masterySlots, MASTERY_TRAIT_SLOTS, ENHANCE_MAX, playerKitDefinition } from "../src/classes.js";
 import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, LEGENDARY_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, legendariesForRegion, legendaryCollection, playerCombatStats } from "../src/classes.js";
@@ -2910,5 +2910,62 @@ test("적 종은 그림이 있거나 미착수 목록에 있고, 아틀라스 �
   // 크기 규칙은 미착수 종까지 미리 있어도 된다 — 그림만 오면 바로 붙는다.
   for (const name of [...MONSTER_ATLAS_SPECIES, ...MONSTER_SPECIES_PENDING_ART]) {
     assert.ok(css.includes(`i.monster-${name} {`), `${name}의 크기 규칙이 CSS에 있어야 한다`);
+  }
+});
+
+test("연쇄 장판은 옆으로 빠지면 피하고 뒤로 물러나면 걸린다", () => {
+  // 이 패턴의 존재 이유가 여기 있다. 원형 장판은 아무 방향으로나 벗어나면
+  // 되지만, 연쇄는 **정답 방향이 하나**다. 뒤로 도망치는 게 통하면
+  // 그냥 느린 원형 장판이 되고 만드는 의미가 없다.
+  const SPEED = 17;
+  for (const id of ["stoneRow", "tentacleCascade", "cursedProcession"]) {
+    const pattern = BOSS_PATTERN_DEFS[id];
+    assert.equal(pattern.kind, "chain");
+
+    // 첫 칸은 원형과 같은 기준으로 피할 수 있어야 한다.
+    const reach = SPEED * (pattern.telegraphMs / 1000);
+    assert.ok(reach > pattern.radius,
+      `${id}: 예고 동안 이동거리(${reach.toFixed(1)})가 반경(${pattern.radius})보다 커야 한다`);
+
+    // 옆으로는 반경만큼만 가면 전부 벗어난다 — 칸이 일직선이기 때문이다.
+    assert.ok(reach > pattern.radius,
+      `${id}: 옆으로 빠질 시간이 있어야 한다`);
+
+    // 뒤로 물러나면 다음 칸에 걸려야 한다. 한 칸 터지는 사이에 이동할 수 있는
+    // 거리가 칸 간격보다 짧아야 이게 성립한다.
+    const backReach = SPEED * (pattern.chainIntervalMs / 1000);
+    assert.ok(backReach < pattern.chainSpacing,
+      `${id}: 뒤로 도망이 통하면 안 된다 (간격 ${pattern.chainSpacing} vs 이동 ${backReach.toFixed(1)})`);
+  }
+});
+
+test("연쇄 장판은 보스에서 대상 쪽으로 줄지어 깔리고 순서대로 터진다", () => {
+  const battle = createAutoBattle("frostTitanLair", null, null, STARTING_PARTY, {}, { rollSeed: 31 });
+  const boss = battle.enemies.find((enemy) => enemy.boss);
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const pattern = BOSS_PATTERN_DEFS.stoneRow;
+
+  battle.zones = [];
+  spawnBossZone(battle, boss, pattern, player);
+  const zones = battle.zones.filter((zone) => zone.patternId === "stoneRow");
+  assert.equal(zones.length, pattern.chainCount, "칸 수만큼 깔린다");
+
+  // 순서대로 터진다.
+  for (let i = 1; i < zones.length; i += 1) {
+    assert.ok(zones[i].fireAt > zones[i - 1].fireAt, "뒤 칸이 더 늦게 터진다");
+    assert.equal(zones[i].chainIndex, i, "몇 번째 칸인지 표시된다");
+  }
+
+  // 보스에서 멀어지는 방향으로 일직선이다 — 이게 "옆으로 빠지면 다 피한다"의 근거다.
+  const distances = zones.map((zone) => Math.hypot(zone.x - boss.x, zone.y - boss.y));
+  for (let i = 1; i < distances.length; i += 1) {
+    assert.ok(distances[i] > distances[i - 1], "뒤 칸일수록 보스에서 멀다");
+  }
+
+  // 세 점이 한 직선 위에 있는지 — 외적이 0에 가까워야 한다.
+  const cross = (a, b, c) =>
+    Math.abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+  for (let i = 2; i < zones.length; i += 1) {
+    assert.ok(cross(zones[0], zones[1], zones[i]) < 0.01, "칸이 일직선으로 놓인다");
   }
 });

@@ -1428,10 +1428,16 @@ function battleProjection(entity, battle) {
 function battleZones(battle) {
   if (!battle.zones?.length) return "";
   return battle.zones.map((zone) => {
-    // 연속 장판은 시간차로 깔린다 — 아직 깔릴 차례가 아닌 건 그리지 않는다.
-    if (battle.elapsed < zone.bornAt) return "";
+    // 연쇄 장판(chain)은 **차례가 오기 전에도 그린다.** 이 패턴이 요구하는 건
+    // "순서를 읽고 옆으로 빠지는 것"인데, 다음 칸이 안 보이면 읽을 수가 없다.
+    // 대기 중인 칸은 흐리게 그려서 지금 위험한 칸과 구분한다.
+    const pending = battle.elapsed < zone.bornAt;
+    if (pending && zone.kind !== "chain") return "";
     const span = Math.max(1, zone.fireAt - zone.bornAt);
-    const progress = Math.max(0, Math.min(1, (battle.elapsed - zone.bornAt) / span));
+    const progress = pending
+      ? 0
+      : Math.max(0, Math.min(1, (battle.elapsed - zone.bornAt) / span));
+    const pendingClass = pending ? " battle-zone-pending" : "";
 
     if (zone.kind === "line") {
       // 직선 돌진은 양 끝점을 각각 투영해서 그 사이를 회전한 띠로 잇는다.
@@ -1458,8 +1464,12 @@ function battleZones(battle) {
       return `<div class="battle-zone battle-zone-cone" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;--cone-rotate:${screenAngle.toFixed(1)}deg;--cone-half:${half.toFixed(1)}deg;--zone-progress:${progress.toFixed(3)};z-index:${projection.z - 2}"><i></i></div>`;
     }
 
-    const kindClass = zone.kind === "summon" ? " battle-zone-summon" : "";
-    return `<div class="battle-zone${kindClass}" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;--zone-progress:${progress.toFixed(3)};z-index:${projection.z - 2}"><i></i></div>`;
+    const kindClass = zone.kind === "summon"
+      ? " battle-zone-summon"
+      : zone.kind === "chain" ? " battle-zone-chain" : "";
+    // 몇 번째로 터지는지를 숫자로 띄운다. 색만으로는 순서를 못 읽는다.
+    const order = zone.kind === "chain" ? `<b class="zone-order">${(zone.chainIndex || 0) + 1}</b>` : "";
+    return `<div class="battle-zone${kindClass}${pendingClass}" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;--zone-progress:${progress.toFixed(3)};z-index:${projection.z - 2}"><i></i>${order}</div>`;
   }).join("");
 }
 
