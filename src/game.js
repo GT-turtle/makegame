@@ -52,7 +52,11 @@ import {
   steerBattlePlayer,
   moveRunPlayer,
   selectPlayerTarget,
-  tickAutoBattle
+  tickAutoBattle,
+  createMemoryBattle,
+  memoryRewards,
+  memorySummonable,
+  regionEntryCheck
 } from "./adventure.js";
 import {
   DISCOVERY_SITE_DEFS,
@@ -84,7 +88,11 @@ import {
   troopCapForLeaderLevel,
   troopRecruitCost,
   villageTradeableMaterials,
-  zoneRequirementsMet
+  zoneRequirementsMet,
+  RENOWN_SOURCES,
+  FAVOR_MILESTONES,
+  FAVOR_GIFTS,
+  favorGainPerCycle
 } from "./frontier.js";
 import {
   ESTATE_GATE_DEFS,
@@ -262,6 +270,18 @@ export class GameEngine {
     if (!adventure || adventure.run || this.state.estateDefense?.campaign || !region || region.locked || !adventure.unlockedRegionIds.includes(regionId)) return false;
     const party = adventure.party.filter((unitId) => adventure.roster.includes(unitId) && UNIT_DEFS[unitId]).slice(0, PARTY_LIMIT);
     if (!party.length) return false;
+
+    // 지역마다 최소 파티 전투력을 요구한다. 파티 전체로 재기 때문에 지휘관만
+    // 강해서는 넘지 못하고, 동료에게도 장비를 물려주게 된다.
+    const entry = regionEntryCheck(regionId, adventure.commander, party, adventure.unitProgress);
+    if (!entry.allowed) {
+      this.addLog(
+        `${region.name} 진입 실패 — 파티 전투력 ${entry.power} / 요구 ${entry.required}. ${entry.shortfall}만큼 모자라다.`,
+        "danger"
+      );
+      this.emit();
+      return false;
+    }
     // 지역 탐험은 격자 필드 대신 광역 전투 아레나를 쓴다 — 화면 전환 없이
     // 필드를 돌아다니며 무리와 싸우고 던전 입구까지 걸어간다. 던전에 들어가면
     // 그때부터는 기존 격자 던전이 그대로 이어받는다.
@@ -902,6 +922,8 @@ export class GameEngine {
     this.advanceEstateHappiness();
     this.advanceFrontierPopulationGrowth();
     this.collectOpenedDungeonIncome();
+    // 명성에 따라 주변 세력과의 우호도가 오르고, 임계를 넘으면 설계도를 선물받는다.
+    this.advanceDiplomacy();
     stepMerchantCycle(frontier, this.state.meta.merchant);
 
     const incursion = Object.entries(frontier.zones).find(([zoneId, zone]) => occupiedZone(frontier, zoneId) && zone.threat >= 80);
@@ -1187,6 +1209,16 @@ export class GameEngine {
     const completed = run.status === "completed" || reason === "completed";
     const defeated = run.status === "defeated" || reason === "defeated";
     const ratio = defeated ? 0.5 : 1;
+
+    // 원정에서 쓰러뜨린 보스를 영지의 기억에 남긴다. 패주해도 겪은 건 겪은 것이라
+    // 기억은 남는다 — 재현 던전은 이 목록에서만 소환할 수 있다.
+    this.state.meta.rememberedBosses ||= [];
+    for (const bossId of run.rememberedBosses || []) {
+      if (!this.state.meta.rememberedBosses.includes(bossId)) {
+        this.state.meta.rememberedBosses.push(bossId);
+      }
+    }
+
     const securedScrap = Math.floor(run.cargo.scrap * ratio);
     this.state.meta.scrap += securedScrap;
     const materialText = [];
@@ -1238,7 +1270,10 @@ export class GameEngine {
       if (!adventure.records[run.regionId].dungeonOpened) {
         adventure.records[run.regionId].dungeonOpened = true;
         this.addLog(`${WORLD_REGION_DEFS[run.regionId].dungeonName} 개방. 이제 반복 공략과 정기 수익이 가능하다.`, "good");
+        this.addRenown("dungeonOpened", `${WORLD_REGION_DEFS[run.regionId].name} 던전 개방`);
       }
+      // 던전 지배자를 쓰러뜨린 것 자체도 명성이 된다.
+      this.addRenown("bossDefeated", `${WORLD_REGION_DEFS[run.regionId].name} 우두머리 격파`);
       const region = WORLD_REGION_DEFS[run.regionId];
       recruited = region.recruits.find((unitId) => !adventure.roster.includes(unitId)) || null;
       if (recruited) {
@@ -2327,6 +2362,100 @@ export class GameEngine {
       if (commander.equipped[slot] === uid) commander.equipped[slot] = null;
     }
     this.addLog(`${EQUIPMENT_DEFS[instance.defId]?.name || "장비"} 폐기.`, "item");
+    this.emit();
+    return true;
+  }
+
+  // 명성을 올린다. 우호도가 오르는 속도를 좌우한다.
+  addRenown(sourceKey, label) {
+    const gain = RENOWN_SOURCES[sourceKey] || 0;
+    if (gain <= 0) return false;
+    this.state.meta.renown = (this.state.meta.renown || 0) + gain;
+    this.addLog(`영지 명성 +${gain} (${label}) — 현재 ${this.state.meta.renown}`, "item");
+    return true;
+  }
+
+  // 개척 주기마다 우호도가 오르고, 임계를 넘으면 설계도를 선물받는다.
+  advanceDiplomacy() {
+    const meta = this.state.meta;
+    const gain = favorGainPerCycle(meta.renown || 0);
+    if (gain <= 0) return;
+
+    meta.favor ||= {};
+    meta.favorClaimed ||= {};
+    const commander = this.state.adventure.commander;
+
+    for (const regionId of Object.keys(FAVOR_GIFTS)) {
+      meta.favor[regionId] = Math.min(100, (meta.favor[regionId] || 0) + gain);
+      meta.favorClaimed[regionId] ||= [];
+
+      for (const threshold of FAVOR_MILESTONES) {
+        if (meta.favor[regionId] < threshold) continue;
+        if (meta.favorClaimed[regionId].includes(threshold)) continue;
+
+        const equipmentId = FAVOR_GIFTS[regionId][threshold];
+        meta.favorClaimed[regionId].push(threshold);
+        if (!equipmentId || commander.unlockedBlueprints.includes(equipmentId)) continue;
+
+        commander.unlockedBlueprints.push(equipmentId);
+        const region = WORLD_REGION_DEFS[regionId];
+        this.addLog(
+          `${region?.name || regionId}에서 선물이 도착했다 — ${EQUIPMENT_DEFS[equipmentId]?.name || equipmentId} 설계도.`,
+          "item"
+        );
+      }
+    }
+  }
+
+  // 영지 기억 던전. 직접 쓰러뜨려 본 보스를 다시 세워 반복 공략한다.
+  // 강화·수리 재료를 벌기 위한 수단이며, 새 설계도는 나오지 않는다.
+  memoryBossList() {
+    return memorySummonable(this.state.meta.rememberedBosses || []);
+  }
+
+  startMemoryBattle(encounterId) {
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    if (this.state.memory?.battle) return false;
+    // 기억에 없는 보스는 세울 수 없다.
+    if (!this.memoryBossList().some((entry) => entry.id === encounterId)) return false;
+
+    const adventure = this.state.adventure;
+    const battle = createMemoryBattle(encounterId, adventure.party, adventure.unitProgress, {
+      commander: adventure.commander,
+      seed: (this.state.meta.craftSeed || 1)
+    });
+    if (!battle) return false;
+    this.state.memory = { battle };
+    this.addLog(`${battle.encounterName} 재현 시작.`, "item");
+    this.emit();
+    return true;
+  }
+
+  advanceMemoryBattle(deltaMs) {
+    const battle = this.state.memory?.battle;
+    if (!battle) return "idle";
+    const status = tickAutoBattle(battle, deltaMs);
+    if (status === "victory") {
+      const materials = memoryRewards(battle);
+      for (const [id, amount] of Object.entries(materials)) {
+        this.state.meta.materials[id] = (this.state.meta.materials[id] || 0) + amount;
+      }
+      const summary = Object.entries(materials)
+        .map(([id, amount]) => `${MATERIAL_DEFS[id]?.name || id} ${amount}`).join(" · ");
+      this.addLog(`재현 공략 성공. ${summary || "회수한 것 없음"}`, "item");
+      this.state.memory = null;
+    } else if (status === "defeated") {
+      this.addLog("재현 전투에서 물러났다. 잃은 것은 없다.", "item");
+      this.state.memory = null;
+    }
+    this.emit();
+    return status;
+  }
+
+  abandonMemoryBattle() {
+    if (!this.state.memory?.battle) return false;
+    this.state.memory = null;
+    this.addLog("재현을 중단했다.", "item");
     this.emit();
     return true;
   }

@@ -69,6 +69,14 @@ function gearUp(commander, bySlot, grade = "common") {
   return commander;
 }
 
+// 지역 진입 요구치를 넘기기 위해 파티를 키운다. 진입 게이트 자체를 검증하는
+// 테스트가 아니라면 여기서 요구치를 충족시키고 본론으로 넘어간다.
+function readyPartyFor(engine) {
+  for (const unitId of engine.state.adventure.party) {
+    engine.state.adventure.unitProgress[unitId] = { level: 6, xp: 0, secondaryId: null };
+  }
+}
+
 test("다섯 지역 필드는 41×41이고 모든 조우와 던전 입구가 연결된다", () => {
   for (const regionId of Object.keys(WORLD_REGION_DEFS)) {
     for (let seed = 1; seed <= 12; seed += 1) {
@@ -242,6 +250,7 @@ test("v15 진행 중 전투에도 새 피격·영혼 시간 규칙을 보강해 
   const storage = new MemoryStorage();
   const engine = new GameEngine(storage);
   assert.equal(engine.selectCommanderKit("heavyNecromancer"), true);
+  readyPartyFor(engine);
   assert.equal(engine.startRegionAdventure("central", 9911), true);
   engine.state.adventure.run.battle = createAutoBattle(
     "duneRaiders",
@@ -277,6 +286,7 @@ test("v15 진행 중 전투에도 새 피격·영혼 시간 규칙을 보강해 
 
 test("필드 조우부터 던전 우두머리와 영지 정산까지 한 원정으로 이어진다", () => {
   const engine = new GameEngine(new MemoryStorage());
+  readyPartyFor(engine);
   assert.equal(engine.startRegionAdventure("central", 4455), true);
   const fightToEnd = () => {
     const battle = engine.state.adventure.run.battle;

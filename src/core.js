@@ -20,7 +20,7 @@ import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState, creat
 import { createDefenseDeployments } from "./defense.js";
 import { EQUIPMENT_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, createEmptyEquipped, createEquipmentInstance, findEquipmentInstance, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 24;
+export const SAVE_VERSION = 25;
 
 // 영지 행복도(state.meta.estate.happiness)가 생산 속도에 미치는 배율.
 // 기준치(70, 신규 영지의 시작값)에서는 정확히 1.0배 — 기존 저장/테스트의 기준 생산량을 그대로 유지한다.
@@ -238,6 +238,13 @@ export function createInitialState() {
       // 장비 제작 굴림용 시드. 저장에 남아 이어지므로 되돌려 다시 굴릴 수 없다.
       // 플레이마다 다른 결과가 나오도록 시작값을 흩어둔다(테스트는 직접 지정).
       craftSeed: (Date.now() ^ 0x9e3779b9) >>> 0,
+      // 영지 명성과 주변 세력 우호도. 명성이 쌓이면 우호도가 오르고
+      // 임계를 넘으면 설계도를 선물받는다(수평 컨텐츠 유입 경로).
+      renown: 0,
+      favor: {},
+      favorClaimed: {},
+      // 직접 쓰러뜨려 본 보스. 영지 기억 던전에서 다시 세울 수 있는 목록이다.
+      rememberedBosses: [],
       blueprints: ["frontierMantle"],
       materials: {
         wood: 4, food: 4,
@@ -1394,6 +1401,14 @@ export function migrateState(rawState) {
     }
     commander.equipped = equipped;
     state.log.unshift({ text: "장신구가 반지 두 칸과 목걸이로 나뉘었다.", tone: "item" });
+  }
+  if (previousVersion < 25) {
+    // 영지 명성·외교 우호도, 기억 던전에 남는 보스 목록이 생겼다.
+    state.meta.renown ||= 0;
+    state.meta.favor ||= {};
+    state.meta.favorClaimed ||= {};
+    state.meta.rememberedBosses ||= [];
+    state.log.unshift({ text: "영지에 명성이 쌓이기 시작했다. 겪은 보스는 기억에 남아 다시 세울 수 있다.", tone: "item" });
   }
   if (previousVersion < 24) {
     // 동료도 장비를 낄 수 있게 되면서 동료별 장착표가 생겼다.

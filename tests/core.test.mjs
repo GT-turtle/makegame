@@ -24,7 +24,8 @@ import {
   workerProficiency
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
-import { STARTING_PARTY, createAutoBattle, issuePlayerAction, tickAutoBattle } from "../src/adventure.js";
+import { ENEMY_COMBATANTS, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, STARTING_PARTY, createAutoBattle, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle } from "../src/adventure.js";
+import { FAVOR_GIFTS, favorGainPerCycle } from "../src/frontier.js";
 import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, enhanceCost, enhanceOdds, repairCost } from "../src/classes.js";
 import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
@@ -1029,6 +1030,120 @@ test("강화 단계가 오를수록 성공률이 낮아지고 파손률이 오�
     previousSuccess = odds.success;
     previousBreak = odds.break;
   }
+});
+
+test("기억 던전은 직접 쓰러뜨려 본 보스만 세울 수 있다", () => {
+  // 기억을 마법으로 재현하는 설정이므로, 겪지 않은 상대는 그릴 수 없다.
+  const engine = new GameEngine(new MemoryStorage());
+  assert.equal(engine.memoryBossList().length, 0, "처음엔 아무것도 못 세운다");
+  assert.equal(engine.startMemoryBattle("frostColossusPack"), false);
+
+  engine.state.meta.rememberedBosses = ["northBear", "northTitan"];
+  const list = engine.memoryBossList();
+  assert.ok(list.some((entry) => entry.id === "frostColossusPack"));
+  // 일회성인 지역 보스도 기억에 있으면 다시 세울 수 있다 — 재현의 요점이다.
+  assert.ok(list.some((entry) => entry.regionBoss), "지역 보스도 재현된다");
+
+  assert.equal(engine.startMemoryBattle("frostColossusPack"), true);
+  assert.equal(engine.state.memory.battle.memoryMode, true);
+  // 원정 중에는 재현을 시작할 수 없다.
+  assert.equal(engine.startMemoryBattle("frostTitanLair"), false, "이미 재현 중이면 또 못 연다");
+});
+
+test("기억 던전 보상은 절반이고 설계도는 나오지 않는다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.state.meta.rememberedBosses = ["northBear"];
+  const blueprintsBefore = engine.state.adventure.commander.unlockedBlueprints.length;
+  const scrapBefore = engine.state.meta.scrap;
+
+  engine.startMemoryBattle("frostColossusPack");
+  const battle = engine.state.memory.battle;
+  for (const enemy of battle.enemies) enemy.hp = 0;
+  assert.equal(engine.advanceMemoryBattle(120), "victory");
+
+  // 부산물은 원본의 절반(올림)만 나온다.
+  const bear = ENEMY_COMBATANTS.northBear;
+  for (const [materialId, amount] of Object.entries(bear.byproducts)) {
+    assert.equal(engine.state.meta.materials[materialId], Math.max(1, Math.ceil(amount * MEMORY_YIELD_RATIO)),
+      `${materialId}는 원본 ${amount}의 절반만`);
+  }
+  assert.equal(engine.state.adventure.commander.unlockedBlueprints.length, blueprintsBefore,
+    "설계도는 나오지 않는다 — 재현은 새 전설을 여는 길이 아니다");
+  assert.equal(engine.state.meta.scrap, scrapBefore, "원정 정산도 없다");
+});
+
+test("지역마다 파티 전투력 요구치가 있고 1지역부터 걸린다", () => {
+  // 파티 전체로 재기 때문에 지휘관만 강해서는 넘지 못한다 — 동료를 키울 이유가 된다.
+  const regions = ["north", "south", "east", "west", "central"];
+  let previous = 0;
+  for (const regionId of regions) {
+    const required = REGION_ENTRY_POWER[regionId];
+    assert.ok(required > 0, `${regionId}에도 요구치가 있다`);
+    assert.ok(required > previous, "뒤 지역일수록 더 높다");
+    previous = required;
+  }
+
+  const engine = new GameEngine(new MemoryStorage());
+  // 초기 파티로는 첫 지역만 들어갈 수 있다.
+  const first = regionEntryCheck("north", engine.state.adventure.commander,
+    engine.state.adventure.party, engine.state.adventure.unitProgress);
+  assert.equal(first.allowed, true, "첫 지역은 초기 파티로 들어갈 수 있다");
+
+  const deep = regionEntryCheck("central", engine.state.adventure.commander,
+    engine.state.adventure.party, engine.state.adventure.unitProgress);
+  assert.equal(deep.allowed, false, "깊은 지역은 초기 파티로 못 들어간다");
+  assert.ok(deep.shortfall > 0, "얼마나 모자란지 알려준다");
+
+  assert.equal(engine.startRegionAdventure("central", 1), false, "실제로 진입이 막힌다");
+});
+
+test("동료를 키우거나 장비를 물려주면 진입 요구치를 넘는다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const adventure = engine.state.adventure;
+  const bare = partyPowerScore(adventure.commander, adventure.party, adventure.unitProgress);
+
+  // 동료 레벨을 올리면 파티 전투력이 오른다.
+  for (const unitId of adventure.party) {
+    adventure.unitProgress[unitId] = { level: 6, xp: 0, secondaryId: null };
+  }
+  const levelled = partyPowerScore(adventure.commander, adventure.party, adventure.unitProgress);
+  assert.ok(levelled > bare, "동료를 키우면 오른다");
+  assert.equal(engine.startRegionAdventure("central", 1), true, "이제 들어갈 수 있다");
+
+  // 장비를 물려줘도 오른다.
+  const commander = adventure.commander;
+  commander.equipmentOwned = [{ uid: "a1", defId: "heavyPlate", grade: "mythic", options: [], enhance: 5, broken: false }];
+  commander.companionEquipped = { [adventure.party[0]]: { chest: "a1" } };
+  const geared = partyPowerScore(commander, adventure.party, adventure.unitProgress);
+  assert.ok(geared > levelled, "장비를 물려주면 더 오른다");
+});
+
+test("명성이 쌓이면 주변 세력이 설계도를 선물해온다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const commander = engine.state.adventure.commander;
+
+  // 명성이 없으면 아무도 관심이 없다.
+  assert.equal(favorGainPerCycle(0), 0);
+  for (let i = 0; i < 30; i += 1) engine.advanceDiplomacy();
+  assert.deepEqual(engine.state.meta.favor || {}, {}, "명성 0이면 우호도가 오르지 않는다");
+
+  // 명성이 쌓이면 우호도가 오르고 임계마다 설계도가 온다.
+  engine.state.meta.renown = 40;
+  const before = commander.unlockedBlueprints.length;
+  for (let i = 0; i < 60; i += 1) engine.advanceDiplomacy();
+
+  assert.ok(engine.state.meta.favor.north > 0, "우호도가 오른다");
+  const gained = commander.unlockedBlueprints.length - before;
+  assert.ok(gained > 0, "설계도를 선물받는다");
+
+  // 같은 임계를 두 번 받지 않는다.
+  const afterFirst = commander.unlockedBlueprints.length;
+  for (let i = 0; i < 30; i += 1) engine.advanceDiplomacy();
+  assert.equal(commander.unlockedBlueprints.length, afterFirst, "같은 선물을 또 주지 않는다");
+
+  // 지역마다 다른 것을 주므로 여러 곳과 관계를 쌓아야 다 모인다.
+  const allGifts = new Set(Object.values(FAVOR_GIFTS).flatMap((byThreshold) => Object.values(byThreshold)));
+  assert.ok(allGifts.size >= 8, "지역별로 다른 설계도를 준다");
 });
 
 test("던전을 정복하면 개방되고, 개척 주기마다 영지에 정기 수익이 들어온다", () => {

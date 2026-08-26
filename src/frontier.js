@@ -413,6 +413,44 @@ export function stepMerchantCycle(frontier, merchant) {
 }
 
 // ==========================
+// ==========================
+// 영지 명성과 외교 우호도
+// ==========================
+//
+// 명성은 영지가 이룬 일의 총합이다(보스 격파·던전 개방·지역 정복).
+// 명성이 높을수록 주변 왕국·영지가 우리를 알아보고 우호도가 오르며,
+// 우호도가 임계를 넘으면 **선물이나 장인 파견으로 설계도를 보내온다.**
+//
+// 이 경로를 둔 이유: 설계도를 보스 드랍에만 묶어두면 수직 파밍만 남는다.
+// 명성은 "여러 지역을 두루 손대야" 오르므로, 자연히 수평 컨텐츠를 채우게 된다.
+//
+// 부락 친목도(아래)와는 다른 축이다 — 친목도는 교역으로 오르고 가방 아이템
+// 레시피를 주지만, 우호도는 명성으로 오르고 장비 설계도를 준다.
+export const RENOWN_SOURCES = {
+  bossDefeated: 12,      // 지역 던전 정복
+  dungeonOpened: 8,      // 반복 던전 개방
+  regionConquered: 20,   // 지역 완전 정복
+  memoryBossFirst: 4     // 기억 던전에서 처음 재현해낸 보스
+};
+
+// 우호도 임계와 그때 보내오는 설계도.
+// 지역마다 다른 것을 주므로 여러 곳과 관계를 쌓아야 다 모인다.
+export const FAVOR_MILESTONES = [25, 55, 85];
+
+export const FAVOR_GIFTS = {
+  north: { 25: "heavyPlate", 55: "guardianCharm", 85: "frostwardCharm" },
+  south: { 25: "scoutLeather", 55: "sagesBand", 85: "antivenomCharm" },
+  east: { 25: "runeSigil", 55: "wardenRobe", 85: "spiritAnchorCharm" },
+  west: { 25: "guardianCharm", 55: "heavyPlate", 85: "wardingSoulCharm" },
+  central: { 25: "wardenRobe", 55: "sagesBand", 85: "emberwardCharm" }
+};
+
+// 명성이 높을수록 우호도가 빨리 오른다. 명성 0이면 아무도 관심이 없다.
+export function favorGainPerCycle(renown) {
+  if (renown <= 0) return 0;
+  return Math.min(3, 0.5 + renown / 40);
+}
+
 // 지역 부락 친목도 (직업 컨셉.txt "지역 부락 친목도")
 // ==========================
 export const VILLAGE_MILESTONE_THRESHOLDS = [30, 60, 90];

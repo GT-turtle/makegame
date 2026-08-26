@@ -1,4 +1,4 @@
-import { ARMOR_SET_DEFS, companionBonuses, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { ARMOR_SET_DEFS, combatPowerScore, companionBonuses, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
 export const DUNGEON_SIZE = 15;
@@ -530,6 +530,101 @@ function tickLegendaryEffects(battle, step) {
       pushBattleLog(battle, `몰락한 성유물: 무너지기 직전 ${ids[0]} 이상을 씻어냈다`);
     }
   }
+}
+
+// ── 지역 진입 요구치 ────────────────────────────────────────────────────────
+//
+// 지역마다 최소 전투력을 요구한다. 1지역부터 걸어두는 이유는 **동료를 키울 이유**를
+// 만들기 위해서다 — 요구치를 파티 전체 전투력으로 재므로, 지휘관만 강해서는 넘지 못하고
+// 동료에게도 장비를 물려주게 된다.
+//
+// 지휘관 혼자로는 어느 지역도 못 넘도록 잡았다. 동료 둘의 몫이 반드시 필요하다.
+export const REGION_ENTRY_POWER = {
+  north: 700,
+  south: 900,
+  east: 1150,
+  west: 1400,
+  central: 1700
+};
+
+// 파티 전체 전투력. 지휘관 + 동료들의 합이다.
+export function partyPowerScore(commander = {}, partyIds = [], unitProgress = {}) {
+  const kitId = commander.combatKitId || "crusader";
+  let total = combatPowerScore(playerCombatStats(commander, kitId));
+
+  for (const unitId of partyIds) {
+    const unit = UNIT_DEFS[unitId];
+    if (!unit) continue;
+    const gear = companionBonuses(commander, unitId);
+    const progress = unitProgress[unitId] || {};
+    const level = Math.max(1, progress.level || 1);
+    // 동료는 전투 스탯 산출식이 지휘관과 달라, 같은 저울에 올리기 위해 근사한다.
+    total += combatPowerScore({
+      maxHp: unit.maxHp * level * (1 + gear.maxHpBonus),
+      damage: unit.damage * level * (1 + gear.damageBonus),
+      armor: (unit.armor || 0) + gear.armorBonus,
+      criticalChance: 0.03 + gear.criticalChance,
+      criticalDamage: 1.5 + gear.criticalDamage,
+      cooldownReduction: gear.cooldownReduction,
+      speed: (unit.speed || 10) * (1 + gear.moveSpeedBonus),
+      statusResistance: (unit.statusResistance || 0) + gear.statusResistBonus,
+      attackMs: Math.max(280, (unit.attackMs || 1200) / (1 + gear.attackSpeedBonus))
+    });
+  }
+  return Math.round(total);
+}
+
+// 진입 판정. 못 들어가면 얼마나 모자란지 함께 돌려준다.
+export function regionEntryCheck(regionId, commander, partyIds, unitProgress) {
+  const required = REGION_ENTRY_POWER[regionId] || 0;
+  const power = partyPowerScore(commander, partyIds, unitProgress);
+  return { allowed: power >= required, power, required, shortfall: Math.max(0, required - power) };
+}
+
+// ── 영지 기억 던전 ──────────────────────────────────────────────────────────
+//
+// 영지에 마법으로 재현한 던전이다. 겪은 전투를 기억에서 끌어내 다시 세우는 것이라
+// **직접 쓰러뜨려 본 보스만** 소환할 수 있다(일회성인 지역 보스까지 포함해서).
+//
+// 재현이 실제 필드를 대체하면 안 되므로 보상을 줄인다:
+// - 부산물은 원본의 절반(올림)만 나온다
+// - 설계도는 나오지 않는다
+// - 고철·지역 재료 같은 원정 정산도 없다
+//
+// 즉 재현은 **강화·수리를 위한 반복 수단**이지 새 전설을 여는 길이 아니다.
+export const MEMORY_YIELD_RATIO = 0.5;
+
+export function memorySummonable(remembered = []) {
+  const seen = new Set(remembered);
+  return Object.entries(ENCOUNTER_DEFS)
+    .filter(([, encounter]) => encounter.boss)
+    .filter(([, encounter]) => encounter.enemies.some((id) => seen.has(id)))
+    .map(([id, encounter]) => ({ id, name: encounter.name, regionBoss: Boolean(encounter.regionBoss) }));
+}
+
+export function createMemoryBattle(encounterId, partyIds = STARTING_PARTY, unitProgress = {}, options = {}) {
+  const encounter = ENCOUNTER_DEFS[encounterId];
+  if (!encounter?.boss) return null;
+  const battle = createAutoBattle(encounterId, null, "memory", partyIds, unitProgress, {
+    ...options,
+    rollSeed: options.rollSeed ?? ((options.seed || 1) + 61441)
+  });
+  if (!battle) return null;
+  battle.memoryMode = true;
+  battle.log.unshift(`기억을 끌어올려 ${encounter.name}을 다시 세운다. 진짜는 아니지만 아프기는 하다.`);
+  return battle;
+}
+
+// 재현 전투의 보상. 부산물만, 그것도 절반만 나온다.
+export function memoryRewards(battle) {
+  const materials = {};
+  for (const enemy of battle?.enemies || []) {
+    if (enemy.hp > 0 || !enemy.byproducts) continue;
+    for (const [id, amount] of Object.entries(enemy.byproducts)) {
+      materials[id] = (materials[id] || 0) + Math.max(1, Math.ceil(amount * MEMORY_YIELD_RATIO));
+    }
+  }
+  return materials;
 }
 
 // ── 서부 저주 ────────────────────────────────────────────────────────────────
@@ -3465,6 +3560,15 @@ export function completeBattle(run) {
   if (feature) feature.cleared = true;
   run.cargo.scrap += battle.rewardScrap;
   run.encountersWon += 1;
+
+  // 쓰러뜨린 보스를 기억에 남긴다. 영지의 재현 던전은 **직접 잡아본 보스만**
+  // 소환할 수 있다 — 기억을 마법으로 재현하는 것이므로 겪지 않은 상대는 그릴 수 없다.
+  run.rememberedBosses ||= [];
+  for (const enemy of battle.enemies) {
+    if (enemy.hp > 0 || !enemy.boss) continue;
+    const key = enemy.defId || enemy.name;
+    if (!run.rememberedBosses.includes(key)) run.rememberedBosses.push(key);
+  }
 
   // 필드 보스 부산물. 전설 장비 제작의 핵심 재료다(docs/EQUIPMENT_DESIGN.md §5).
   // 완제품을 확률로 떨구는 게 아니라 부산물을 확정 지급하고 고정 조합표로 가공하는
