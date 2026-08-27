@@ -1155,38 +1155,36 @@ export const ARMOR_SET_DEFS = {
     pieces: ["heavyHelm", "heavyPlate", "heavyGauntlets", "heavySabatons", "heavyMantle"],
     // 버티는 방향. 맞아도 서 있는 쪽으로만 오른다.
     tiers: {
-      2: { armorFlat: 5 },
-      3: { maxHpBonus: 0.06, armorFlat: 5 },
-      5: { maxHpBonus: 0.08, armorFlat: 12, statusResistBonus: 0.06 }
+      2: { armorFlat: 12, maxHpBonus: 0.06 },
+      3: { armorFlat: 22, maxHpBonus: 0.14, statusResistBonus: 0.06 },
+      5: { armorFlat: 40, maxHpBonus: 0.28, statusResistBonus: 0.14, cooldownReduction: 0.04 }
     },
-    description: "버티는 방향. 조각을 맞출수록 체력과 방어가 함께 오른다."
+    description: "버티는 방향. 다 맞추면 방어와 체력이 크게 오른다."
   },
   ranger: {
     id: "ranger", name: "순찰자 세트", armorClass: "light",
     pieces: ["scoutHood", "scoutLeather", "scoutGrips", "scoutBoots", "scoutCape"],
     // 굴리는 방향. 빨리 움직이고 빨리 다시 쓴다.
     tiers: {
-      2: { moveSpeedBonus: 0.04 },
-      3: { cooldownReduction: 0.04, moveSpeedBonus: 0.03 },
-      5: { attackSpeedBonus: 0.08, cooldownReduction: 0.05, moveSpeedBonus: 0.05 }
+      2: { moveSpeedBonus: 0.08, cooldownReduction: 0.03 },
+      3: { moveSpeedBonus: 0.14, cooldownReduction: 0.07, attackSpeedBonus: 0.06 },
+      5: { moveSpeedBonus: 0.22, cooldownReduction: 0.13, attackSpeedBonus: 0.16, criticalChance: 0.06 }
     },
-    description: "굴리는 방향. 조각을 맞출수록 움직임과 기술 회전이 빨라진다."
+    description: "굴리는 방향. 다 맞추면 움직임과 기술 회전이 크게 빨라진다."
   },
   warden: {
     id: "warden", name: "감시자 세트", armorClass: "cloth",
     pieces: ["wardenCirclet", "wardenRobe", "wardenWraps", "wardenSlippers", "wardenShroud"],
     // 마력 방향. 계속 쏟아붓고 상태이상으로 갉는다.
     tiers: {
-      2: { manaRegenBonus: 0.4 },
-      3: { statusPowerBonus: 0.08, manaRegenBonus: 0.3 },
-      5: { statusPowerBonus: 0.12, manaRegenBonus: 0.6, criticalChance: 0.05 }
+      2: { manaRegenBonus: 0.9, statusPowerBonus: 0.06 },
+      3: { manaRegenBonus: 1.6, statusPowerBonus: 0.14, cooldownReduction: 0.05 },
+      5: { manaRegenBonus: 2.6, statusPowerBonus: 0.3, cooldownReduction: 0.09, criticalDamage: 0.25 }
     },
-    description: "마력 방향. 조각을 맞출수록 마나와 상태이상 위력이 오른다."
+    description: "마력 방향. 다 맞추면 마나와 상태이상 위력이 크게 오른다."
   }
 };
 
-// 지금 낀 조각 수로 쌓인 세트 보너스. 문턱은 누적되지 않고 **가장 높은 것 하나**만
-// 적용된다 — 누적하면 2·3·5가 전부 더해져서 5부위가 과하게 뛴다.
 export function armorSetBonus(set, pieceCount) {
   let best = null;
   for (const threshold of ARMOR_SET_THRESHOLDS) {
@@ -1429,6 +1427,7 @@ export const LEGENDARY_DEFS = {
     name: "뒤랑달", baseClassId: "crusader", weaponType: "bastardSword",
     materials: { ingot: 8, blackSteel: 3, ore: 4 },
     bonus: { damageFlat: 9, armorFlat: 8 },
+    uniqueEffect: { type: "lastStand", threshold: 0.35, armorFlat: 30 },
     lore: "부러지지 않는 성기사의 검. 롤랑의 전설에서 이름을 따왔다."
   },
   tyrfing: {
@@ -1436,6 +1435,7 @@ export const LEGENDARY_DEFS = {
     name: "티르빙", baseClassId: "necromancer", weaponType: "armorSword",
     materials: { ingot: 6, blackSteel: 3, herb: 5 },
     bonus: { cooldownReduction: 0.05, damageFlat: 9 },
+    uniqueEffect: { type: "armorPierceStack", perStack: 0.04, maxStacks: 4, windowMs: 4000 },
     lore: "뽑으면 반드시 피를 봐야 하는 저주받은 검. 북구 전승의 티르빙."
   },
   jotunbane: {
@@ -1443,6 +1443,7 @@ export const LEGENDARY_DEFS = {
     name: "요툰베인", baseClassId: "barbarian", weaponType: "greataxe",
     materials: { ingot: 8, frostIron: 4, blackSteel: 2 },
     bonus: { damageFlat: 9, maxHpBonus: 0.14 },
+    uniqueEffect: { type: "damageBand", minRatio: 0.5, bonus: 0.18 },
     lore: "거인을 베어 넘긴 설산의 도끼. 북구의 거인 살해 전승에서."
   },
   caduceus: {
@@ -1450,6 +1451,7 @@ export const LEGENDARY_DEFS = {
     name: "카두케우스", baseClassId: "archmage", weaponType: "staff",
     materials: { wood: 6, frostIron: 3, herb: 4 },
     bonus: { cooldownReduction: 0.09, manaRegenBonus: 0.6, damageFlat: 8 },
+    uniqueEffect: { type: "manaRefund", chance: 0.25, ratio: 0.4 },
     lore: "두 마리 뱀이 감긴 전령의 지팡이. 마탑이 보관하던 유물."
   },
   moya: {
@@ -1457,6 +1459,7 @@ export const LEGENDARY_DEFS = {
     name: "막야", baseClassId: "maehwa", weaponType: "sabre",
     materials: { ingot: 5, mountainIron: 4, wood: 3 },
     bonus: { cooldownReduction: 0.06, damageFlat: 9 },
+    uniqueEffect: { type: "battleTempo", perHit: 0.03, maxStacks: 5, windowMs: 3500 },
     lore: "장인 부부가 몸을 던져 벼려낸 자웅 한 쌍 중 하나. 동방 간장·막야 설화."
   },
   gandiva: {
@@ -1464,6 +1467,7 @@ export const LEGENDARY_DEFS = {
     name: "간디바", baseClassId: "tracker", weaponType: "shortBow",
     materials: { wood: 8, ingot: 4, herb: 5 },
     bonus: { damageFlat: 9, cooldownReduction: 0.05 },
+    uniqueEffect: { type: "damageSpread", minDistance: 14, bonus: 0.2 },
     lore: "천 년을 시위가 늘어지지 않는 활. 남방 서사시의 대궁."
   },
   solomonSeal: {
@@ -1471,6 +1475,7 @@ export const LEGENDARY_DEFS = {
     name: "솔로몬의 인장", baseClassId: null,
     materials: { glassSand: 5, ore: 4, herb: 4 },
     bonus: { maxHpBonus: 0.06, damageFlat: 3, manaRegenBonus: 0.3 },
+    uniqueEffect: { type: "statusExecute", threshold: 0.28, bonus: 0.3 },
     lore: "정령을 부리고 봉인했다는 반지. 사막 대상단이 전하는 이야기."
   }
 };

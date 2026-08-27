@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   SAVE_VERSION,
@@ -1827,4 +1828,50 @@ test("신화 장비는 다섯 지역 보스를 모두 잡아야 완성된다", (
     }
   }
   assert.equal(usedBosses.size, 5, "다섯 지역 보스가 모두 쓰인다");
+});
+
+test("세트 효과가 개별 조각을 압도할 만큼 크다", () => {
+  // 바람의나라식 — 세트를 맞추는 것이 성장의 큰 축이어야 한다.
+  // 세트가 곁다리면 좋은 것만 골라 끼우는 쪽이 항상 낫고, 세트는 장식이 된다.
+  const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), "crusader"));
+  const wear = (pieces) => {
+    const commander = createDefaultCommander();
+    commander.combatKitId = "crusader";
+    commander.equipmentOwned = [];
+    pieces.forEach((defId, index) => {
+      const def = EQUIPMENT_DEFS[defId];
+      const uid = `a${index}`;
+      commander.equipmentOwned.push({
+        uid, defId, grade: "rare",
+        options: rollEquipmentOptions(def.slot, "rare", 2, () => 0.5), enhance: 0, broken: false
+      });
+      commander.equipped[def.slot] = uid;
+    });
+    return combatPowerScore(playerCombatStats(commander, "crusader")) - bare;
+  };
+
+  const pure = wear(ARMOR_SET_DEFS.ironbound.pieces);
+  const mixed = wear(["heavyHelm", "scoutLeather", "wardenWraps", "scoutBoots", "heavyMantle"]);
+  assert.ok(pure > mixed * 1.2,
+    `세트가 섞어 끼우기보다 20% 넘게 나아야 한다 (섞음 ${mixed} vs 세트 ${pure})`);
+
+  // 마지막 조각이 가장 크게 뛰어야 "하나만 더"가 성립한다.
+  const four = wear(ARMOR_SET_DEFS.ironbound.pieces.slice(0, 4));
+  const three = wear(ARMOR_SET_DEFS.ironbound.pieces.slice(0, 3));
+  assert.ok(pure - four > four - three,
+    `다섯 번째 조각의 도약이 네 번째보다 커야 한다 (${four - three} vs ${pure - four})`);
+});
+
+test("전설 장비는 하나도 빠짐없이 고유효과를 갖고, 전투 엔진에 배선돼 있다", () => {
+  // 전설인데 수치만 다른 물건이면 "전설"이라는 이름이 무의미하다.
+  const withoutEffect = Object.values(LEGENDARY_DEFS).filter((def) => !def.uniqueEffect);
+  assert.deepEqual(withoutEffect.map((d) => d.name), [], "고유효과 없는 전설이 있다");
+
+  // 등록만 하고 핸들러를 안 붙이면 조용히 아무 일도 안 일어난다.
+  // 이 프로젝트에서 여러 번 겪은 사고라 파일을 직접 훑어 확인한다.
+  const engine = readFileSync(new URL("../src/adventure.js", import.meta.url), "utf8");
+  for (const def of Object.values(LEGENDARY_DEFS)) {
+    assert.ok(engine.includes(def.uniqueEffect.type),
+      `${def.name}의 ${def.uniqueEffect.type}이 전투 엔진에 없다`);
+  }
 });
