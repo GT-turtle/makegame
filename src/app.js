@@ -14,6 +14,12 @@ import {
   REGION_ENTRY_POWER,
   regionEntryCheck,
   partyPowerScore,
+  REGION_TONIC_DEFS,
+  REGION_CORE_ABSORPTION,
+  TONIC_CARRY_LIMIT,
+  COMPANION_SKILL_MAX_LEVEL,
+  companionSkillDefinition,
+  companionSkillXpNeeded,
   memorySummonable,
   WORLD_REGION_DEFS,
   currentZone,
@@ -429,6 +435,8 @@ function facilityOverlay(state) {
       <div><span>동행 동료</span><strong>${state.adventure.party.length}/${PARTY_LIMIT}명 편성 · 보유 ${state.adventure.roster.length}/15명</strong><small>플레이어는 직접 조작하고 두 동료는 각자 판단해 싸운다.</small></div>
       <button class="primary" data-action="open-roster" ${ongoing ? "disabled" : ""}>부대 편성·육성</button>
     </article>
+    ${regionCounterSection(state)}
+    ${companionSkillSection(state)}
     ${specialFacilitySection(state)}
     ${renownSection(state)}
     ${memoryDungeonSection(state, ongoing)}
@@ -2098,6 +2106,78 @@ function bonusText(bonus = {}) {
 // 구조한 특수 동료가 열어준 시설들. 아무도 구조하지 않았으면 이 구획 자체가
 // 나타나지 않는다 — 잠긴 칸으로 보여주면 "지역마다 하나씩 총 다섯"이라는
 // 사실이 UI로 새어나간다(docs/COMPANION_EVENT_DESIGN.md §5).
+// 지역 패널티 대응 — 소모품 조제와 핵 흡수.
+//
+// 지역 대응 반지가 유일한 길이면 장신구 세 칸 중 하나가 늘 묶여서 세트를
+// 2셋까지밖에 못 맞춘다. 여기 둘이 그 칸을 풀어 주는 경로다.
+function regionCounterSection(state) {
+  const meta = state.meta || {};
+  const materials = meta.materials || {};
+  const tonics = meta.regionTonics || {};
+  const absorbed = meta.absorbedCores || [];
+  const ongoing = Boolean(state.adventure?.run);
+
+  const rows = Object.values(REGION_TONIC_DEFS).map((definition) => {
+    const region = WORLD_REGION_DEFS[definition.regionId];
+    const held = tonics[definition.regionId] || 0;
+    const costText = Object.entries(definition.materials)
+      .map(([id, amount]) => `${MATERIAL_DEFS[id]?.name || id} ${amount}`).join(" · ");
+    const affordable = Object.entries(definition.materials)
+      .every(([id, amount]) => (materials[id] || 0) >= amount);
+    const full = held >= TONIC_CARRY_LIMIT;
+    const disabled = ongoing || full || !affordable;
+
+    const core = REGION_CORE_ABSORPTION[definition.regionId];
+    const done = absorbed.includes(definition.regionId);
+    const coreName = MATERIAL_DEFS[core?.material]?.name || "핵";
+    const coreHeld = materials[core?.material] || 0;
+    const coreButton = done
+      ? '<em class="upkeep-safe">흡수함</em>'
+      : `<button class="ghost" data-action="absorb-core" data-region-id="${definition.regionId}"`
+        + `${ongoing || coreHeld < (core?.amount || 1) ? " disabled" : ""}`
+        + ` title="흡수하면 이 지역의 완전 차단 문턱이 내려간다. 면역은 아니다.">`
+        + `${escapeHtml(coreName)} 흡수 (${coreHeld}/${core?.amount || 1})</button>`;
+
+    return `<article class="party-management-card">`
+      + `<div><span>${escapeHtml(region?.name || definition.regionId)}</span>`
+      + `<strong>${escapeHtml(definition.name)} ${held}/${TONIC_CARRY_LIMIT}${done ? " · 핵 흡수됨" : ""}</strong>`
+      + `<small>${escapeHtml(definition.description)}</small></div>`
+      + `<button class="ghost" data-action="craft-tonic" data-region-id="${definition.regionId}"`
+      + `${disabled ? " disabled" : ""}>조제 · ${escapeHtml(costText)}</button>`
+      + `${coreButton}</article>`;
+  }).join("");
+
+  return `<div class="section-heading"><h2>지역 대응</h2><span>장신구 칸을 안 먹는 길</span></div>`
+    + rows
+    + `<p class="facility-note">소모품은 출정할 때 하나 소모하고 그 원정 내내 대응 +2를 준다.`
+    + ` 핵 흡수는 완전 차단 문턱을 내릴 뿐 면역이 아니다 — 흡수만으로는 못 막는다.`
+    + ` 재료가 신화 장비 재료와 같으니 장비로 만들지 흡수할지가 선택이다.</p>`;
+}
+
+// 동료 스킬 현황. 기억 던전에서만 오르므로 어디서 올리는지 함께 적는다.
+function companionSkillSection(state) {
+  const roster = state.adventure?.roster || [];
+  const progress = state.adventure?.unitProgress || {};
+  const rows = roster.map((unitId) => {
+    const definition = companionSkillDefinition(unitId);
+    if (!definition) return "";
+    const entry = progress[unitId] || {};
+    const level = Math.max(1, entry.skillLevel || 1);
+    const maxed = level >= COMPANION_SKILL_MAX_LEVEL;
+    const needed = companionSkillXpNeeded(level);
+    const gauge = maxed ? "최대" : `${entry.skillXp || 0}/${needed}`;
+    return `<div class="technique-row"><span>${escapeHtml(UNIT_DEFS[unitId]?.name || unitId)}</span>`
+      + `<b title="${escapeHtml(definition.description)}">${escapeHtml(definition.name)} Lv.${level}`
+      + `<small> · ${gauge}</small></b></div>`;
+  }).filter(Boolean).join("");
+  if (!rows) return "";
+
+  return `<div class="section-heading"><h2>동료 스킬</h2><span>기억 던전에서만 오른다</span></div>`
+    + rows
+    + `<p class="facility-note">동료는 액티브를 쓰지 않는다. 전부 패시브 아니면 조건부 버프이고,`
+    + ` 레벨이 올라도 수치만 커질 뿐 새 효과는 붙지 않는다 — 그러면 숙련과 역할이 겹친다.</p>`;
+}
+
 function specialFacilitySection(state) {
   const roster = state.adventure?.roster || [];
   const blocks = [mageTowerBlock(state, roster), golemBlock(state, roster)].filter(Boolean);
@@ -3479,6 +3559,12 @@ app.addEventListener("click", (event) => {
   }
   if (action === "load-tower-spell") {
     if (!engine.loadMageTowerSpell(button.dataset.spellId || null)) showToast("마탑을 먼저 세워야 해.");
+  }
+  if (action === "craft-tonic") {
+    if (!engine.craftRegionTonic(button.dataset.regionId)) showToast("재료가 부족하거나 이미 세 개 다 챙겼어.");
+  }
+  if (action === "absorb-core") {
+    if (!engine.absorbRegionCore(button.dataset.regionId)) showToast("핵이 없거나 이미 흡수했어.");
   }
   if (action === "build-golem") {
     if (!engine.buildGolem()) showToast("재료가 부족하거나 이미 최대 보유야.");
