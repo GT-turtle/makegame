@@ -1621,6 +1621,11 @@ export function migrateState(rawState) {
     state.meta.regionTonics ||= {};
     state.meta.absorbedCores ||= [];
     state.meta.foundCorpses ||= [];
+    // 동료 스킬이 생겼다. 기존 저장의 동료에게 레벨 1을 깔아 준다.
+    for (const progress of Object.values(state.adventure.unitProgress || {})) {
+      progress.skillLevel ||= 1;
+      progress.skillXp ||= 0;
+    }
     state.log.unshift({ text: "지역 약재로 대응 약을 조제하고, 지역 핵을 몸에 새길 수 있게 됐다.", tone: "item" });
   }
   if (previousVersion < 25) {

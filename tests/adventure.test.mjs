@@ -3,6 +3,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  COMPANION_SKILL_DEFS,
+  COMPANION_SKILL_MAX_LEVEL,
+  companionSkillValue,
+  companionSkillXpNeeded,
+  companionHazardMitigation,
+  grantCompanionSkillXp,
   REGION_TONIC_DEFS,
   REGION_CORE_ABSORPTION,
   absorbedResistThreshold,
@@ -2043,6 +2049,152 @@ test("저주는 대응 수치가 충분하면 아예 걸리지 않는다", () =>
   };
   assert.ok(measure(0) > 0, "대응이 없으면 이탈한다");
   assert.equal(measure(4), 0, "대응 수치를 갖추면 이탈하지 않는다");
+});
+
+test("동료 스킬 열여섯 개가 전부 실제로 수치를 바꾼다", () => {
+  // 이 프로젝트에서 여러 번 물린 함정: 정의만 등록하고 배선을 빠뜨리면
+  // 조용히 아무 일도 안 일어난다. 그래서 "필드에 값이 박혔나"가 아니라
+  // **읽는 쪽 수치가 실제로 움직였나**로 잰다.
+  //
+  // 실제로 이 테스트가 버그를 하나 잡았다 — 전투원 id가 "unit-snow_guard"라
+  // 정의 id로 조회하지 않으면 열여섯 개가 통째로 죽는다.
+  const build = (party, encounterId = "iceRaiders") => {
+    const battle = createAutoBattle(encounterId, null, null, party, {}, { rollSeed: 5 });
+    tickAutoBattle(battle, 16);
+    return battle;
+  };
+  const playerOf = (battle) => battle.units.find((unit) => unit.id === battle.playerId);
+  const solo = build(["duel_swordsman"]);
+
+  // ── 항상 켜져 있는 것 ──
+  assert.ok(playerOf(build(["duel_swordsman", "snow_guard"])).armor > playerOf(solo).armor,
+    "설벽: 아군 방어력이 올라야 한다");
+  assert.ok(build(["duel_swordsman", "vine_keeper"]).enemies[0].speed < solo.enemies[0].speed,
+    "덩굴 결박: 적 이동속도가 내려가야 한다");
+  assert.ok(build(["duel_swordsman", "winter_berserker"]).enemies[0].attackMs > solo.enemies[0].attackMs,
+    "한기 발산: 적 공격 주기가 늘어야 한다");
+  assert.ok(build(["duel_swordsman", "blade_dancer"]).enemies[0].armor < solo.enemies[0].armor,
+    "방비 허물기: 적 방어력이 깎여야 한다");
+  assert.ok(playerOf(build(["duel_swordsman", "sap_healer"])).hpRegen > playerOf(solo).hpRegen,
+    "수액 순환: 재생이 붙어야 한다");
+  assert.ok(playerOf(build(["duel_swordsman", "mana_weaver"])).manaRegen > playerOf(solo).manaRegen,
+    "마력 공급: 마나 회복이 빨라져야 한다");
+  assert.ok(playerOf(build(["duel_swordsman", "glass_alchemist"])).statusPotency > playerOf(solo).statusPotency,
+    "촉매: 상태이상 위력이 올라야 한다");
+  assert.ok(playerOf(build(["duel_swordsman", "spirit_ranger"])).statusResistance > playerOf(solo).statusResistance,
+    "정령 가호: 상태이상 저항이 올라야 한다");
+  assert.ok(playerOf(build(["duel_swordsman", "snow_shaman"])).heal >= playerOf(solo).heal,
+    "영혼 환류: 치유량이 줄지는 않아야 한다");
+
+  // ── 조건이 붙은 것: 조건을 만족할 때만 붙는지까지 본다 ──
+
+  // 진법 — 동료가 하나라도 쓰러지면 풀린다.
+  const formation = build(["formation_officer", "snow_guard"]);
+  const formed = playerOf(formation).armor;
+  formation.units.find((unit) => unit.defId === "snow_guard").hp = 0;
+  tickAutoBattle(formation, 16);
+  assert.ok(playerOf(formation).armor < formed, "진법: 동료가 쓰러지면 풀려야 한다");
+
+  // 서약 — 플레이어가 위험할 때만.
+  const oath = build(["oath_knight"]);
+  const oathPlayer = playerOf(oath);
+  const healthyArmor = oathPlayer.armor;
+  oathPlayer.hp = oathPlayer.maxHp * 0.2;
+  tickAutoBattle(oath, 16);
+  assert.ok(oathPlayer.armor > healthyArmor, "서약: 저체력에서만 방어를 나눠 준다");
+
+  // 기맥 순환 — 자기 체력이 낮을수록 크게.
+  const meridian = build(["meridian_fighter"]);
+  const meridianPlayer = playerOf(meridian);
+  const healthyDamage = meridianPlayer.damage;
+  meridian.units.find((unit) => unit.defId === "meridian_fighter").hp = 1;
+  tickAutoBattle(meridian, 16);
+  assert.ok(meridianPlayer.damage > healthyDamage, "기맥 순환: 빈사일수록 아군 공격이 올라야 한다");
+
+  // 호흡 맞추기 — 플레이어가 회피하는 동안만.
+  const tempo = build(["duel_swordsman"]);
+  const tempoPlayer = playerOf(tempo);
+  const restingAttackMs = tempoPlayer.attackMs;
+  tempo.playerDodgeUntil = tempo.elapsed + 2000;
+  tickAutoBattle(tempo, 16);
+  assert.ok(tempoPlayer.attackMs < restingAttackMs, "호흡 맞추기: 회피 중 공격이 빨라져야 한다");
+
+  // 급소 표식 — 플레이어가 노린 적에게만.
+  const mark = build(["venom_tracker"]);
+  mark.focusTargetId = mark.enemies[0].id;
+  tickAutoBattle(mark, 16);
+  assert.ok(mark.enemies[0].marked, "급소 표식: 플레이어가 노린 적에 표식이 붙는다");
+  assert.ok(!mark.enemies.slice(1).some((enemy) => enemy.marked), "다른 적에는 안 붙는다");
+  assert.ok(mark.companionSkillState.markedCrit > 0, "치명타 보정이 실제로 계산된다");
+});
+
+test("동료 스킬은 같은 필드를 쓰는 다른 시스템을 덮어쓰지 않는다", () => {
+  // 처음엔 기준값을 떠 두고 매 틱 거기서 다시 만들었다가 물렸다 —
+  // 적의 attackMs를 직접 바꾸던 기존 테스트가 깨졌다. 지금은 지난 틱에
+  // 얹은 만큼만 정확히 걷어내고 새로 얹으므로 남의 수정이 살아남는다.
+  const battle = createAutoBattle("iceRaiders", null, null, ["duel_swordsman", "winter_berserker"], {}, { rollSeed: 5 });
+  tickAutoBattle(battle, 16);
+  const enemy = battle.enemies[0];
+
+  enemy.attackMs = 16;
+  tickAutoBattle(battle, 16);
+  assert.equal(enemy.attackMs, 16, "밖에서 넣은 값이 유지돼야 한다");
+
+  // 동료가 쓰러지면 얹었던 몫이 정확히 걷힌다.
+  battle.units.find((unit) => unit.defId === "winter_berserker").hp = 0;
+  tickAutoBattle(battle, 16);
+  const chill = COMPANION_SKILL_DEFS.winter_berserker;
+  const applied = companionSkillValue(chill, 1);
+  assert.ok(Math.abs(enemy.attackMs - 16 / (1 + applied)) < 0.001,
+    `걷어낸 뒤 값이 어긋난다: ${enemy.attackMs}`);
+});
+
+test("스킬 레벨은 값을 올리고 상한 5에서 멈춘다", () => {
+  const definition = COMPANION_SKILL_DEFS.snow_guard;
+  const atOne = companionSkillValue(definition, 1);
+  const atMax = companionSkillValue(definition, COMPANION_SKILL_MAX_LEVEL);
+  assert.ok(atMax > atOne, "레벨이 오르면 값이 커진다");
+  assert.equal(companionSkillValue(definition, 99), atMax, "상한을 넘지 않는다");
+  assert.equal(companionSkillValue(definition, 0), atOne, "0은 1로 취급한다");
+
+  // 새 효과가 붙지는 않는다 — 그러면 상한 6짜리 숙련과 역할이 겹친다.
+  for (const entry of Object.values(COMPANION_SKILL_DEFS)) {
+    assert.equal(typeof entry.kind, "string", `${entry.name}에 kind가 없다`);
+    assert.equal(typeof entry.base, "number", `${entry.name}에 base가 없다`);
+  }
+});
+
+test("동료 스킬 경험치는 기억 던전에서 쌓여 레벨을 올린다", () => {
+  // 숙련은 상한 6에 스탯을 안 줘서 다 찍으면 갈 이유가 없었다.
+  // 스킬 경험치가 그 자리를 채운다.
+  let progress = { mastery: 6, xp: 0, skillLevel: 1, skillXp: 0 };
+  const needed = companionSkillXpNeeded(1);
+
+  let result = grantCompanionSkillXp(progress, needed - 1);
+  assert.equal(result.progress.skillLevel, 1, "모자라면 안 오른다");
+  assert.deepEqual(result.levels, []);
+
+  result = grantCompanionSkillXp(result.progress, 1);
+  assert.equal(result.progress.skillLevel, 2, "채우면 오른다");
+  assert.deepEqual(result.levels, [2]);
+
+  // 한 번에 여러 레벨도 오른다.
+  result = grantCompanionSkillXp(result.progress, 999);
+  assert.equal(result.progress.skillLevel, COMPANION_SKILL_MAX_LEVEL, "상한까지 오른다");
+  assert.equal(result.progress.skillXp, 0, "상한에서는 경험치를 쌓지 않는다");
+
+  // 숙련은 건드리지 않는다 — 별개의 성장선이다.
+  assert.equal(result.progress.mastery, 6);
+});
+
+test("대상단 길잡이는 편성했을 때만 지역 대응을 올린다", () => {
+  // 지역 패널티를 푸는 네 번째 갈래다(소모품·핵 흡수·지역 출신 동료에 이어).
+  const withGuide = createRegionRun("west", 7, ["caravan_guide"], {}, {}, {});
+  const without = createRegionRun("west", 7, ["duel_swordsman"], {}, {}, {});
+  assert.ok(withGuide.hazardMitigation > without.hazardMitigation,
+    "행로 파악이 대응 수치를 올려야 한다");
+  assert.equal(companionHazardMitigation(["caravan_guide"], {}), 1);
+  assert.equal(companionHazardMitigation(["snow_guard"], {}), 0, "다른 동료는 안 준다");
 });
 
 test("지역 대응 소모품이 실제로 대응 수치를 올린다", () => {

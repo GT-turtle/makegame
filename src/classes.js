@@ -1886,7 +1886,9 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
 // 동료 진행 상태. level은 없다 — mastery는 스탯을 주지 않고 칸만 연다.
 // traitIds는 두 칸짜리 배열이고, 실제로 몇 칸이 살아 있는지는 masterySlots가 정한다.
 export function newUnitProgress() {
-  return { mastery: 0, xp: 0, branchId: null, traitIds: [null, null] };
+  // skillLevel/skillXp는 동료 스킬용이다. 숙련(mastery)과 별개의 성장선이라
+  // 상한 6짜리 숙련을 다 찍은 뒤에도 기억 던전을 갈 이유가 남는다.
+  return { mastery: 0, xp: 0, branchId: null, traitIds: [null, null], skillLevel: 1, skillXp: 0 };
 }
 
 export function createDefaultCommander() {

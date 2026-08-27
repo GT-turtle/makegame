@@ -59,6 +59,11 @@ import {
   REGION_CORE_ABSORPTION,
   TONIC_CARRY_LIMIT,
   specialCompanionTaken,
+  companionSkillDefinition,
+  grantCompanionSkillXp,
+  companionHazardMitigation,
+  MEMORY_XP_PER_BOSS,
+  MEMORY_SKILL_XP_PER_BOSS,
   memorySummonable,
   regionEntryCheck
 , GOLEM_UNIT_DEFS, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , SPECIAL_UNIT_DEFS, materialRarity } from "./adventure.js";
@@ -2648,6 +2653,38 @@ export class GameEngine {
       }
       const summary = Object.entries(materials)
         .map(([id, amount]) => `${MATERIAL_DEFS[id]?.name || id} ${amount}`).join(" · ");
+      // 영지 계층 던전을 기억 던전에 합치면서 경험치도 준다.
+      // 동료 스킬 경험치는 **여기서만** 쌓인다 — 숙련 상한 6 이후에도
+      // 기억 던전을 갈 이유가 남게 하는 축이다.
+      const bossCount = (battle.enemies || []).filter((enemy) => enemy.boss).length || 1;
+      const skillMessages = [];
+      for (const unitId of this.state.adventure.party) {
+        const progress = this.state.adventure.unitProgress[unitId];
+        if (!progress || !companionSkillDefinition(unitId)) continue;
+        const result = grantCompanionSkillXp(progress, MEMORY_SKILL_XP_PER_BOSS * bossCount);
+        this.state.adventure.unitProgress[unitId] = result.progress;
+        for (const level of result.levels) {
+          skillMessages.push(`${UNIT_DEFS[unitId]?.name || unitId} ${companionSkillDefinition(unitId).name} Lv.${level}`);
+        }
+      }
+      // 숙련 경험치는 기존 정산과 같은 방식으로 넣는다.
+      const gainedXp = MEMORY_XP_PER_BOSS * bossCount;
+      for (const unitId of this.state.adventure.party) {
+        const progress = this.state.adventure.unitProgress[unitId];
+        if (!progress) continue;
+        progress.xp = (progress.xp || 0) + gainedXp;
+        while (progress.mastery < MASTERY_MAX && progress.xp >= masteryXpNeeded(progress.mastery)) {
+          progress.xp -= masteryXpNeeded(progress.mastery);
+          progress.mastery += 1;
+        }
+      }
+      const commanderRef = this.state.adventure.commander;
+      commanderRef.xp = (commanderRef.xp || 0) + gainedXp;
+      while ((commanderRef.mastery || 0) < MASTERY_MAX && commanderRef.xp >= masteryXpNeeded(commanderRef.mastery || 0)) {
+        commanderRef.xp -= masteryXpNeeded(commanderRef.mastery || 0);
+        commanderRef.mastery = (commanderRef.mastery || 0) + 1;
+      }
+      if (skillMessages.length) this.addLog(`스킬 성장: ${skillMessages.join(" · ")}`, "good");
       this.addLog(`재현 공략 성공. ${summary || "회수한 것 없음"}`, "item");
       this.state.memory = null;
     } else if (status === "defeated") {

@@ -751,6 +751,31 @@ export function createMemoryBattle(encounterId, partyIds = STARTING_PARTY, unitP
   return battle;
 }
 
+// 재현 전투가 주는 경험치. 영지 계층 던전을 여기에 합치면서 생겼다.
+//
+// 숙련(mastery)은 상한 6에 스탯을 안 주므로 다 찍고 나면 갈 이유가 없었다.
+// 동료 **스킬** 경험치를 여기서만 주면 상한 6 이후에도 계속 갈 이유가 남는다.
+export const MEMORY_XP_PER_BOSS = 6;
+export const MEMORY_SKILL_XP_PER_BOSS = 4;
+
+// 스킬 경험치를 넣고 레벨이 올랐으면 올려 준다. 넘친 경험치는 이월한다.
+export function grantCompanionSkillXp(progress = {}, amount = 0) {
+  const next = { ...progress };
+  next.skillLevel = Math.max(1, Number(next.skillLevel) || 1);
+  next.skillXp = Math.max(0, Number(next.skillXp) || 0) + Math.max(0, amount);
+  const levels = [];
+  while (next.skillLevel < COMPANION_SKILL_MAX_LEVEL) {
+    const needed = companionSkillXpNeeded(next.skillLevel);
+    if (next.skillXp < needed) break;
+    next.skillXp -= needed;
+    next.skillLevel += 1;
+    levels.push(next.skillLevel);
+  }
+  // 상한에 닿으면 경험치를 더 쌓지 않는다 — 쌓아둬도 쓸 데가 없다.
+  if (next.skillLevel >= COMPANION_SKILL_MAX_LEVEL) next.skillXp = 0;
+  return { progress: next, levels };
+}
+
 // 재현 전투의 보상. 부산물만, 그것도 절반만 나온다.
 export function memoryRewards(battle) {
   const materials = {};
@@ -861,8 +886,9 @@ function groggyDamageMultiplier(battle, target) {
 
 // 치명타 굴림. 오래 죽어 있던 스탯을 실제 피해 계산에 연결한 것이라
 // 플레이어 기본 공격과 AI 공격 양쪽에서 같은 함수를 쓴다.
-function rollCritical(battle, actor) {
-  const chance = Number(actor.criticalChance || 0);
+function rollCritical(battle, actor, target = null) {
+  // 급소 표식(독침 추적자)은 플레이어가 지금 노리는 적에게만 붙는다.
+  const chance = Number(actor.criticalChance || 0) + markedCritBonus(battle, target);
   if (chance <= 0) return 1;
   if (battleRoll(battle) >= chance) return 1;
   return Number(actor.criticalDamage || 1.5);
@@ -1079,7 +1105,7 @@ export const WORLD_REGION_DEFS = {
     hazard: { name: "험로", glyph: "山", description: "거친 지형이 이동과 공격 주기를 방해한다.", techniqueId: "forging" },
     enemyPool: ["mountainBandits", "ironGuard", "stoneApes"], fieldBossPool: ["eastFoxLair", "eastOniLair", "eastCentipedeLair"], villageName: "산성 아래 마을", dungeonName: "봉인된 단조성", dungeonGlyph: "炉",
     bossEncounterId: "forgeGuardianPack", defenseEncounterId: "ironGuard", rewardMaterial: "mountainIron", rewardAmount: 2,
-    recruits: ["formation_officer", "duel_swordsman", "meridian_fighter"], techniqueId: "forging"
+    recruits: ["formation_officer", "duel_swordsman", "meridian_fighter", "blade_dancer"], techniqueId: "forging"
   },
   west: {
     id: "west", direction: "서부", name: "서부 제후국", subtitle: "기사와 마나, 정령의 봉건령",
@@ -1207,6 +1233,90 @@ export function specialCompanionTaken(roster = []) {
   return Object.values(SPECIAL_UNIT_DEFS).some((unit) => roster.includes(unit.id));
 }
 
+// ── 동료 스킬 ────────────────────────────────────────────────────────────────
+//
+// 동료는 액티브를 쓰지 않는다. 자동 AI가 스킬을 굴리면 플레이어가 볼 것도
+// 할 것도 없어지기 때문이다. 전부 **패시브 아니면 조건부 버프**다.
+//
+// 그리고 전부 플레이어 쪽을 받치는 방향이다 — 동료 열다섯에 애착이 안 생기던
+// 이유는 약해서가 아니라 내 행동과 무관해서였다. 급소 표식(플레이어가 노린
+// 적)과 호흡 맞추기(플레이어가 회피할 때)가 그 축이다.
+//
+// 값은 `base + per * (level - 1)` 로 오른다. 레벨은 1에서 시작해 상한 5.
+// 레벨이 올라도 **새 효과가 붙지는 않는다** — 그러면 상한 6짜리 숙련과 역할이 겹친다.
+export const COMPANION_SKILL_MAX_LEVEL = 5;
+
+export const COMPANION_SKILL_DEFS = {
+  // 크루세이더 — 버티기
+  snow_guard: { id: "snowWall", name: "설벽", kind: "partyArmor", base: 0.03, per: 0.012,
+    description: "곁에 선 아군의 방어력이 오른다." },
+  vine_keeper: { id: "vineBind", name: "덩굴 결박", kind: "enemySlow", base: 0.08, per: 0.03,
+    description: "근처 적의 이동이 둔해진다." },
+  formation_officer: { id: "battleFormation", name: "진법", kind: "formationArmor", base: 0.05, per: 0.018,
+    description: "동료가 하나도 쓰러지지 않았을 때만 진형이 선다. 전원 방어력 증가." },
+  oath_knight: { id: "oathShare", name: "서약", kind: "oathArmor", base: 0.08, per: 0.03, threshold: 0.4,
+    description: "플레이어가 위험해지면 자기 방비를 나눠 준다." },
+
+  // 바바리안 — 압박
+  winter_berserker: { id: "chillAura", name: "한기 발산", kind: "enemyAttackSlow", base: 0.07, per: 0.025,
+    description: "근처 적의 공격이 느려진다." },
+  meridian_fighter: { id: "meridianFlow", name: "기맥 순환", kind: "woundedParty", base: 0.12, per: 0.05,
+    description: "자기 체력이 낮을수록 아군 전체의 공격력이 오른다." },
+  desert_lancer: { id: "chargeFormation", name: "돌격 대형", kind: "openingSpeed", base: 0.12, per: 0.04, windowMs: 8000,
+    description: "전투 시작 8초 동안 파티가 빠르게 움직인다." },
+
+  // 네크로맨서 — 자원
+  snow_shaman: { id: "soulReflux", name: "영혼 환류", kind: "partyHeal", base: 1.2, per: 0.6,
+    description: "동료의 치유량이 늘어난다." },
+  spirit_ranger: { id: "spiritWard", name: "정령 가호", kind: "partyStatusResist", base: 0.08, per: 0.03,
+    description: "아군이 걸린 상태이상이 빨리 풀린다." },
+
+  // 추적자 — 표적
+  venom_tracker: { id: "weakPointMark", name: "급소 표식", kind: "markedCrit", base: 0.1, per: 0.04,
+    description: "플레이어가 노린 적에게 파티 전체 치명타율이 오른다." },
+  caravan_guide: { id: "pathReading", name: "행로 파악", kind: "hazardMitigation", base: 1, per: 0,
+    description: "지역 환경 대응 수치가 오른다. 전투 밖에서 작동한다." },
+
+  // 아크메이지 — 마력
+  sap_healer: { id: "sapCircuit", name: "수액 순환", kind: "partyRegen", base: 0.5, per: 0.25,
+    description: "파티 전체가 천천히 회복한다." },
+  mana_weaver: { id: "manaSupply", name: "마력 공급", kind: "playerManaRegen", base: 0.6, per: 0.3,
+    description: "플레이어의 마나 회복이 빨라진다." },
+  glass_alchemist: { id: "catalyst", name: "촉매", kind: "playerStatusPower", base: 0.12, per: 0.05,
+    description: "플레이어가 거는 상태이상이 강해진다." },
+
+  // 매화 — 기회
+  duel_swordsman: { id: "breathSync", name: "호흡 맞추기", kind: "dodgeTempo", base: 0.1, per: 0.04,
+    description: "플레이어가 회피하는 동안 파티의 공격이 빨라진다." },
+  blade_dancer: { id: "guardBreak", name: "방비 허물기", kind: "enemyArmorBreak", base: 0.05, per: 0.02,
+    description: "근처 적의 방어력을 깎는다." }
+};
+
+export function companionSkillDefinition(unitId) {
+  return COMPANION_SKILL_DEFS[unitId] || null;
+}
+
+// 레벨 1이 기본, 상한 5. 0이면 아직 안 열린 것으로 보고 1로 취급한다.
+export function companionSkillValue(definition, level = 1) {
+  if (!definition) return 0;
+  const clamped = Math.max(1, Math.min(COMPANION_SKILL_MAX_LEVEL, Number(level) || 1));
+  return definition.base + definition.per * (clamped - 1);
+}
+
+// 스킬 경험치. 기억 던전에서만 쌓인다(영지 계층 던전과 결합).
+export function companionSkillXpNeeded(level = 1) {
+  return 8 + Math.max(0, level - 1) * 6;
+}
+
+// 전투 밖에서 읽는 것 — 지역 환경 대응. 편성한 동료만 센다.
+export function companionHazardMitigation(partyIds = [], unitProgress = {}) {
+  return partyIds.reduce((total, unitId) => {
+    const definition = COMPANION_SKILL_DEFS[unitId];
+    if (definition?.kind !== "hazardMitigation") return total;
+    return total + Math.round(companionSkillValue(definition, unitProgress[unitId]?.skillLevel));
+  }, 0);
+}
+
 export const SPECIAL_UNIT_DEFS = {
   tower_architect: {
     id: "tower_architect", name: "마탑 설계자", regionId: "north", role: "유틸", glyph: "▲", color: "#8fb6e0",
@@ -1270,6 +1380,7 @@ export const UNIT_DEFS = {
 
   formation_officer: { id: "formation_officer", name: "진법 군관", regionId: "east", role: "유틸", glyph: "陣", color: "#d09572", maxHp: 37, damage: 5, range: 18, speed: 9, attackMs: 1050, armor: 0.12, partyArmor: 0.03, scores: [1, 2, 4], primary: "진형 보조", weakness: "혼자서는 힘을 발휘하기 어렵다.", baseClassId: "crusader" },
   duel_swordsman: { id: "duel_swordsman", name: "결전검객", regionId: "east", role: "폭딜러", glyph: "刃", color: "#d88767", maxHp: 32, damage: 9, range: 8, speed: 13, attackMs: 950, armor: 0.07, buffCarry: 0.22, scores: [4, 1, 1], primary: "결전 대상", weakness: "버프와 보호가 끊기면 급격히 약해진다.", baseClassId: "maehwa" },
+  blade_dancer: { id: "blade_dancer", name: "파쇄검무", regionId: "east", role: "딜·유틸", glyph: "劍", color: "#c98fa8", maxHp: 34, damage: 7, range: 8, speed: 12, attackMs: 820, armor: 0.1, scores: [3, 1, 3], primary: "방비 허물기", weakness: "혼자서는 적을 못 끝낸다.", baseClassId: "maehwa" },
   meridian_fighter: { id: "meridian_fighter", name: "기맥 권사", regionId: "east", role: "딜·탱", glyph: "武", color: "#b98a70", maxHp: 43, damage: 7, range: 7, speed: 12, attackMs: 870, armor: 0.14, lifeSteal: 0.12, scores: [3, 2, 1], primary: "기맥 순환", weakness: "원거리 적에게 접근해야 한다.", baseClassId: "barbarian" },
 
   oath_knight: { id: "oath_knight", name: "서약 중검기사", regionId: "west", role: "탱커", glyph: "♜", color: "#d0b46f", maxHp: 56, damage: 6, range: 8, speed: 6, attackMs: 1280, armor: 0.3, heal: 2, healMs: 5200, scores: [1, 4, 1], primary: "중검 방벽", weakness: "기동과 공격 주기가 느리다.", baseClassId: "crusader" },
@@ -1859,7 +1970,9 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
   // 지역 대응 소모품. 출정할 때 한 개 소모하고 그 원정 내내 유지된다 —
   // 장신구 칸을 안 먹는 대신 매번 다시 만들어야 한다.
   const tonicMitigation = options.tonicApplied ? (REGION_TONIC_DEFS[regionId]?.mitigation || 0) : 0;
-  const hazardMitigation = partyMitigation + wardMitigation + tonicMitigation;
+  // 대상단 길잡이의 행로 파악(동료 스킬)도 여기 합류한다 — 네 번째 갈래다.
+  const guideMitigation = companionHazardMitigation(party, unitProgress);
+  const hazardMitigation = partyMitigation + wardMitigation + tonicMitigation + guideMitigation;
   const ambushInterval = Array.isArray(options.ambushInterval) ? options.ambushInterval : [7, 12];
   const firstAmbushRandom = mulberry32(seed + 99173)();
   const firstAmbushStep = ambushInterval[0] + Math.floor(firstAmbushRandom * (ambushInterval[1] - ambushInterval[0] + 1));
@@ -2181,6 +2294,8 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
     finisher: definition.finisher || 1,
     buffCarry: definition.buffCarry || 0,
     chargeDamage: definition.chargeDamage || 0,
+    // 동료 스킬 레벨. 기억 던전에서 오른다(COMPANION_SKILL_DEFS).
+    skillLevel: Math.max(1, Number(progress.skillLevel) || 1),
     partyArmor: (definition.partyArmor || 0) + trait.partyArmor,
     commandAura: (definition.commandAura || 0) + trait.commandAura,
     cooldown: index * 140,
@@ -2343,6 +2458,8 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     focusTargetId: enemies.find((enemy) => enemy.boss)?.id || null,
     command: { chargeUntil: 0, guardUntil: 0, focusUntil: 0 },
     commandReadyAt: { charge: 0, guard: 0, focus: 0 },
+    // 진법(진법 군관)은 동료가 하나도 안 쓰러졌을 때만 선다. 시작 인원을 기억해 둔다.
+    companionCount: companions.length,
     passiveState: {},
     consumedCorpseIds: [],
     groundEffects: [],
@@ -2811,6 +2928,119 @@ function applyBasePassiveEffect(battle, unit, passive) {
   }
 }
 
+// 동료 스킬을 매 틱 다시 얹는다.
+//
+// **기준값에서 매번 새로 계산한다.** 누적해서 더하면 틱마다 불어나고, 동료가
+// 쓰러졌을 때 걷어내는 것도 따로 짜야 한다. 기준값을 한 번 떠 두고 매 틱
+// 거기서 다시 만들면 둘 다 공짜로 해결된다 — 쓰러지면 그 동료가 빠진 채로
+// 다시 계산될 뿐이다.
+function refreshCompanionSkills(battle) {
+  const units = battle.units || [];
+  const enemies = battle.enemies || [];
+  const alive = units.filter((unit) => unit.hp > 0);
+  const player = units.find((unit) => unit.id === battle.playerId);
+  const companions = alive.filter((unit) => unit.id !== battle.playerId);
+
+  const acc = {
+    partyArmor: 0, partyHeal: 0, partyStatusResist: 0, partyRegen: 0,
+    partyDamageMult: 1, partySpeedMult: 1, partyAttackMult: 1,
+    markedCrit: 0, playerArmor: 0, playerManaRegen: 0, playerStatusPower: 1,
+    enemySpeedMult: 1, enemyAttackMult: 1, enemyArmorBreak: 0
+  };
+
+  for (const companion of companions) {
+    // 전투원 id는 "unit-snow_guard" 꼴이라 정의 id(defId)로 찾아야 한다.
+    const definition = COMPANION_SKILL_DEFS[companion.defId];
+    if (!definition) continue;
+    const value = companionSkillValue(definition, companion.skillLevel);
+    switch (definition.kind) {
+      case "partyArmor": acc.partyArmor += value; break;
+      case "partyHeal": acc.partyHeal += value; break;
+      case "partyStatusResist": acc.partyStatusResist += value; break;
+      case "partyRegen": acc.partyRegen += value; break;
+      case "playerManaRegen": acc.playerManaRegen += value; break;
+      case "playerStatusPower": acc.playerStatusPower *= (1 + value); break;
+      case "enemySlow": acc.enemySpeedMult *= (1 - value); break;
+      case "enemyAttackSlow": acc.enemyAttackMult *= (1 + value); break;
+      case "enemyArmorBreak": acc.enemyArmorBreak += value; break;
+      case "markedCrit": acc.markedCrit += value; break;
+      // 진법 — 동료가 하나도 안 쓰러졌을 때만 선다.
+      case "formationArmor":
+        if (companions.length >= (battle.companionCount || companions.length)) acc.partyArmor += value;
+        break;
+      // 서약 — 플레이어가 위험할 때만.
+      case "oathArmor":
+        if (player && player.hp / Math.max(1, player.maxHp) <= (definition.threshold || 0.4)) acc.playerArmor += value;
+        break;
+      // 기맥 순환 — 자기 체력이 낮을수록 크게.
+      case "woundedParty": {
+        const missing = 1 - companion.hp / Math.max(1, companion.maxHp);
+        acc.partyDamageMult *= (1 + value * missing);
+        break;
+      }
+      // 돌격 대형 — 전투 시작 창 안에서만.
+      case "openingSpeed":
+        if (battle.elapsed <= (definition.windowMs || 8000)) acc.partySpeedMult *= (1 + value);
+        break;
+      // 호흡 맞추기 — 플레이어가 회피 중일 때만. 공격 주기를 줄인다.
+      case "dodgeTempo":
+        if ((battle.playerDodgeUntil || 0) > battle.elapsed) acc.partyAttackMult *= (1 - value);
+        break;
+      default: break;
+    }
+  }
+
+  battle.companionSkillState = acc;
+
+  for (const unit of units) applySkillDelta(unit, {
+    armor: acc.partyArmor + (unit.id === battle.playerId ? acc.playerArmor : 0),
+    statusResistance: acc.partyStatusResist,
+    hpRegen: acc.partyRegen,
+    heal: unit.heal > 0 || (unit.skillApplied?.heal || 0) > 0 ? acc.partyHeal : 0,
+    manaRegen: unit.id === battle.playerId ? acc.playerManaRegen : 0
+  }, {
+    speed: acc.partySpeedMult,
+    attackMs: acc.partyAttackMult,
+    damage: acc.partyDamageMult,
+    statusPotency: unit.id === battle.playerId ? acc.playerStatusPower : 1
+  });
+
+  for (const enemy of enemies) {
+    applySkillDelta(enemy, { armor: -acc.enemyArmorBreak }, { speed: acc.enemySpeedMult, attackMs: acc.enemyAttackMult });
+    enemy.marked = acc.markedCrit > 0 && enemy.id === battle.focusTargetId;
+  }
+}
+
+// **지난 틱에 얹은 만큼만 정확히 걷어내고 새로 얹는다.**
+//
+// 기준값을 떠 두고 매 틱 거기서 다시 만드는 방식을 먼저 썼다가 물렸다 —
+// 그러면 같은 필드를 만지는 다른 시스템(보스 페이즈, 상태이상, 명령)의 수정을
+// 통째로 덮어쓴다. 실제로 적의 attackMs를 직접 바꾸던 테스트가 깨져서 잡았다.
+// 필드를 소유하지 않고 내 몫만 더하고 빼면 누구와도 안 부딪힌다.
+function applySkillDelta(actor, additive = {}, multiplicative = {}) {
+  const applied = actor.skillApplied || (actor.skillApplied = {});
+  for (const [key, next] of Object.entries(additive)) {
+    const previous = applied[key] || 0;
+    if (previous === next) continue;
+    actor[key] = (Number(actor[key]) || 0) - previous + next;
+    applied[key] = next;
+  }
+  for (const [key, next] of Object.entries(multiplicative)) {
+    const previous = applied[`${key}Mult`] || 1;
+    if (previous === next) continue;
+    actor[key] = (Number(actor[key]) || 0) / previous * next;
+    applied[`${key}Mult`] = next;
+  }
+  if (actor.armor !== undefined) actor.armor = Math.max(0, Math.min(ARMOR_MAX_REDUCTION, actor.armor));
+}
+
+// 급소 표식: 지금 때리려는 대상이 표식 대상이면 치명타율이 오른다.
+// 이게 "플레이어가 고른 표적"에 동료가 반응하는 지점이다.
+export function markedCritBonus(battle, target) {
+  if (!target?.marked) return 0;
+  return battle.companionSkillState?.markedCrit || 0;
+}
+
 function refreshBaseClassPassive(battle) {
   const player = battle.units.find((unit) => unit.id === battle.playerId);
   if (player?.hp > 0 && battle.playerBasePassive) applyBasePassiveEffect(battle, player, battle.playerBasePassive);
@@ -2948,6 +3178,7 @@ export function tickAutoBattle(battle, deltaMs) {
   for (const actor of all) tickCombatantEffects(battle, actor, step);
   tickGroundEffects(battle);
   refreshBaseClassPassive(battle);
+  refreshCompanionSkills(battle);
   if (battle.hazard && battle.elapsed >= battle.nextHazardAt) {
     const damage = Math.max(0, 2 - Math.floor((battle.hazardMitigation || 0) / 2));
     if (damage > 0) {
@@ -3106,7 +3337,7 @@ export function tickAutoBattle(battle, deltaMs) {
     const carryBonus = 1 + activeBuffs * actor.buffCarry;
     const chargeDamage = chargeBoost ? 1.35 + actor.chargeDamage : 1;
     const rawDamage = actor.damage * (actor.passiveDamageMultiplier || 1) * chargeDamage * lowHealthBonus * carryBonus
-      * rollCritical(battle, actor);
+      * rollCritical(battle, actor, target);
     // Math.max(1, ...) — 방어가 아무리 높아도 피해 0은 나오지 않는다.
     const fullDamage = Math.max(1, Math.round(rawDamage * guardReduction * damageThrough));
     const isPlayerTarget = target.id === battle.playerId;
@@ -3211,6 +3442,7 @@ export function tickAutoBattle(battle, deltaMs) {
     if (actor.team === "unit") markUnitActive(battle, actor);
   }
   refreshBaseClassPassive(battle);
+  refreshCompanionSkills(battle);
   // 필드 보스는 **선택 콘텐츠**다(docs/EQUIPMENT_DESIGN.md §9 — 지나쳐서 던전으로
   // 직행할 수 있는 위치에 놓는다). 그래서 "필드 정리" 판정에서 제외한다.
   // 포함시키면 보스를 반드시 잡아야 던전에 갈 수 있게 되어 배치 의도와 어긋난다.
@@ -3977,7 +4209,7 @@ export function issuePlayerAction(battle, action) {
     const stealthy = Boolean(player.positiveEffects?.stealth);
     // 플레이어의 기본 공격은 AI 유닛과 다른 경로라, 전설 고유효과도 여기서 따로
     // 적용해야 한다(여기 빠뜨리면 동료 공격에만 붙어 사실상 동작하지 않는다).
-    const critical = rollCritical(battle, player);
+    const critical = rollCritical(battle, player, target);
     const damage = Math.max(1, Math.round(
       player.damage * (player.passiveDamageMultiplier || 1) * (stealthy ? 1.8 : 1)
       * critical

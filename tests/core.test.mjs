@@ -122,6 +122,34 @@ test("터치 이동 경로는 벽·적·미확인 칸을 우회한다", () => {
   assert.deepEqual(findPath(tiles, start, target, new Set(), new Set([keyOf(1, 1), keyOf(3, 1)])), []);
 });
 
+test("기억 던전은 재료뿐 아니라 경험치와 동료 스킬 경험치도 준다", () => {
+  // 영지 계층 던전을 기억 던전에 합친 결과다. 예전에는 부산물 절반만 줘서
+  // 숙련 상한 6을 찍고 나면 갈 이유가 없었다.
+  const engine = new GameEngine(new MemoryStorage());
+  engine.state.meta.rememberedBosses = ["northTitan"];
+  const list = engine.memoryBossList();
+  assert.ok(list.length, "직접 잡아본 보스는 다시 세울 수 있다");
+
+  const party = engine.state.adventure.party;
+  assert.ok(party.length, "동료도 함께 들어간다");
+  const before = party.map((id) => ({
+    id,
+    xp: engine.state.adventure.unitProgress[id]?.xp || 0,
+    skillXp: engine.state.adventure.unitProgress[id]?.skillXp || 0
+  }));
+
+  assert.equal(engine.startMemoryBattle(list[0].id), true);
+  for (const enemy of engine.state.memory.battle.enemies) enemy.hp = 0;
+  assert.equal(engine.advanceMemoryBattle(50), "victory");
+
+  for (const entry of before) {
+    const after = engine.state.adventure.unitProgress[entry.id];
+    assert.ok(after.xp > entry.xp, `${entry.id} 숙련 경험치가 안 올랐다`);
+    assert.ok(after.skillXp > entry.skillXp || after.skillLevel > 1,
+      `${entry.id} 스킬 경험치가 안 올랐다`);
+  }
+});
+
 test("지역 대응 소모품은 재료를 먹고 만들어져 휴대 한도까지만 쌓인다", () => {
   const engine = new GameEngine(new MemoryStorage());
   const definition = REGION_TONIC_DEFS.west;
