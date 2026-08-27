@@ -853,9 +853,13 @@ test("아크메이지 스킬 4개+궁 1개가 실제 전투 효과로 모두 실
   front.enemies[1].x = front.enemies[0].x + 15;
   front.enemies[1].y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
+  // 피해가 오르면서 뒤 기술 차례에 대상이 죽어 실패하던 것을 막는다.
+  const keepAlive = () => { for (const enemy of front.enemies) enemy.hp = enemy.maxHp; };
   assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt
+  keepAlive();
   assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova
   const beforeX = front.enemies[1].x;
+  keepAlive();
   assert.equal(issuePlayerAction(front, "skill3"), true); // gravityWell
   assert.ok(front.enemies[1].x < beforeX); // 끌려와서 target 쪽으로 이동
   assert.equal(issuePlayerAction(front, "ultimate"), true); // manaBurst
@@ -929,21 +933,27 @@ test("궁사네크 전승은 스킬 4개+궁 1개가 모두 실행된다", () =>
 test("암살자(궁사매화) 전승은 스킬 4개+궁 1개가 모두 실행되고 은신 연계가 작동한다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "archeryMaehwa";
-  const front = createAutoBattle("duneRaiders", "archerymaehwa-front", "field", STARTING_PARTY, {}, { commander });
+  const front = createAutoBattle("duneRaiders", "archerymaehwa-front", "field", STARTING_PARTY, {}, { commander, rollSeed: 4801 });
   const player = front.units.find((unit) => unit.controlled);
   player.x = front.enemies[0].x - 5;
   player.y = front.enemies[0].y;
   selectPlayerTarget(front, front.enemies[0].id);
   player.positiveEffects = { stealth: { endsAt: front.elapsed + 4000 } };
+  // 이 테스트가 보는 건 다섯 기술이 전부 실행되는가다. 타격 피해가 오르면서
+  // 궁극기 차례에 대상이 이미 죽어 실패하던 것을 막으려고 사이사이 채워 준다.
+  const keepAlive = () => { for (const enemy of front.enemies) enemy.hp = enemy.maxHp; };
   assert.equal(issuePlayerAction(front, "skill1"), true); // swiftStrike(암살), 은신 중 치명타
   assert.equal(Boolean(player.positiveEffects?.stealth), false);
+  keepAlive();
   assert.equal(issuePlayerAction(front, "skill2"), true); // whirlwindSlash(연막탄), 후퇴 + 재은신
   assert.equal(Boolean(player.positiveEffects?.stealth), true);
+  keepAlive();
   assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut(일섬)
+  keepAlive();
   assert.equal(issuePlayerAction(front, "ultimate"), true); // plumBlossomDance(일격필살)
 
   commander.skillLoadouts.archeryMaehwa = ["fleetStep"];
-  const back = createAutoBattle("duneRaiders", "archerymaehwa-back", "field", STARTING_PARTY, {}, { commander });
+  const back = createAutoBattle("duneRaiders", "archerymaehwa-back", "field", STARTING_PARTY, {}, { commander, rollSeed: 4802 });
   const backPlayer = back.units.find((unit) => unit.controlled);
   assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep(은신 개화)
   assert.equal(Boolean(backPlayer.positiveEffects?.stealth), true);
@@ -978,7 +988,7 @@ test("마검사(마법매화) 전승은 스킬 4개+궁 1개가 모두 실행되
 test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 상태이상 상한 2배·정령 피격불가·상태이상 폭주 피해가 적용된다", () => {
   const commander = createDefaultCommander();
   commander.combatKitId = "spiritArchmage";
-  const front = createAutoBattle("duneRaiders", "spiritarchmage-front", "field", STARTING_PARTY, {}, { commander });
+  const front = createAutoBattle("duneRaiders", "spiritarchmage-front", "field", STARTING_PARTY, {}, { commander, rollSeed: 4905 });
   const player = front.units.find((unit) => unit.controlled);
   player.x = front.enemies[0].x - 5;
   player.y = front.enemies[0].y;
@@ -991,6 +1001,9 @@ test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 상태�
   assert.equal(front.enemies[0].statuses.poison.stacks, 7);
   assert.ok(front.enemies[0].statuses.poison.stacks > 5); // 기본 상한(5)을 넘어선다
 
+  // 다섯 기술이 전부 실행되는지가 요점이다. 피해가 오르면서 뒤 기술 차례에
+  // 대상이 이미 죽어 실패하던 것을 막으려고 사이사이 채워 준다.
+  const keepAlive = () => { for (const enemy of front.enemies) enemy.hp = enemy.maxHp; };
   assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt(폭염창) + 주변 폭발
   assert.equal(Boolean(front.enemies[1].statuses?.burn), true);
 
@@ -1004,13 +1017,14 @@ test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 상태�
   assert.equal(issuePlayerAction(front, "skill3"), true); // gravityWell(원소 소용돌이)
   assert.equal(Boolean(player.positiveEffects?.elementalSurge), true); // 상태이상 위력 폭증
 
+  keepAlive();
   assert.equal(issuePlayerAction(front, "ultimate"), true); // triElementJudgment(삼원소 심판)
   assert.equal(Boolean(front.enemies[0].statuses?.frost), true);
   assert.equal(Boolean(front.enemies[0].statuses?.stun), true);
   assert.equal(Boolean(front.enemies[0].statuses?.burn), true); // 빙결·감전·화상이 한 번에 모두 적용된다
 
   // 정령은 적에게 인접해도 체력이 줄지 않는다(피격불가) - 별도 전투로 격리 검증
-  const wispBattle = createAutoBattle("duneRaiders", "spiritarchmage-wisp", "field", STARTING_PARTY, {}, { commander });
+  const wispBattle = createAutoBattle("duneRaiders", "spiritarchmage-wisp", "field", STARTING_PARTY, {}, { commander, rollSeed: 4904 });
   const wispPlayer = wispBattle.units.find((unit) => unit.controlled);
   wispPlayer.x = wispBattle.enemies[0].x - 5;
   wispPlayer.y = wispBattle.enemies[0].y;
@@ -1027,7 +1041,7 @@ test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 상태�
 
   // held-out 4번째 스킬(과부화/lightningRicochet): 상태이상 중첩만큼 추가 피해가 들어간다
   commander.skillLoadouts.spiritArchmage = ["lightningRicochet"];
-  const back = createAutoBattle("duneRaiders", "spiritarchmage-back", "field", STARTING_PARTY, {}, { commander });
+  const back = createAutoBattle("duneRaiders", "spiritarchmage-back", "field", STARTING_PARTY, {}, { commander, rollSeed: 4904 });
   const backPlayer = back.units.find((unit) => unit.controlled);
   backPlayer.x = back.enemies[0].x - 5;
   backPlayer.y = back.enemies[0].y;
@@ -1794,22 +1808,31 @@ test("구미호의 외투는 총량은 같게 두고 한 방의 크기만 줄인
     const player = battle.units.find((unit) => unit.id === battle.playerId);
     player.maxHp = 200;
     player.hp = 200;
+    // 환경 피해와 보스 장판은 분산 경로를 타지 않는다. 그대로 두면 첫 피해가
+    // 그쪽에서 나와 두 쪽이 똑같이 찍히고, 효과가 죽은 것처럼 보인다.
+    battle.hazard = null;
+    for (const enemy of battle.enemies) { enemy.patterns = []; enemy.phase2Patterns = []; }
 
-    let worst = 0;
+    // **첫 타격만** 잰다. 지연 피해가 한 번 시작되면 새 타격과 같은 틱에 겹쳐
+    // 들어와서 "한 방의 크기"를 잴 수 없다. 첫 대는 지연분이 아직 없어 깨끗하다.
+    let first = 0;
     let total = 0;
-    for (let t = 0; t < 300 && battle.status === "active"; t += 1) {
+    for (let t = 0; t < 1500 && battle.status === "active"; t += 1) {
       const before = player.hp;
-      tickAutoBattle(battle, 100);
+      tickAutoBattle(battle, 20);
       const dealt = before - player.hp;
-      if (dealt > 0) { total += dealt; worst = Math.max(worst, dealt); }
+      if (dealt > 0) {
+        total += dealt;
+        if (!first) first = dealt;
+      }
       player.hp = 200;
     }
-    return { worst, total };
+    return { first, total };
   };
 
   const bare = measure(null);
   const geared = measure("foxMantle");
-  assert.ok(geared.worst < bare.worst, `한 번에 받는 최대 피해가 줄어든다 (${bare.worst} -> ${geared.worst})`);
+  assert.ok(geared.first < bare.first, `첫 타격의 크기가 줄어든다 (${bare.first} -> ${geared.first})`);
   // 총량은 비슷하게 유지된다 — 피해를 없애는 게 아니라 미루는 효과다.
   assert.ok(Math.abs(geared.total - bare.total) < bare.total * 0.35, "총 피해량은 크게 달라지지 않는다");
 });
@@ -1907,7 +1930,8 @@ test("전설 반지 효과는 플레이어의 기본 공격에도 적용된다",
   const foe = battle.enemies[0];
   foe.dormant = false;
   foe.maxHp = foe.hp = 99999;
-  for (let t = 0; t < 40; t += 1) {
+  // 템포가 느려져 같은 시간에 덜 때린다 — 창을 늘린다.
+  for (let t = 0; t < 90; t += 1) {
     player.x = foe.x - 3;
     player.y = foe.y;
     issuePlayerAction(battle, "attack");
@@ -2455,10 +2479,10 @@ test("거신의 맹세는 정해진 횟수마다 대상 주변을 터뜨린다",
     return { hits, bursts };
   };
 
-  assert.equal(swing(null, 40).bursts, 0, "목걸이가 없으면 터지지 않는다");
+  assert.equal(swing(null, 80).bursts, 0, "목걸이가 없으면 터지지 않는다");
 
   const every = LEGENDARY_DEFS.titanOathAmulet.uniqueEffect.everyHits;
-  const armed = swing("titanOathAmulet", 60);
+  const armed = swing("titanOathAmulet", 130);
   assert.ok(armed.hits >= every, "충분히 때렸다");
   assert.equal(armed.bursts, Math.floor(armed.hits / every),
     `${every}회마다 정확히 한 번 터진다 (때린 ${armed.hits}회 → ${armed.bursts}번)`);

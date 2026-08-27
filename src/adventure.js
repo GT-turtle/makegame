@@ -1,6 +1,6 @@
 import { ORE_SMELTING_DEFS } from "./data.js";
 import { DISCOVERY_SITE_DEFS } from "./frontier.js";
-import { ARMOR_MAX_REDUCTION, ARMOR_SOFTCAP, MASTERY_BRANCH_DEFS, MASTERY_STEPS, MASTERY_TRAIT_SLOTS, MASTERY_MAX, masterySlots, masteryBranchUnlocked, masteryXpNeeded, ARMOR_SET_DEFS, armorReduction, combatPowerScore, companionBonuses, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
+import { COMBAT_TEMPO, ARMOR_MAX_REDUCTION, ARMOR_SOFTCAP, MASTERY_BRANCH_DEFS, MASTERY_STEPS, MASTERY_TRAIT_SLOTS, MASTERY_MAX, masterySlots, masteryBranchUnlocked, masteryXpNeeded, ARMOR_SET_DEFS, armorReduction, combatPowerScore, companionBonuses, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
 export const DUNGEON_SIZE = 15;
@@ -104,7 +104,9 @@ export function fieldExitTrigger(stage, bounds) {
 
 export const FIELD_AGGRO_RADIUS = 26;
 
-export const ATTACK_TELEGRAPH_MS = 320;
+// 예고. 이 시간 동안 붉은 테두리와 ! 가 뜬 뒤에 판정이 나간다.
+// 320ms일 때는 반응속도(250ms 근처)와 겹쳐서 볼 틈이 없었다.
+export const ATTACK_TELEGRAPH_MS = 700;
 
 // 회피 버튼의 성격은 직업마다 다르다.
 // 크루세이더는 방패를 세워 버티고(이동 없음, 대신 감소량이 크고 오래간다),
@@ -114,11 +116,11 @@ export const ATTACK_TELEGRAPH_MS = 320;
 // 못 피하는 대신 버티는 쪽은 감소가 커야 한다.
 export const PLAYER_DODGE_DEFS = {
   block: {
-    type: "block", name: "방패 막기", durationMs: 1500, reduction: 0.85, cooldownMs: 4200,
+    type: "block", name: "방패 막기", durationMs: 1500, reduction: 0.85, cooldownMs: 1500,
     logSuffix: "방패를 세워 받는 피해를 크게 줄인다"
   },
   dash: {
-    type: "dash", name: "회피 기동", durationMs: 900, reduction: 0.7, cooldownMs: 4200,
+    type: "dash", name: "회피 기동", durationMs: 900, reduction: 0.7, cooldownMs: 1500,
     distance: 24, logSuffix: "앞으로 파고들며 잠시 피해 감소"
   }
 };
@@ -2318,7 +2320,8 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
   const unitSide = team === "unit";
   const trait = mergeTraits(secondary);
   const maxHp = Math.max(1, Math.round(definition.maxHp * (1 + trait.hpBonus)));
-  const damage = Math.max(1, Math.round(definition.damage * (1 + trait.damageBonus)));
+  // 느려진 만큼 한 대를 무겁게 — 교환 횟수는 줄고 무게가 커진다.
+  const damage = Math.max(1, Math.round(definition.damage * (1 + trait.damageBonus) * COMBAT_TEMPO.damage));
   const mastery = unitSide ? Math.max(0, progress.mastery || 0) : 0;
   const unitY = [35, 65, 20, 50, 80][index] ?? 50;
   const enemyY = [28, 50, 72, 38, 62][index] ?? 50;
@@ -2341,8 +2344,10 @@ function createCombatant(definition, id, team, index, progress = {}, secondary =
     damage,
     baseDamage: damage,
     range: definition.range,
-    speed: definition.speed * (1 + trait.speedBonus),
-    attackMs: Math.max(560, definition.attackMs + trait.attackMsBonus),
+    speed: definition.speed * (1 + trait.speedBonus) * COMBAT_TEMPO.moveSpeed,
+    // 동료는 플레이어와 같은 템포로, 적은 더 크게 벌린다 — 패턴을 읽을 틈.
+    attackMs: Math.max(560, (definition.attackMs + trait.attackMsBonus)
+      * (unitSide ? COMBAT_TEMPO.playerAttackMs : COMBAT_TEMPO.enemyAttackMs)),
     armor: companionArmor(definition, { armorBonus: trait.armorBonus }),
     defense: definition.defense || 0,
     strength: definition.strength || 0,

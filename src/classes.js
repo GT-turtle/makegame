@@ -1710,6 +1710,26 @@ export function masteryBranchUnlocked(mastery) {
 }
 
 export const ARMOR_SOFTCAP = 80;
+// ── 전투 템포 ────────────────────────────────────────────────────────────────
+//
+// 다크소울류의 "보고 반응하는" 속도를 목표로 한다. 손대기 전에는 예고가
+// 320ms였는데 사람 반응속도가 250ms 근처라 사실상 볼 틈이 없었다 —
+// 눈에는 난타로만 보이고 판단이 낄 자리가 없었다.
+//
+// 느리게만 만들면 지루해지므로 **타격당 피해를 같이 올린다.** 교환 횟수는
+// 줄고 한 대의 무게가 커진다. 조우 전체 길이는 비슷하게 유지하는 게 목표다.
+//
+// 이동은 거의 안 건드린다. 맵이 넓어서 이동까지 느리면 걷는 시간만 늘어난다.
+// 다크소울도 걷는 건 답답하지 않다 — 무게는 공격 커밋에 있다.
+//
+// 여기 넷만 만지면 전투 전체 템포가 같이 움직인다.
+export const COMBAT_TEMPO = {
+  playerAttackMs: 1.6,   // 플레이어·동료 공격 주기
+  enemyAttackMs: 1.9,    // 적은 더 크게 벌린다 — 패턴을 읽을 틈
+  damage: 1.25,          // 한 대의 무게. 너무 올리면 한 방에 지워져 교환이 사라진다
+  moveSpeed: 1                 // 안 건드린다 — 맵이 넓어 걷는 시간이 이미 길다
+};
+
 export const ARMOR_MAX_REDUCTION = 0.85;   // 감소율 상한. 최소 피해는 별도로 1 이상 보장된다.
 
 export function armorReduction(points) {
@@ -1823,7 +1843,9 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
   // 공격력 = (기본 + 장비 고정치) × 버프 배율.
   // 장비는 곱이 아니라 **더한다** — 기본값이 작을 때 퍼센트는 체감이 없고,
   // 장비를 여럿 낄수록 곱이 폭주한다. 퍼센트는 룬·버프처럼 마지막 층으로만 남긴다.
-  const damage = (kit.stats.damage
+  // 템포 배율은 **기본 공격력에만** 곱한다. 장비 고정치까지 곱하면
+  // "장비는 곱이 아니라 덧셈"이라는 규칙이 깨져서 +6이 +7.5로 새어나간다.
+  const damage = (kit.stats.damage * COMBAT_TEMPO.damage
       + Math.max(0, level - 1) * (0.26 + strength * 0.012 + intelligence * 0.01)
       + gear.damageFlat)
     * (rune?.id === "greenRune" ? 1.08 : 1) * (1 + gear.damageBonus);
@@ -1839,9 +1861,9 @@ export function playerCombatStats(commander = {}, kitId = commander.combatKitId)
   const armor = armorReduction(armorPoints);
   // 공격 주기는 짧을수록 빠르다. 장비 공격속도는 주기를 나눈다(합산이 아니라 배율).
   const attackMs = Math.max(280, Math.round(
-    kit.stats.attackMs * (rune?.id === "purpleRune" ? 0.94 : 1) / (1 + gear.attackSpeedBonus)));
+    kit.stats.attackMs * COMBAT_TEMPO.playerAttackMs * (rune?.id === "purpleRune" ? 0.94 : 1) / (1 + gear.attackSpeedBonus)));
   // 이동 속도. 장판을 걸어서 피하는 게 기본 대응이라 전투 난이도에 직결된다.
-  const speed = kit.stats.speed * (1 + gear.moveSpeedBonus);
+  const speed = kit.stats.speed * (1 + gear.moveSpeedBonus) * COMBAT_TEMPO.moveSpeed;
   const manaRegen = grownValue(profile, "manaRegen", level) + (rune?.id === "blueRune" ? 0.6 : 0) + gear.manaRegenBonus;
   return {
     ...kit.stats,
