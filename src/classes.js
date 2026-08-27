@@ -1047,6 +1047,15 @@ export function equippedUniqueEffects(commander = {}, baseClassId = null) {
     seen.add(instance.uid);
     effects.push({ ...definition.uniqueEffect, sourceId: definition.id, sourceName: definition.name });
   }
+  // 방어구 세트 효과도 같은 통로로 보낸다. 여기 안 넣으면 세트를 맞춰도
+  // 전투에서 아무 일이 일어나지 않는다.
+  // 신화는 한 조각만 껴도 1셋 효과가 붙는다 — 세트가 없는 대신이다.
+  for (const slotId of EQUIPMENT_SLOTS) {
+    const defId = findEquipmentInstance(commander, equipped[slotId])?.defId;
+    const def = defId ? MYTHIC_GEAR_DEFS[defId] : null;
+    if (def?.mythicSetEffect) effects.push({ ...def.mythicSetEffect, sourceId: def.id, sourceName: def.name });
+  }
+  effects.push(...activeArmorSetEffects(commander));
   return effects;
 }
 
@@ -1153,44 +1162,73 @@ export const ARMOR_SET_DEFS = {
   ironbound: {
     id: "ironbound", name: "층철 세트", armorClass: "heavy",
     pieces: ["heavyHelm", "heavyPlate", "heavyGauntlets", "heavySabatons", "heavyMantle"],
-    // 버티는 방향. 맞아도 서 있는 쪽으로만 오른다.
+    // 세트는 **수치가 아니라 효과**를 준다. 수치로 주면 "숫자가 큰 쪽"을 고르게
+    // 되지만, 효과로 주면 "어떻게 싸울 것인가"를 고르게 된다.
+    // 남은 수치는 문턱을 넘었다는 감각을 주는 정도로만 얹는다.
     tiers: {
-      2: { armorFlat: 26, maxHpBonus: 0.16 },
-      3: { armorFlat: 31, maxHpBonus: 0.19, statusResistBonus: 0.07 },
-      5: { armorFlat: 46, maxHpBonus: 0.28, statusResistBonus: 0.14, cooldownReduction: 0.05 }
+      2: { bonus: { armorFlat: 22, maxHpBonus: 0.1 }, effect: { type: "lastStand", threshold: 0.35, armorFlat: 26 } },
+      3: { bonus: { armorFlat: 28, maxHpBonus: 0.15 }, effect: { type: "statusWard", reduction: 0.35 } },
+      5: { bonus: { armorFlat: 46, maxHpBonus: 0.27, statusResistBonus: 0.12 }, effect: { type: "recoveryShield", ratio: 0.26, cooldownMs: 15000 } }
     },
-    description: "버티는 방향. 다 맞추면 방어와 체력이 크게 오른다."
+    description: "버티는 방향. 몰릴수록 단단해지고, 상태이상을 흘리고, 무너지기 직전 한 번 버틴다."
   },
   ranger: {
     id: "ranger", name: "순찰자 세트", armorClass: "light",
     pieces: ["scoutHood", "scoutLeather", "scoutGrips", "scoutBoots", "scoutCape"],
-    // 굴리는 방향. 빨리 움직이고 빨리 다시 쓴다.
     tiers: {
-      2: { moveSpeedBonus: 0.16, cooldownReduction: 0.09, attackSpeedBonus: 0.08 },
-      3: { moveSpeedBonus: 0.2, cooldownReduction: 0.12, attackSpeedBonus: 0.12 },
-      5: { moveSpeedBonus: 0.26, cooldownReduction: 0.15, attackSpeedBonus: 0.2, criticalChance: 0.07 }
+      2: { bonus: { moveSpeedBonus: 0.14, cooldownReduction: 0.08, attackSpeedBonus: 0.07 }, effect: { type: "phantomDodge", chance: 0.1 } },
+      3: { bonus: { moveSpeedBonus: 0.18, cooldownReduction: 0.11, attackSpeedBonus: 0.11 }, effect: { type: "damageSpread", minDistance: 14, bonus: 0.16 } },
+      5: { bonus: { moveSpeedBonus: 0.26, cooldownReduction: 0.17, attackSpeedBonus: 0.22, criticalChance: 0.07 }, effect: { type: "battleTempo", perHit: 0.03, maxStacks: 5, windowMs: 3500 } }
     },
-    description: "굴리는 방향. 다 맞추면 움직임과 기술 회전이 크게 빨라진다."
+    description: "굴리는 방향. 피격을 흘리고, 거리를 벌수록 아프고, 때릴수록 빨라진다."
   },
   warden: {
     id: "warden", name: "감시자 세트", armorClass: "cloth",
     pieces: ["wardenCirclet", "wardenRobe", "wardenWraps", "wardenSlippers", "wardenShroud"],
-    // 마력 방향. 계속 쏟아붓고 상태이상으로 갉는다.
     tiers: {
-      2: { manaRegenBonus: 1.8, statusPowerBonus: 0.16, cooldownReduction: 0.08 },
-      3: { manaRegenBonus: 2.3, statusPowerBonus: 0.21, cooldownReduction: 0.1 },
-      5: { manaRegenBonus: 3, statusPowerBonus: 0.32, cooldownReduction: 0.11, criticalDamage: 0.28 }
+      2: { bonus: { manaRegenBonus: 1.6, statusPowerBonus: 0.14, cooldownReduction: 0.07 }, effect: { type: "manaRefund", chance: 0.22, ratio: 0.35 } },
+      3: { bonus: { manaRegenBonus: 2.1, statusPowerBonus: 0.2, cooldownReduction: 0.1 }, effect: { type: "onHitStatus", id: "decay", stacks: 1, everyHits: 3 } },
+      5: { bonus: { manaRegenBonus: 2.9, statusPowerBonus: 0.3, cooldownReduction: 0.13, criticalDamage: 0.26 }, effect: { type: "statusExecute", threshold: 0.3, bonus: 0.35 } }
     },
-    description: "마력 방향. 다 맞추면 마나와 상태이상 위력이 크게 오른다."
+    description: "마력 방향. 마나가 돌아오고, 때릴수록 갉고, 갉힌 적을 끝낸다."
   }
 };
 
-export function armorSetBonus(set, pieceCount) {
+// 문턱은 누적되지 않고 **가장 높은 것 하나**만 적용된다 — 누적하면 2·3·5가
+// 전부 더해져서 5부위가 과하게 뛴다.
+function armorSetTier(set, pieceCount) {
   let best = null;
   for (const threshold of ARMOR_SET_THRESHOLDS) {
     if (pieceCount >= threshold && set.tiers[threshold]) best = set.tiers[threshold];
   }
-  return best ? { ...best } : {};
+  return best;
+}
+
+export function armorSetBonus(set, pieceCount) {
+  const tier = armorSetTier(set, pieceCount);
+  return tier?.bonus ? { ...tier.bonus } : {};
+}
+
+// 세트가 주는 **효과**. 이쪽이 세트의 본체다 — 수치로 주면 "숫자가 큰 쪽"을
+// 고르지만, 효과로 주면 "어떻게 싸울지"를 고른다.
+export function armorSetEffect(set, pieceCount) {
+  const tier = armorSetTier(set, pieceCount);
+  return tier?.effect ? { ...tier.effect } : null;
+}
+
+// 지금 낀 방어구가 만들어내는 세트 효과 전부. 두 세트를 2/2로 걸치면 효과도
+// 둘 다 받는다 — 그게 "2셋+2셋"을 고르는 이유가 된다.
+export function activeArmorSetEffects(commander = {}) {
+  const worn = new Set(EQUIPMENT_SLOTS
+    .map((slotId) => findEquipmentInstance(commander, commander?.equipped?.[slotId])?.defId)
+    .filter(Boolean));
+  const effects = [];
+  for (const set of Object.values(ARMOR_SET_DEFS)) {
+    const count = set.pieces.filter((pieceId) => worn.has(pieceId)).length;
+    const effect = armorSetEffect(set, count);
+    if (effect) effects.push({ ...effect, sourceId: set.id, sourceName: set.name });
+  }
+  return effects;
 }
 
 export function armorSetDefinition(setId) {
@@ -1544,11 +1582,31 @@ export const MYTHIC_GEAR_DEFS = {
   // 세트가 없다. 한 조각씩 끼워 "세트 두 개 + 신화 하나"를 만드는 자리다.
   // 그래서 수치는 세트 5부위 보너스에 견줄 만큼 크되, 고유효과는 전설보다 약하다 —
   // 신화만으로 채우면 전설 고유효과를 통째로 잃도록.
-  mythicHelm: { id: "mythicHelm", slot: "helmet", armorClass: "heavy", name: "폐왕의 투구", materials: { fallenCrown: 2, titanCore: 1 }, bonus: { maxHpBonus: 0.07, armorFlat: 10, statusResistBonus: 0.06 }, description: "썩어도 벗겨지지 않던 관을 투구로 다시 벼렸다. 쓰는 자를 가린다." },
-  mythicChest: { id: "mythicChest", slot: "chest", armorClass: "heavy", name: "거신의 흉갑", materials: { titanMarrow: 3, colossusReactor: 2 }, bonus: { maxHpBonus: 0.18, armorFlat: 24 }, description: "거인의 뼈에 거신의 노심을 앉혔다. 아직 미지근하다." },
-  mythicGauntlets: { id: "mythicGauntlets", slot: "gloves", armorClass: "heavy", name: "회로 건틀릿", materials: { ancientCircuit: 2, regicideSeal: 1 }, bonus: { attackSpeedBonus: 0.08, armorFlat: 6, criticalDamage: 0.11 }, description: "누구도 다시 못 그리는 배선이 손등을 지난다. 쥐면 손이 먼저 안다." },
-  mythicBoots: { id: "mythicBoots", slot: "boots", armorClass: "heavy", name: "공허를 밟는 각반", materials: { voidIchor: 2, titanMarrow: 1 }, bonus: { moveSpeedBonus: 0.1, armorFlat: 7, maxHpBonus: 0.06 }, description: "검은 진액이 발밑을 삼킨다. 딛는 자리가 조금씩 가까워진다." },
-  mythicCloak: { id: "mythicCloak", slot: "cloak", armorClass: "cloth", name: "심연의 장막", materials: { abyssEye: 2, regicideSeal: 1 }, bonus: { statusResistBonus: 0.12, moveSpeedBonus: 0.07, maxHpBonus: 0.08 }, description: "들여다보면 이쪽이 먼저 읽히는 눈을 등에 달았다. 뒤를 맡길 수 있다." },
+  mythicHelm: { id: "mythicHelm", slot: "helmet", armorClass: "heavy", name: "폐왕의 투구", materials: { fallenCrown: 2, titanCore: 1 }, bonus: { maxHpBonus: 0.07, armorFlat: 10, statusResistBonus: 0.06 },
+    // 상태이상을 거는 빌드에서만 값어치가 있다. 안 거는 직업에겐 죽은 옵션이다.
+    uniqueEffect: { type: "statusExecute", threshold: 0.22, bonus: 0.4 },
+    mythicSetEffect: { type: "statusShrug", chance: 0.3 },
+    description: "썩어도 벗겨지지 않던 관을 투구로 다시 벼렸다. 쓰는 자를 가린다." },
+  mythicChest: { id: "mythicChest", slot: "chest", armorClass: "heavy", name: "거신의 흉갑", materials: { titanMarrow: 3, colossusReactor: 2 }, bonus: { maxHpBonus: 0.16, armorFlat: 21 },
+    // 체력이 높을 때만 터진다. 천 갑옷 직업이 끼면 조건에 잘 닿지 않는다.
+    uniqueEffect: { type: "damageBand", minRatio: 0.7, bonus: 0.22 },
+    mythicSetEffect: { type: "lastStand", threshold: 0.3, armorFlat: 34 },
+    description: "거인의 뼈에 거신의 노심을 앉혔다. 아직 미지근하다." },
+  mythicGauntlets: { id: "mythicGauntlets", slot: "gloves", armorClass: "heavy", name: "회로 건틀릿", materials: { ancientCircuit: 2, regicideSeal: 1 }, bonus: { attackSpeedBonus: 0.07, armorFlat: 5, criticalDamage: 0.1 },
+    // 연타 빌드 전용. 느린 무기를 쓰면 창이 닫히기 전에 못 쌓는다.
+    uniqueEffect: { type: "battleTempo", perHit: 0.045, maxStacks: 6, windowMs: 2600 },
+    mythicSetEffect: { type: "armorPierceStack", perStack: 0.04, maxStacks: 4, windowMs: 3000 },
+    description: "누구도 다시 못 그리는 배선이 손등을 지난다. 쥐면 손이 먼저 안다." },
+  mythicBoots: { id: "mythicBoots", slot: "boots", armorClass: "heavy", name: "공허를 밟는 각반", materials: { voidIchor: 2, titanMarrow: 1 }, bonus: { moveSpeedBonus: 0.09, armorFlat: 6, maxHpBonus: 0.05 },
+    // 붙어 싸우면 아무 일도 안 일어난다. 거리를 두는 직업 전용이다.
+    uniqueEffect: { type: "damageSpread", minDistance: 20, bonus: 0.3 },
+    mythicSetEffect: { type: "phantomDodge", chance: 0.09 },
+    description: "검은 진액이 발밑을 삼킨다. 딛는 자리가 조금씩 가까워진다." },
+  mythicCloak: { id: "mythicCloak", slot: "cloak", armorClass: "cloth", name: "심연의 장막", materials: { abyssEye: 2, regicideSeal: 1 }, bonus: { statusResistBonus: 0.12, moveSpeedBonus: 0.07, maxHpBonus: 0.08 },
+    // 마나를 쓰는 직업만 이득을 본다.
+    uniqueEffect: { type: "manaRefund", chance: 0.3, ratio: 0.45 },
+    mythicSetEffect: { type: "manaShieldGear", ratio: 0.22 },
+    description: "들여다보면 이쪽이 먼저 읽히는 눈을 등에 달았다. 뒤를 맡길 수 있다." },
 
   // --- 장신구 셋 ---
   mythicRingCore: { id: "mythicRingCore", slot: "ring", setId: MYTHIC_SET_ID, name: "심핵 반지", materials: { titanCore: 2, ancientCircuit: 1 }, bonus: { damageFlat: 3, maxHpBonus: 0.13, armorFlat: 11 },

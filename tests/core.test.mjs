@@ -33,7 +33,7 @@ import { ITEM_DEFS, MATERIAL_DEFS , ORE_SMELTING_DEFS } from "../src/data.js";
 import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport , DISCOVERY_SITE_DEFS } from "../src/frontier.js";
 import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
-import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, ARMOR_SET_DEFS, armorSetBonus } from "../src/classes.js";
+import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, ARMOR_SET_DEFS, armorSetBonus, armorSetEffect } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -627,9 +627,14 @@ test("방어구 세트는 2·3·5부위에서 단계로 붙는다", () => {
 
   // 다섯을 다 모아야 열리면 네 조각까지 아무 보상이 없어 도중에 포기한다.
   assert.deepEqual(armorSetBonus(set, 1), {}, "한 조각으론 아무것도 없다");
-  assert.ok(Object.keys(armorSetBonus(set, 2)).length > 0, "두 조각에서 첫 단계");
-  assert.ok(Object.keys(armorSetBonus(set, 3)).length > Object.keys(armorSetBonus(set, 2)).length);
-  assert.ok(armorSetBonus(set, 5).armorFlat > armorSetBonus(set, 3).armorFlat, "다섯 조각이 가장 크다");
+  // 세트의 본체는 **효과**다. 수치로 주면 "숫자가 큰 쪽"을 고르지만
+  // 효과로 주면 "어떻게 싸울지"를 고른다.
+  for (const threshold of [2, 3, 5]) {
+    assert.ok(armorSetEffect(set, threshold)?.type, `${threshold}부위에 효과가 없다`);
+  }
+  const effects = [2, 3, 5].map((n) => armorSetEffect(set, n).type);
+  assert.equal(new Set(effects).size, 3, "문턱마다 다른 효과여야 한다");
+  assert.ok(armorSetBonus(set, 5).armorFlat > armorSetBonus(set, 3).armorFlat, "수치도 함께 오른다");
 
   // 문턱은 누적되지 않는다 — 2·3·5가 다 더해지면 마지막이 과하게 뛴다.
   assert.equal(armorSetBonus(set, 4).armorFlat, armorSetBonus(set, 3).armorFlat,
@@ -675,8 +680,8 @@ test("세 계열은 총량이 비슷하되 오르는 것이 다르다", () => {
   assert.ok(high <= low * 1.15, `계열 간 총량 차가 15%를 넘는다 (${low} ~ ${high})`);
 
   // 방향은 달라야 한다 — 같은 스탯만 올리면 계열이 셋일 이유가 없다.
-  const keys = Object.values(ARMOR_SET_DEFS).map((set) => Object.keys(set.tiers[5]).sort().join(","));
-  assert.equal(new Set(keys).size, 3, "다섯 부위 보너스가 계열마다 달라야 한다");
+  const finalEffects = Object.values(ARMOR_SET_DEFS).map((set) => armorSetEffect(set, 5).type);
+  assert.equal(new Set(finalEffects).size, 3, "다섯 부위 효과가 계열마다 달라야 한다");
 });
 
 test("한 계열로 맞추는 것이 좋은 것만 골라 끼우는 것보다 낫다", () => {
@@ -1914,8 +1919,11 @@ test("신화 방어구는 깡스탯만, 전설 방어구는 고유효과를 갖�
 
   const mythicArmor = Object.values(MYTHIC_GEAR_DEFS).filter((d) => armorSlots.includes(d.slot));
   assert.equal(mythicArmor.length, 5, "신화 방어구는 다섯 부위다");
+  // 신화도 효과를 갖는다. 세트가 없는 대신 한 조각만 껴도 1셋 효과가 붙는다.
+  // 다만 조건이 좁아서, 빌드가 안 맞으면 깡스탯만 남는다.
   for (const piece of mythicArmor) {
-    assert.ok(!piece.uniqueEffect, `${piece.name}에 고유효과가 있으면 전설을 섞을 이유가 없다`);
+    assert.ok(piece.uniqueEffect?.type, `${piece.name}에 고유효과가 없다`);
+    assert.ok(piece.mythicSetEffect?.type, `${piece.name}에 1셋 효과가 없다`);
   }
 
   const legendaryArmor = Object.values(LEGENDARY_DEFS).filter((d) => armorSlots.includes(d.slot));
