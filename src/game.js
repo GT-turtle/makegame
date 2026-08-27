@@ -57,7 +57,7 @@ import {
   memoryRewards,
   memorySummonable,
   regionEntryCheck
-, GOLEM_UNIT_DEFS, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , SPECIAL_UNIT_DEFS , materialTier } from "./adventure.js";
+, GOLEM_UNIT_DEFS, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , SPECIAL_UNIT_DEFS, materialRarity } from "./adventure.js";
 import {
   DISCOVERY_SITE_DEFS,
   FRONTIER_FACTION_DEFS,
@@ -204,7 +204,7 @@ export class GameEngine {
 
     // 자리를 비운 동안 영지가 돌아 있다. 보고서는 UI가 한 번 보여주고 지운다 —
     // 안 보여주면 재료가 늘어난 걸 눈치도 못 챈다.
-    this.offlineReport = settleOffline(this.state, materialTier, this.offlineDungeonIncome());
+    this.offlineReport = settleOffline(this.state, materialRarity, this.offlineDungeonIncome());
     if (this.offlineReport) this.save();
   }
 

@@ -18,7 +18,7 @@ import {
   WORLD_REGION_DEFS,
   currentZone,
   explorationPath
-, SPECIAL_UNIT_DEFS, MONSTER_ATLAS_SPECIES, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount } from "./adventure.js";
+, SPECIAL_UNIT_DEFS, MONSTER_ATLAS_SPECIES, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , materialRarity, MATERIAL_RARITY_LABELS } from "./adventure.js";
 import {
   DISCOVERY_SITE_DEFS,
   FRONTIER_FACTION_DEFS,
@@ -330,12 +330,16 @@ function materialGrid(state, categoryIds = ["ore", "special", "other"], showEmpt
       material.category === categoryId && (showEmpty || (state.meta.materials[material.id] || 0) > 0)
     ));
     if (!category || !materials.length) return "";
+    // 창고 상한은 재료 종류당이라 모든 칸이 같은 값을 쓴다.
+    const cap = warehouseCap(state.meta.estate.warehouseLevel);
     return `
       <section class="material-category-block category-${categoryId}">
         <header><span>${category.glyph}</span><div><strong>${category.name}</strong><small>${category.description}</small></div></header>
         <div class="material-grid">${materials.map((material) => `
-          <article class="material-stock ${material.common ? "common" : "rare"}" title="${escapeHtml(material.description || material.name)}">
-            <span>${material.glyph}${material.symbol ? `<i>${material.symbol}</i>` : ""}</span><small>${escapeHtml(material.name)}</small><b>${state.meta.materials[material.id] || 0}</b>
+          <article class="material-stock rarity-${materialRarity(material.id)}" title="${escapeHtml(MATERIAL_RARITY_LABELS[materialRarity(material.id)])} · ${escapeHtml(material.description || material.name)}">
+            <span>${material.glyph}${material.symbol ? `<i>${material.symbol}</i>` : ""}</span><small>${escapeHtml(material.name)}</small>
+            <u class="material-rarity">${MATERIAL_RARITY_LABELS[materialRarity(material.id)]}</u>
+            <b${(state.meta.materials[material.id] || 0) >= cap ? ' class="material-full"' : ""}>${state.meta.materials[material.id] || 0}<i>/${cap}</i></b>
           </article>
         `).join("")}</div>
       </section>

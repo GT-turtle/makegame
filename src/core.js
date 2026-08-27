@@ -784,23 +784,24 @@ export function offlineExpeditionRate(towerLevel = 0) {
     + Math.max(0, Math.min(3, towerLevel || 0)) * OFFLINE_EXPEDITION_PER_TOWER_LEVEL;
 }
 
-// 등급 배율. 활동 배율 위에 곱해진다.
+// 등급별 오프라인 배율. 활동 배율 위에 곱해진다.
 //
-// **보스 재료는 오프라인에 나오지 않는다.** 자면서 쌓이면 파밍이 통째로
-// 무의미해진다 — 강화 파손 수리가 보스 부산물을 요구하는 구조인데, 그게
-// 자동으로 들어오면 원정을 나갈 이유가 사라진다.
+// **보스 재료(전설·신화)는 오프라인에 나오지 않는다.** 자면서 쌓이면 파밍이
+// 통째로 무의미해진다 — 강화 파손 수리가 보스 부산물을 요구하는 구조인데,
+// 그게 자동으로 들어오면 원정을 나갈 이유가 사라진다.
 //
-// 마탑이 이걸 뚫어주는 안도 넣어봤다가 걷어냈다. 3층에서 frostIron·glassSand가
-// 실제로 나오는 걸 재보니 과했다. 마탑은 대신 원정 수급률(고철)을 30%→60%로
-// 올리는 쪽으로만 일한다.
-export const OFFLINE_YIELD_BY_TIER = {
-  common: 1,       // 일꾼이 캐는 것 — 활동 배율만 적용된다
-  fieldBoss: 0,    // 필드 보스 부산물 — 자면서는 안 나온다
-  regionBoss: 0    // 지역 보스 부산물 — 자면서는 안 나온다
+// 희귀(2차 가공)도 막는다. 손이 두 번 가는 것을 자면서 얻으면 가공이라는
+// 단계 자체가 의미를 잃는다. 고급(1차 가공)까지만 자동으로 돈다.
+export const OFFLINE_YIELD_BY_RARITY = {
+  normal: 1,      // 일꾼이 캐고 줍는 것
+  fine: 0.6,      // 한 번 가공한 것 — 제련공이 돌리므로 조금은 나온다
+  rare: 0,        // 두 번 가공한 것 — 직접 해야 한다
+  legendary: 0,   // 필드 보스 부산물
+  mythic: 0       // 지역 보스 부산물
 };
 
-export function offlineTierYield(tier) {
-  return OFFLINE_YIELD_BY_TIER[tier] ?? 1;
+export function offlineTierYield(rarity) {
+  return OFFLINE_YIELD_BY_RARITY[rarity] ?? 1;
 }
 
 // 창고 등급별 재료 **종류당** 상한. 총량이 아니다 — 총량이면 흔한 재료가
@@ -835,7 +836,7 @@ export function storeMaterial(state, materialId, amount) {
 // 오프라인 정산. 자리를 비운 동안 영지가 얼마나 돌았는지 계산해 실제로 반영하고,
 // 무슨 일이 있었는지 보고서를 돌려준다.
 //
-// tierOf는 adventure.js의 materialTier를 넘겨받는다 — core가 adventure를
+// tierOf는 adventure.js의 materialRarity를 넘겨받는다 — core가 adventure를
 // 임포트하면 순환 참조가 생기기 때문이다.
 // dungeonIncome은 호출자가 넘긴다 — 개방 던전 목록과 보상 재료는 game.js가
 // 알고 있고, core가 adventure.js를 임포트하면 순환 참조가 생긴다.

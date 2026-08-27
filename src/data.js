@@ -343,6 +343,24 @@ export const MATERIAL_DEFS = {
   sporeGland: { id: "sporeGland", name: "심층 포자샘", glyph: "●", category: "special", description: "남부 심층 생물의 희귀 약재" },
   watcherEye: { id: "watcherEye", name: "감시자의 수정안", glyph: "◈", category: "special", description: "오염을 감지하는 우두머리의 특수 기관" },
 
+  // ── 환상종 광물·약재 ─────────────────────────────────────────────────────
+  //
+  // 현실에 없는 재료들. 채집 단계(고급)와 가공 단계(희귀)가 짝을 이룬다.
+  // 지역마다 하나씩 배치해 "어디를 가야 나오는지"를 다르게 했다 — 한 지역만
+  // 돌아도 다 모이면 다섯 지역을 열 이유가 줄어든다.
+  //
+  // 등급은 MATERIAL_RARITY(core.js)가 정한다. 여기 정의는 이름과 서사만 담는다.
+  orichalcum: { id: "orichalcum", name: "오리하르콘", symbol: "Or", glyph: "◇", category: "ore", description: "북부 빙맥 깊은 곳에서만 나는 담청색 금속. 얼지도 녹지도 않는다" },
+  orichalcumIngot: { id: "orichalcumIngot", name: "오리하르콘 주괴", symbol: "Or*", glyph: "◆", category: "ore", description: "오리하르콘을 벼려 굳힌 것. 두드릴수록 단단해진다" },
+  mithril: { id: "mithril", name: "미스릴", symbol: "Mi", glyph: "◇", category: "ore", description: "동부 산맥의 은백색 경금속. 무게가 없는 듯 가볍다" },
+  mithrilIngot: { id: "mithrilIngot", name: "미스릴 주괴", symbol: "Mi*", glyph: "◆", category: "ore", description: "미스릴을 정련한 것. 얇게 펴도 부러지지 않는다" },
+  adamantite: { id: "adamantite", name: "아다만타이트", symbol: "Ad", glyph: "◇", category: "ore", description: "서부 폐허 지반에 박힌 흑청색 광물. 어떤 날붙이도 튕겨낸다" },
+  adamantiteIngot: { id: "adamantiteIngot", name: "아다만타이트 주괴", symbol: "Ad*", glyph: "◆", category: "ore", description: "아다만타이트를 오래 달궈 굳힌 것. 무겁고 둔하지만 깨지지 않는다" },
+  moonpetal: { id: "moonpetal", name: "월광초", glyph: "✿", category: "special", description: "남부 우림에서 달빛에만 피는 약초. 낮에는 찾을 수 없다" },
+  moonpetalEssence: { id: "moonpetalEssence", name: "월광 정수", glyph: "❉", category: "special", description: "월광초를 밤새 달여 내린 것. 상처보다 정신에 듣는다" },
+  emberroot: { id: "emberroot", name: "불꽃뿌리", glyph: "✿", category: "special", description: "중부 사막 지하수맥을 따라 자라는 약재. 만지면 따끔하다" },
+  emberrootExtract: { id: "emberrootExtract", name: "불꽃뿌리 정제액", glyph: "❉", category: "special", description: "불꽃뿌리를 졸여 뽑은 액. 한 방울로 몸이 데워진다" },
+
   // 필드 보스 부산물(docs/EQUIPMENT_DESIGN.md §9). 전설 장비 제작의 재료가 된다.
   // 보스마다 2종씩 나오며, 여러 보스의 부산물을 섞는 고정 조합표를 쓴다(§5).
   // 지금은 북부 설원 거대 곰 것만 있고 나머지 보스는 순차적으로 추가한다.
@@ -401,7 +419,12 @@ export const ORE_SMELTING_DEFS = {
   sphalerite: { zinc: 1 },
   smithsonite: { zinc: 1 },
   malachite: { copper: 1 },
-  chalcopyrite: { copper: 1, ingot: 0.5 }
+  chalcopyrite: { copper: 1, ingot: 0.5 },
+  // 환상종 광물. 1:1로만 나온다 — 부산물이 붙으면 일반 광석보다 이득이 되어
+  // "귀한 걸 캐서 흔한 걸 얻는" 이상한 구조가 된다.
+  orichalcum: { orichalcumIngot: 1 },
+  mithril: { mithrilIngot: 1 },
+  adamantite: { adamantiteIngot: 1 }
 };
 
 export const WORKER_DEFS = {

@@ -110,6 +110,24 @@ export const DISCOVERY_SITE_DEFS = {
   rareHerb: { id: "rareHerb", name: "독성 약초원", glyph: "♢", materialId: "venomSac", output: 1, workers: 2, build: { wood: 2 }, risk: 14 },
   lumber: { id: "lumber", name: "고목 벌목지", glyph: "♠", materialId: "wood", output: 2, workers: 2, build: { ore: 1 }, risk: 7 },
   manaWell: { id: "manaWell", name: "마나 용출지", glyph: "✦", materialId: "manaStone", output: 1, workers: 2, build: { wood: 2, ore: 1 }, risk: 16 },
+
+  // 환상종 광맥·군락 — 현실에 없는 재료가 나오는 유일한 통로다.
+  //
+  // 심층광산(deepMine)보다 위험을 높게 잡았다. 산출이 1이고 일꾼도 많이 먹는데
+  // 위험까지 낮으면 다른 발견지를 지을 이유가 없어진다 — 환상종은 "가기 어려운
+  // 곳에서 조금 나오는" 자리여야 한다.
+  //
+  // 지역마다 다른 것이 나온다. 한 지역만 돌아도 다 모이면 다섯 지역을 열 이유가 준다.
+  fantasyVein: {
+    id: "fantasyVein", name: "환상 광맥", glyph: "◇", materialId: "orichalcum",
+    materialByRegion: { north: "orichalcum", east: "mithril", west: "adamantite" },
+    output: 1, workers: 3, build: { wood: 4, ingot: 2 }, risk: 24
+  },
+  fantasyGrove: {
+    id: "fantasyGrove", name: "환상 군락", glyph: "✿", materialId: "moonpetal",
+    materialByRegion: { south: "moonpetal", central: "emberroot" },
+    output: 1, workers: 2, build: { wood: 3, herb: 2 }, risk: 20
+  },
   runeCircle: { id: "runeCircle", name: "폐허 룬 각인소", glyph: "ᚱ", materialId: "runeFragment", output: 1, workers: 2, build: { wood: 1, ore: 1 }, risk: 13 },
   glassPit: { id: "glassPit", name: "유리사 채굴지", glyph: "◇", materialId: "glassSand", output: 1, workers: 2, build: { wood: 2, ore: 1 }, risk: 15 },
   caravan: { id: "caravan", name: "대상단 중계소", glyph: "◎", materialId: "food", output: 2, workers: 2, build: { wood: 2, ore: 1 }, risk: 6 },

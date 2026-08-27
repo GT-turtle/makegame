@@ -22,15 +22,15 @@ import {
   rotateMask,
   synergyItemUids,
   workerProficiency,
-  OFFLINE_YIELD_BY_TIER,
+  OFFLINE_YIELD_BY_RARITY,
   WAREHOUSE_LEVEL_CAP,
   WAREHOUSE_MAX_LEVEL,
   offlineExpeditionRate,
   warehouseCap
 } from "../src/core.js";
-import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
-import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle , materialTier } from "../src/adventure.js";
-import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport } from "../src/frontier.js";
+import { ITEM_DEFS, MATERIAL_DEFS , ORE_SMELTING_DEFS } from "../src/data.js";
+import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
+import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport , DISCOVERY_SITE_DEFS } from "../src/frontier.js";
 import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
 import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
@@ -1559,17 +1559,20 @@ test("오프라인 정산은 느리게 돌고, 귀한 재료일수록 덜 나오
 
 test("보스 부산물은 자면서 쌓이지 않는다", () => {
   // 이게 뚫리면 파밍이 통째로 무의미해진다. 지역 보스 재료는 0이어야 한다.
-  assert.equal(materialTier("frostIron"), "regionBoss");
-  assert.equal(OFFLINE_YIELD_BY_TIER.regionBoss, 0, "지역 보스 재료는 오프라인에 안 나온다");
+  assert.equal(materialRarity("frostIron"), "mythic");
+  assert.equal(OFFLINE_YIELD_BY_RARITY.mythic, 0, "신화 재료는 오프라인에 안 나온다");
 
-  assert.equal(materialTier("dragonScale"), "fieldBoss");
-  assert.equal(OFFLINE_YIELD_BY_TIER.fieldBoss, 0, "필드 보스 재료도 자면서는 안 나온다");
+  // 고룡(지역 보스)이 떨구므로 신화다 — 신화가 전설을 이긴다.
+  assert.equal(materialRarity("dragonScale"), "mythic");
+  assert.equal(materialRarity("spiderFang"), "legendary", "필드 보스만 떨구는 것은 전설이다");
+  assert.equal(OFFLINE_YIELD_BY_RARITY.legendary, 0, "전설 재료는 자면서 안 나온다");
+  assert.equal(OFFLINE_YIELD_BY_RARITY.rare, 0, "희귀(2차 가공)도 직접 해야 한다");
 
-  assert.equal(materialTier("wood"), "common");
+  assert.equal(materialRarity("wood"), "normal");
 
   // 등급이 어느 쪽에도 안 잡힌 재료가 있으면 조용히 common으로 새어 나간다.
   for (const id of Object.keys(MATERIAL_DEFS)) {
-    assert.ok(["common", "fieldBoss", "regionBoss"].includes(materialTier(id)), `${id} 등급 불명`);
+    assert.ok(MATERIAL_RARITY_ORDER.includes(materialRarity(id)), `${id} 등급 불명`);
   }
 });
 
@@ -1621,7 +1624,46 @@ test("마탑은 오프라인 고철을 늘리지만 보스 재료를 열지는 �
 
   // 마탑이 하지 않는 일: 보스 재료를 여는 것.
   for (const report of [none, full]) {
-    const rare = Object.keys(report.gained).filter((id) => materialTier(id) !== "common");
+    const rare = Object.keys(report.gained).filter((id) => !["normal", "fine"].includes(materialRarity(id)));
     assert.deepEqual(rare, [], `보스 재료가 오프라인에 나왔다: ${rare.join(", ")}`);
   }
+});
+
+test("환상종 재료는 발견지에서 나와 가공까지 이어진다", () => {
+  // 등급만 정하고 손에 넣을 길이 없으면 죽은 데이터다. 사슬 전체를 확인한다:
+  //   발견지 → 채집(고급) → 제련/조제(희귀)
+  const fantasyRaw = ["orichalcum", "mithril", "adamantite", "moonpetal", "emberroot"];
+
+  // 1. 모든 환상종 원재료에 발견지가 있다.
+  const siteMaterials = new Set();
+  for (const site of Object.values(DISCOVERY_SITE_DEFS)) {
+    siteMaterials.add(site.materialId);
+    for (const id of Object.values(site.materialByRegion || {})) siteMaterials.add(id);
+  }
+  for (const id of fantasyRaw) {
+    assert.ok(siteMaterials.has(id), `${id}를 주는 발견지가 없다`);
+  }
+
+  // 2. 지역이 겹치지 않는다 — 한 지역만 돌아도 다 모이면 다섯 지역을 열 이유가 준다.
+  const byRegion = {};
+  for (const site of Object.values(DISCOVERY_SITE_DEFS)) {
+    for (const [regionId, materialId] of Object.entries(site.materialByRegion || {})) {
+      if (!fantasyRaw.includes(materialId)) continue;
+      assert.ok(!byRegion[regionId], `${regionId}에 환상종이 둘이다`);
+      byRegion[regionId] = materialId;
+    }
+  }
+  assert.equal(Object.keys(byRegion).length, 5, "다섯 지역에 하나씩 흩어져 있다");
+
+  // 3. 광물은 제련되어야 한다. 약재는 조제 쪽이라 제련표에 없는 게 맞다.
+  for (const id of ["orichalcum", "mithril", "adamantite"]) {
+    assert.ok(ORE_SMELTING_DEFS[id], `${id}에 제련 경로가 없다`);
+    const outputs = Object.keys(ORE_SMELTING_DEFS[id]);
+    assert.equal(outputs.length, 1, `${id}는 1:1로만 나와야 한다 — 부산물이 붙으면 일반 광석보다 이득이 된다`);
+  }
+
+  // 4. 위험이 기존 특수 광산보다 높다. 산출 1에 일꾼 셋인데 위험까지 낮으면
+  //    다른 발견지를 지을 이유가 사라진다.
+  assert.ok(DISCOVERY_SITE_DEFS.fantasyVein.risk > DISCOVERY_SITE_DEFS.deepMine.risk,
+    "환상 광맥이 심층광산보다 위험해야 한다");
 });

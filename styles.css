@@ -4339,3 +4339,24 @@ body.battle-active .modal-wrap { z-index: 3200; }
   font-size: 13px;
 }
 .offline-gain-list li b { color: #e8c98a; }
+
+/* 재료 등급 5단계. 색만으로도 한눈에 갈리게 하되, 이름표를 같이 둔다 —
+ * 색약이거나 화면이 어두우면 색만으로는 못 읽는다. */
+.material-stock .material-rarity {
+  display: block;
+  font-size: 9px;
+  font-style: normal;
+  letter-spacing: .04em;
+  opacity: .72;
+}
+.material-stock b i { font-size: 9px; font-style: normal; opacity: .5; }
+.material-stock b.material-full { color: #e0894f; }
+.material-stock.rarity-normal    { --rarity: 150, 158, 168; }
+.material-stock.rarity-fine      { --rarity: 118, 176, 138; }
+.material-stock.rarity-rare      { --rarity: 104, 152, 214; }
+.material-stock.rarity-legendary { --rarity: 206, 158, 78; }
+.material-stock.rarity-mythic    { --rarity: 190, 118, 200; }
+.material-stock[class*="rarity-"] {
+  border-color: rgba(var(--rarity), .5);
+}
+.material-stock[class*="rarity-"] .material-rarity { color: rgb(var(--rarity)); }

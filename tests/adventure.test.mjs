@@ -43,8 +43,8 @@ import {
   resolveObstacles,
   createFieldBattle,
   REGION_ARMOR_SET
-, SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES , MONSTER_SPECIES_PENDING_ART , spawnBossZone } from "../src/adventure.js";
-import { MATERIAL_DEFS } from "../src/data.js";
+, SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES , MONSTER_SPECIES_PENDING_ART , spawnBossZone , MATERIAL_RARITY_ORDER, MATERIAL_RARITY_LABELS, materialRarity } from "../src/adventure.js";
+import { MATERIAL_DEFS, ORE_SMELTING_DEFS } from "../src/data.js";
 import { EQUIPMENT_GRADES, combatPowerBreakdown, combatPowerScore, masterySlots, MASTERY_TRAIT_SLOTS, ENHANCE_MAX, playerKitDefinition } from "../src/classes.js";
 import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, LEGENDARY_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, legendariesForRegion, legendaryCollection, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
@@ -2967,5 +2967,86 @@ test("연쇄 장판은 보스에서 대상 쪽으로 줄지어 깔리고 순서�
     Math.abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
   for (let i = 2; i < zones.length; i += 1) {
     assert.ok(cross(zones[0], zones[1], zones[i]) < 0.01, "칸이 일직선으로 놓인다");
+  }
+});
+
+test("재료는 획득 경로에 따라 5단계로 갈린다", () => {
+  // 등급은 이름이나 카테고리가 아니라 **어떻게 손에 넣는가**로 정한다.
+  // MATERIAL_DEFS의 category는 special 하나에 약초와 보스 부산물이 섞여 있어
+  // 아무것도 구분해주지 못한다.
+  assert.deepEqual(MATERIAL_RARITY_ORDER, ["normal", "fine", "rare", "legendary", "mythic"]);
+
+  // 노멀 — 필드에서 줍거나 캔다.
+  for (const id of ["wood", "ore", "herb", "bauxite", "rhodiola"]) {
+    assert.equal(materialRarity(id), "normal", `${id}는 채집물이다`);
+  }
+
+  // 고급 — 한 번 가공한 것. 그리고 환상종은 채집 단계부터 고급이다.
+  for (const id of ["ingot", "copper", "titanium"]) {
+    assert.equal(materialRarity(id), "fine", `${id}는 제련 산출물이다`);
+  }
+  for (const id of ["orichalcum", "mithril", "adamantite", "moonpetal", "emberroot"]) {
+    assert.equal(materialRarity(id), "fine", `${id}는 환상종 원재료다`);
+  }
+
+  // 희귀 — 두 번 가공한 것.
+  for (const id of ["orichalcumIngot", "mithrilIngot", "adamantiteIngot",
+    "moonpetalEssence", "emberrootExtract", "blackSteel", "manaStone"]) {
+    assert.equal(materialRarity(id), "rare", `${id}는 2차 가공품이다`);
+  }
+
+  // 환상종은 가공하면 한 단계 오른다 — 일반 제련품과 벌어져야 채굴할 이유가 생긴다.
+  const order = MATERIAL_RARITY_ORDER;
+  for (const [raw, refined] of [["orichalcum", "orichalcumIngot"], ["mithril", "mithrilIngot"],
+    ["adamantite", "adamantiteIngot"], ["moonpetal", "moonpetalEssence"], ["emberroot", "emberrootExtract"]]) {
+    assert.ok(order.indexOf(materialRarity(refined)) > order.indexOf(materialRarity(raw)),
+      `${raw} → ${refined} 가공하면 등급이 올라야 한다`);
+    assert.ok(ORE_SMELTING_DEFS[raw] || raw.startsWith("moon") || raw.startsWith("ember"),
+      `${raw}는 가공 경로가 있어야 한다`);
+  }
+
+  // 전설·신화 — 보스가 떨군다. 신화가 전설을 이긴다.
+  const fieldDrops = new Set();
+  const regionDrops = new Set();
+  for (const enemy of Object.values(ENEMY_COMBATANTS)) {
+    if (!enemy.byproducts) continue;
+    const target = enemy.fieldTier ? fieldDrops : regionDrops;
+    for (const id of Object.keys(enemy.byproducts)) target.add(id);
+  }
+  for (const id of regionDrops) {
+    assert.equal(materialRarity(id), "mythic", `${id}는 지역 보스가 떨구므로 신화다`);
+  }
+  for (const id of fieldDrops) {
+    if (regionDrops.has(id)) continue;
+    assert.equal(materialRarity(id), "legendary", `${id}는 필드 보스만 떨구므로 전설이다`);
+  }
+
+  // 다섯 단계가 전부 채워져 있어야 단계로서 의미가 있다.
+  const counts = {};
+  for (const id of Object.keys(MATERIAL_DEFS)) {
+    counts[materialRarity(id)] = (counts[materialRarity(id)] || 0) + 1;
+  }
+  for (const rarity of MATERIAL_RARITY_ORDER) {
+    assert.ok(counts[rarity] > 0, `${rarity} 등급이 비어 있다`);
+    assert.ok(MATERIAL_RARITY_LABELS[rarity], `${rarity} 이름표가 없다`);
+  }
+});
+
+test("곰 우두머리 다섯은 모두 필드 보스다", () => {
+  // 북부 곰만 fieldTier가 있고 넷은 빠져 있었다. 체력 88~98로 명백히 같은
+  // 급인데 지역 보스(285~340)로 취급돼서, 곰 가죽이 신화 재료가 되고 있었다.
+  const bears = Object.entries(ENEMY_COMBATANTS).filter(([id]) => id.endsWith("Bear"));
+  assert.equal(bears.length, 5);
+  for (const [id, def] of bears) {
+    assert.ok(def.fieldTier > 0, `${id}에 fieldTier가 있어야 한다`);
+    assert.ok(def.maxHp < 150, `${id}는 지역 보스보다 훨씬 약하다 (${def.maxHp})`);
+  }
+
+  // 지역 보스는 정확히 다섯이고 전부 훨씬 단단하다.
+  const regionBosses = Object.entries(ENEMY_COMBATANTS)
+    .filter(([, def]) => def.boss && !def.fieldTier && def.byproducts);
+  assert.equal(regionBosses.length, 5, "지역 보스는 지역당 하나씩 다섯이다");
+  for (const [id, def] of regionBosses) {
+    assert.ok(def.maxHp >= 200, `${id}는 지역 보스답게 단단해야 한다 (${def.maxHp})`);
   }
 });

@@ -1,3 +1,4 @@
+import { ORE_SMELTING_DEFS } from "./data.js";
 import { ARMOR_MAX_REDUCTION, ARMOR_SOFTCAP, MASTERY_BRANCH_DEFS, MASTERY_STEPS, MASTERY_TRAIT_SLOTS, MASTERY_MAX, masterySlots, masteryBranchUnlocked, masteryXpNeeded, ARMOR_SET_DEFS, armorReduction, combatPowerScore, companionBonuses, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
@@ -1462,7 +1463,7 @@ export const ENEMY_COMBATANTS = {
   southGoblin: { name: "독침 고블린", species: "goblin", variant: "독침 사수", glyph: "G", maxHp: 19, damage: 4, range: 21, speed: 10, attackMs: 1080, color: "#6fa66d", statusOnHit: { id: "poison", stacks: 1 } },
   southOrc: { name: "덩굴갑주 오크", species: "orc", variant: "재생 갑주", glyph: "O", maxHp: 31, damage: 6, range: 8, speed: 6, attackMs: 1390, armor: 0.14, hpRegen: 0.2, color: "#638f63" },
   southWolf: { name: "수풀 늑대", species: "wolf", variant: "독니 매복종", glyph: "Λ", maxHp: 20, damage: 5, range: 7, speed: 13, attackMs: 1010, color: "#80a965", statusOnHit: { id: "poison", stacks: 1 }, statusEvery: 2 },
-  southBear: { name: "수관 큰곰", species: "bear", variant: "맹독 우두머리", glyph: "B", maxHp: 88, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.1, hpRegen: 0.25, color: "#6e9e62", boss: true, 
+  southBear: { fieldTier: 2, name: "수관 큰곰", species: "bear", variant: "맹독 우두머리", glyph: "B", maxHp: 88, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.1, hpRegen: 0.25, color: "#6e9e62", boss: true, 
     patterns: ["venomFang", "coilCrush"],
     phase2Patterns: ["webTrap"],
     byproducts: { serpentHide: 1, venomSac: 1 },
@@ -1471,7 +1472,7 @@ export const ENEMY_COMBATANTS = {
   eastGoblin: { name: "산성 고블린 궁수", species: "goblin", variant: "장궁 사수", glyph: "G", maxHp: 20, damage: 6, range: 24, speed: 9, attackMs: 1220, color: "#b37b60" },
   eastOrc: { name: "단조갑주 오크", species: "orc", variant: "중갑 수문병", glyph: "O", maxHp: 34, damage: 6, range: 8, speed: 5, attackMs: 1460, armor: 0.21, color: "#9f765f" },
   eastWolf: { name: "산등성이 늑대", species: "wolf", variant: "절벽 추격종", glyph: "Λ", maxHp: 22, damage: 7, range: 7, speed: 13, attackMs: 1050, color: "#9a7562", statusOnHit: { id: "bleed", stacks: 1 }, statusEvery: 2 },
-  eastBear: { name: "철발톱 큰곰", species: "bear", variant: "단조성 우두머리", glyph: "B", maxHp: 94, damage: 10, range: 9, speed: 5, attackMs: 1500, armor: 0.18, color: "#bd7459", boss: true, 
+  eastBear: { fieldTier: 2, name: "철발톱 큰곰", species: "bear", variant: "단조성 우두머리", glyph: "B", maxHp: 94, damage: 10, range: 9, speed: 5, attackMs: 1500, armor: 0.18, color: "#bd7459", boss: true, 
     patterns: ["oniCleave", "chargeRush"],
     phase2Patterns: ["quakeRoar"],
     byproducts: { chitinPlate: 1, mountainIron: 1 },
@@ -1480,7 +1481,7 @@ export const ENEMY_COMBATANTS = {
   westGoblin: { name: "마나 고블린 술사", species: "goblin", variant: "화염 마법종", glyph: "G", maxHp: 18, damage: 6, range: 24, speed: 9, attackMs: 1180, color: "#9b82bd", statusOnHit: { id: "burn" }, statusEvery: 3 },
   westOrc: { name: "서약 파기 오크", species: "orc", variant: "기사 무장", glyph: "O", maxHp: 29, damage: 8, range: 8, speed: 7, attackMs: 1300, armor: 0.13, color: "#a17870" },
   westWolf: { name: "정령숲 늑대", species: "wolf", variant: "마력 추적종", glyph: "Λ", maxHp: 22, damage: 5, range: 8, speed: 14, attackMs: 990, color: "#7f9c71", statusOnHit: { id: "decay" }, statusEvery: 3 },
-  westBear: { name: "룬갑주 큰곰", species: "bear", variant: "폐서약당 우두머리", glyph: "B", maxHp: 98, damage: 10, range: 10, speed: 5, attackMs: 1540, armor: 0.16, color: "#b29378", boss: true, 
+  westBear: { fieldTier: 2, name: "룬갑주 큰곰", species: "bear", variant: "폐서약당 우두머리", glyph: "B", maxHp: 98, damage: 10, range: 10, speed: 5, attackMs: 1540, armor: 0.16, color: "#b29378", boss: true, 
     patterns: ["groundSlam", "curseWave"],
     phase2Patterns: ["relicBurst"],
     byproducts: { cursedPlate: 1, soulStone: 1 },
@@ -1489,40 +1490,76 @@ export const ENEMY_COMBATANTS = {
   centralGoblin: { name: "화염병 고블린", species: "goblin", variant: "연금 투척수", glyph: "G", maxHp: 19, damage: 5, range: 22, speed: 10, attackMs: 1150, color: "#cf9257", statusOnHit: { id: "burn" }, statusEvery: 3 },
   centralOrc: { name: "사구 도끼오크", species: "orc", variant: "대상로 약탈자", glyph: "O", maxHp: 31, damage: 8, range: 8, speed: 7, attackMs: 1320, armor: 0.1, color: "#b97648", statusOnHit: { id: "bleed", stacks: 1 }, statusEvery: 2 },
   centralWolf: { name: "모래 늑대", species: "wolf", variant: "고속 추적종", glyph: "Λ", maxHp: 20, damage: 6, range: 7, speed: 14, attackMs: 1000, color: "#c18b52", statusOnHit: { id: "bleed", stacks: 1 }, statusEvery: 3 },
-  centralBear: { name: "사구 큰곰", species: "bear", variant: "유리사 우두머리", glyph: "B", maxHp: 90, damage: 11, range: 9, speed: 5, attackMs: 1480, armor: 0.13, color: "#cf8b46", boss: true, 
+  centralBear: { fieldTier: 2, name: "사구 큰곰", species: "bear", variant: "유리사 우두머리", glyph: "B", maxHp: 90, damage: 11, range: 9, speed: 5, attackMs: 1480, armor: 0.13, color: "#cf8b46", boss: true, 
     patterns: ["groundSlam", "chargeRush"],
     phase2Patterns: ["quakeRoar"],
     byproducts: { glassSand: 2, sunShard: 1 },
     statusOnHit: { id: "stun", durationMs: 750 }, statusEvery: 3 }
 };
 
-// 재료 등급 — 오프라인 수급률과 창고 상한이 이걸 본다.
+// ── 재료 등급 5단계 ────────────────────────────────────────────────────────
 //
-// MATERIAL_DEFS의 category는 못 쓴다. special 하나에 약초 48종과 보스 부산물이
-// 섞여 있어서 "귀한 것"을 가려낼 수가 없다. 대신 **어디서 떨어지는가**로 역산한다.
+// 등급은 **어떻게 손에 넣는가**로 정한다. 이름이나 카테고리가 아니라 획득 경로다 —
+// MATERIAL_DEFS의 category는 special 하나에 약초 12종과 보스 부산물 31종이
+// 섞여 있어 아무것도 구분해주지 못한다.
 //
-//   regionBoss  지역 보스만 떨어뜨린다 — 가장 귀하다
-//   fieldBoss   필드 보스가 떨어뜨린다
-//   common      일꾼이 캐거나 만든다
+//   노멀   필드에서 줍거나 캔다        원광·약초·목재
+//   고급   한 번 가공한다              제련 주괴, 그리고 환상종 원석·약초
+//   희귀   두 번 가공한다              환상종 주괴·정수, 흑철, 마석
+//   전설   필드 보스가 떨군다          31종
+//   신화   지역 보스가 떨군다          5종
 //
-// 이 함수를 쓰는 쪽(core.js 오프라인 정산)이 adventure.js를 임포트하지 않도록
-// 결과를 한 번 계산해 표로 굳혀 내보낸다.
-export const MATERIAL_TIERS = (() => {
-  const fieldBoss = new Set();
-  const regionBoss = new Set();
+// 환상종(오리하르콘·미스릴·아다만타이트·월광초·불꽃뿌리)이 채집 단계에서
+// 이미 고급인 이유: 현실에 없는 것들이라 주우는 것 자체가 사건이어야 한다.
+// 대신 가공하면 희귀로 올라가 일반 제련품과 한 단계 벌어진다.
+export const MATERIAL_RARITY_ORDER = ["normal", "fine", "rare", "legendary", "mythic"];
+
+export const MATERIAL_RARITY_LABELS = {
+  normal: "노멀", fine: "고급", rare: "희귀", legendary: "전설", mythic: "신화"
+};
+
+// 두 번 가공하거나 그에 준하는 손이 간 것들. 제련표만으로는 못 가려서 손으로 적는다.
+const SECOND_STAGE_MATERIALS = new Set([
+  "orichalcumIngot", "mithrilIngot", "adamantiteIngot",
+  "moonpetalEssence", "emberrootExtract",
+  "blackSteel",    // 강적의 장비에서 회수해 다시 벼린 것
+  "manaStone",     // 마나를 굳혀 앉힌 것
+  "runeFragment"   // 각인을 깎아낸 조각
+]);
+
+// 채집 단계지만 이미 고급인 것들 — 환상종 원석·약초.
+const FANTASY_RAW_MATERIALS = new Set([
+  "orichalcum", "mithril", "adamantite", "moonpetal", "emberroot"
+]);
+
+export const MATERIAL_RARITY = (() => {
+  const legendary = new Set();
+  const mythic = new Set();
   for (const enemy of Object.values(ENEMY_COMBATANTS)) {
     if (!enemy.byproducts) continue;
-    const target = enemy.fieldTier ? fieldBoss : regionBoss;
+    // fieldTier가 붙은 것이 필드 보스, 아닌 것이 지역 보스다.
+    const target = enemy.fieldTier ? legendary : mythic;
     for (const id of Object.keys(enemy.byproducts)) target.add(id);
   }
-  const tiers = {};
-  for (const id of regionBoss) if (!fieldBoss.has(id)) tiers[id] = "regionBoss";
-  for (const id of fieldBoss) tiers[id] = "fieldBoss";
-  return tiers;
+
+  const rarity = {};
+  // 제련 산출물은 한 번 가공한 것 → 고급.
+  for (const outputs of Object.values(ORE_SMELTING_DEFS)) {
+    for (const id of Object.keys(outputs)) rarity[id] = "fine";
+  }
+  for (const id of FANTASY_RAW_MATERIALS) rarity[id] = "fine";
+  for (const id of SECOND_STAGE_MATERIALS) rarity[id] = "rare";
+  // 보스 부산물이 가장 세다 — 가공 여부와 무관하게 덮어쓴다.
+  // 신화가 전설을 이긴다: "신화 보스가 드랍하는 부산물은 모두 신화"가 규칙이라,
+  // 필드 보스와 겹치는 재료도 지역 보스가 떨구면 신화로 올라간다.
+  for (const id of legendary) rarity[id] = "legendary";
+  for (const id of mythic) rarity[id] = "mythic";
+  return rarity;
 })();
 
-export function materialTier(materialId) {
-  return MATERIAL_TIERS[materialId] || "common";
+// 등급을 모르는 재료는 노멀이다 — 필드에서 줍는 것이 기본값이다.
+export function materialRarity(materialId) {
+  return MATERIAL_RARITY[materialId] || "normal";
 }
 
 export const ENCOUNTER_DEFS = {
