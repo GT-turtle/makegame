@@ -33,7 +33,7 @@ import { ITEM_DEFS, MATERIAL_DEFS , ORE_SMELTING_DEFS } from "../src/data.js";
 import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport , DISCOVERY_SITE_DEFS } from "../src/frontier.js";
 import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
-import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, MYTHIC_EQUIP_LIMIT, ARMOR_SET_DEFS, armorSetBonus } from "../src/classes.js";
+import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, ARMOR_SET_DEFS, armorSetBonus } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -1738,31 +1738,23 @@ test("환상종 재료는 발견지에서 나와 가공까지 이어진다", () 
     "환상 광맥이 심층광산보다 위험해야 한다");
 });
 
-test("신화는 무기와 장신구뿐이고, 한 번에 하나만 낀다", () => {
+test("신화는 아홉 칸에 있고 장착 개수 제한이 없다", () => {
+  // 한도를 뒀다가 걷었다. 제한은 규칙으로 막는 것보다 수치로 유도하는 편이
+  // 낫다 — 신화 도배가 세트 조합보다 약하도록 잡혀 있어서, 막지 않아도
+  // 스스로 섞게 된다.
   const pieces = Object.values(MYTHIC_GEAR_DEFS);
-  assert.equal(pieces.length, 9, "무기 6 + 반지 2 + 목걸이 1");
+  assert.equal(pieces.length, 14, "무기 6 + 방어구 5 + 장신구 3");
 
-  // 방어구는 2/3/5 세트가 성장축이다. 거기에 신화가 끼면 세트를 포기하게 만들어
-  // 방금 크게 키운 세트가 죽는다.
-  const slots = new Set(pieces.map((p) => p.slot));
-  assert.deepEqual([...slots].sort(), ["necklace", "ring", "weapon"]);
-  for (const armorSlot of ["helmet", "chest", "gloves", "boots", "cloak"]) {
-    assert.ok(!pieces.some((p) => p.slot === armorSlot), `${armorSlot}에 신화가 있으면 안 된다`);
-  }
-
-  assert.equal(MYTHIC_EQUIP_LIMIT, 1);
   const engine = new GameEngine(new MemoryStorage());
   const commander = engine.state.adventure.commander;
   commander.equipmentOwned = [
     { uid: "w", defId: "crusaderMythicSword", grade: "mythic", options: [], enhance: 0, broken: false },
     { uid: "r", defId: "mythicRingCore", grade: "mythic", options: [], enhance: 0, broken: false },
-    { uid: "L", defId: "solomonSeal", grade: "legendary", options: [], enhance: 0, broken: false }
+    { uid: "n", defId: "mythicNecklace", grade: "mythic", options: [], enhance: 0, broken: false }
   ];
-  assert.equal(engine.equipEquipment("w"), true, "첫 신화는 낀다");
-  assert.equal(engine.equipEquipment("r"), false, "두 번째 신화는 막힌다");
-  assert.equal(engine.equipEquipment("L"), true, "전설은 몇 개든 낀다");
-  assert.equal(engine.equipEquipment(null, "weapon"), true);
-  assert.equal(engine.equipEquipment("r"), true, "자리를 비우면 다른 신화를 낄 수 있다");
+  assert.equal(engine.equipEquipment("w"), true);
+  assert.equal(engine.equipEquipment("r"), true, "두 번째 신화도 낄 수 있다");
+  assert.equal(engine.equipEquipment("n"), true, "세 번째도 낄 수 있다");
 });
 
 test("신화 한 점은 그 자리 최고 전설의 1.3~1.75배다", () => {
@@ -1780,8 +1772,11 @@ test("신화 한 점은 그 자리 최고 전설의 1.3~1.75배다", () => {
     return combatPowerScore(playerCombatStats(commander, "crusader")) - bare;
   };
 
+  const armorSlots = ["helmet", "chest", "gloves", "boots", "cloak"];
   for (const piece of Object.values(MYTHIC_GEAR_DEFS)) {
     if (piece.baseClassId && piece.baseClassId !== "crusader") continue;
+    // 방어구 신화는 개별이 아니라 세트 조합과 겨루므로 이 기준을 쓰지 않는다.
+    if (armorSlots.includes(piece.slot)) continue;
     const rivals = Object.values(EQUIPMENT_DEFS).filter((def) =>
       def.slot === piece.slot && !MYTHIC_GEAR_DEFS[def.id]
       && (!def.baseClassId || def.baseClassId === "crusader"));
@@ -1791,8 +1786,9 @@ test("신화 한 점은 그 자리 최고 전설의 1.3~1.75배다", () => {
       `${piece.name}의 배율이 범위를 벗어난다 (${ratio.toFixed(2)}배)`);
   }
 
-  // 세트가 없으니 고유효과가 값어치를 채운다. 하나도 빠지면 안 된다.
+  // 무기·장신구는 세트가 없으니 고유효과가 값어치를 채운다.
   for (const piece of Object.values(MYTHIC_GEAR_DEFS)) {
+    if (armorSlots.includes(piece.slot)) continue;
     assert.ok(piece.uniqueEffect?.type, `${piece.name}에 고유효과가 없다`);
   }
 });
@@ -1819,9 +1815,10 @@ test("신화 장비는 다섯 지역 보스를 모두 잡아야 완성된다", (
   assert.equal(usedBosses.size, 5, "다섯 지역 보스가 모두 쓰인다");
 });
 
-test("세트 효과가 개별 조각을 압도할 만큼 크다", () => {
-  // 바람의나라식 — 세트를 맞추는 것이 성장의 큰 축이어야 한다.
-  // 세트가 곁다리면 좋은 것만 골라 끼우는 쪽이 항상 낫고, 세트는 장식이 된다.
+test("세트 문턱에서 눈에 띄게 뛴다", () => {
+  // 계열이 셋인데 칸이 다섯이라, 아무렇게나 섞어도 최소 2셋 하나는 뜬다.
+  // 그래서 "세트 vs 세트 없음"은 잴 수가 없다. 대신 문턱에서 실제로
+  // 도약이 일어나는지를 본다 — 그게 없으면 문턱이 문턱이 아니다.
   const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), "crusader"));
   const wear = (pieces) => {
     const commander = createDefaultCommander();
@@ -1839,16 +1836,18 @@ test("세트 효과가 개별 조각을 압도할 만큼 크다", () => {
     return combatPowerScore(playerCombatStats(commander, "crusader")) - bare;
   };
 
-  const pure = wear(ARMOR_SET_DEFS.ironbound.pieces);
-  const mixed = wear(["heavyHelm", "scoutLeather", "wardenWraps", "scoutBoots", "heavyMantle"]);
-  assert.ok(pure > mixed * 1.2,
-    `세트가 섞어 끼우기보다 20% 넘게 나아야 한다 (섞음 ${mixed} vs 세트 ${pure})`);
+  const pieces = ARMOR_SET_DEFS.ironbound.pieces;
+  const at = [1, 2, 3, 4, 5].map((n) => wear(pieces.slice(0, n)));
+  const step = (n) => at[n - 1] - (n === 1 ? 0 : at[n - 2]);
 
-  // 마지막 조각이 가장 크게 뛰어야 "하나만 더"가 성립한다.
-  const four = wear(ARMOR_SET_DEFS.ironbound.pieces.slice(0, 4));
-  const three = wear(ARMOR_SET_DEFS.ironbound.pieces.slice(0, 3));
-  assert.ok(pure - four > four - three,
-    `다섯 번째 조각의 도약이 네 번째보다 커야 한다 (${four - three} vs ${pure - four})`);
+  // 문턱(2·3·5)에서의 도약이 문턱이 아닌 곳(4)보다 커야 한다.
+  assert.ok(step(2) > step(4), `2부위 도약(${step(2)})이 4부위(${step(4)})보다 커야 한다`);
+  assert.ok(step(3) > step(4), `3부위 도약(${step(3)})이 4부위(${step(4)})보다 커야 한다`);
+  assert.ok(step(5) > step(4), `5부위 도약(${step(5)})이 4부위(${step(4)})보다 커야 한다`);
+
+  // 세트가 성장의 큰 축이어야 한다 — 다섯을 맞추면 하나만 낀 것의 몇 배가 된다.
+  assert.ok(at[4] > at[0] * 5,
+    `다섯 맞춤(${at[4]})이 하나(${at[0]})의 다섯 배는 넘어야 한다`);
 });
 
 test("전설 장비는 하나도 빠짐없이 고유효과를 갖고, 전투 엔진에 배선돼 있다", () => {
@@ -1862,5 +1861,73 @@ test("전설 장비는 하나도 빠짐없이 고유효과를 갖고, 전투 엔
   for (const def of Object.values(LEGENDARY_DEFS)) {
     assert.ok(engine.includes(def.uniqueEffect.type),
       `${def.name}의 ${def.uniqueEffect.type}이 전투 엔진에 없다`);
+  }
+});
+
+test("세트 조합이 도배보다 낫고, 2셋+2셋+신화1이 가장 강하다", () => {
+  // 사용자 결정: 신화는 깡스탯이 좋되 전설 고유효과 때문에 섞어 쓸 수밖에 없게.
+  // 세 가지가 동시에 성립해야 한다.
+  const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), "crusader"));
+  const wear = (ids) => {
+    const commander = createDefaultCommander();
+    commander.combatKitId = "crusader";
+    commander.equipmentOwned = [];
+    ids.forEach((defId, index) => {
+      const def = EQUIPMENT_DEFS[defId];
+      const uid = `a${index}`;
+      commander.equipmentOwned.push({
+        uid, defId, grade: "rare",
+        options: rollEquipmentOptions(def.slot, "rare", 2, () => 0.5), enhance: 0, broken: false
+      });
+      commander.equipped[def.slot] = uid;
+    });
+    return combatPowerScore(playerCombatStats(commander, "crusader")) - bare;
+  };
+
+  const heavy = ARMOR_SET_DEFS.ironbound.pieces;
+  const light = ARMOR_SET_DEFS.ranger.pieces;
+  const mythicCloak = "mythicCloak";
+
+  const fullSet = wear(heavy);
+  const twoThree = wear([heavy[0], heavy[1], light[2], light[3], light[4]]);
+  const twoTwoMythic = wear([heavy[0], heavy[1], light[2], light[3], mythicCloak]);
+  const allMythic = wear(["mythicHelm", "mythicChest", "mythicGauntlets", "mythicBoots", "mythicCloak"]);
+
+  // (1) 2셋 + 3셋이 5셋과 비슷하다 — 한 세트로 몰지 않아도 된다.
+  const ratio = twoThree / fullSet;
+  assert.ok(ratio >= 0.9 && ratio <= 1.15,
+    `2셋+3셋(${twoThree})이 5셋(${fullSet})과 비슷해야 한다 (${ratio.toFixed(2)}배)`);
+
+  // (2) 2셋 + 2셋 + 신화1이 가장 강하다.
+  assert.ok(twoTwoMythic > fullSet, `2+2+신화(${twoTwoMythic}) > 5셋(${fullSet})`);
+  assert.ok(twoTwoMythic > twoThree, `2+2+신화(${twoTwoMythic}) > 2셋+3셋(${twoThree})`);
+
+  // (3) 신화 도배는 최고가 아니다 — 섞어야 이긴다.
+  assert.ok(allMythic < twoTwoMythic,
+    `신화 도배(${allMythic})가 섞은 것(${twoTwoMythic})보다 강하면 안 된다`);
+});
+
+test("신화 방어구는 깡스탯만, 전설 방어구는 고유효과를 갖는다", () => {
+  // 이게 "섞어 쓸 수밖에 없는" 진짜 이유다. 수치만 보면 신화가 낫지만
+  // 신화로 도배하면 전설 방어구의 고유효과를 통째로 잃는다.
+  const armorSlots = ["helmet", "chest", "gloves", "boots", "cloak"];
+
+  const mythicArmor = Object.values(MYTHIC_GEAR_DEFS).filter((d) => armorSlots.includes(d.slot));
+  assert.equal(mythicArmor.length, 5, "신화 방어구는 다섯 부위다");
+  for (const piece of mythicArmor) {
+    assert.ok(!piece.uniqueEffect, `${piece.name}에 고유효과가 있으면 전설을 섞을 이유가 없다`);
+  }
+
+  const legendaryArmor = Object.values(LEGENDARY_DEFS).filter((d) => armorSlots.includes(d.slot));
+  assert.ok(legendaryArmor.length >= 5, "전설 방어구가 충분히 있어야 선택지가 된다");
+  for (const piece of legendaryArmor) {
+    assert.ok(piece.uniqueEffect?.type, `${piece.name}에 고유효과가 없다`);
+  }
+
+  // 무기·장신구 신화는 반대로 고유효과를 갖는다 — 거기는 세트가 없어서
+  // 효과가 값어치를 채워야 한다.
+  for (const piece of Object.values(MYTHIC_GEAR_DEFS)) {
+    if (armorSlots.includes(piece.slot)) continue;
+    assert.ok(piece.uniqueEffect?.type, `${piece.name}에 고유효과가 없다`);
   }
 });

@@ -2349,7 +2349,7 @@ function commanderEquipmentSection(state, selectedKit) {
           <strong>${escapeHtml(entry.name)}</strong>
           ${entry.legendary ? '<em class="equipment-tag">전설</em>' : ""}
           <small>기본 ${escapeHtml(bonusText(entry.bonus))}</small>
-          ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">신화 · 한 번에 하나만 낀다</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} ${armorSetWorn(commander, set)}/${set.pieces.length}${Object.keys(armorSetBonus(set, armorSetWorn(commander, set))).length ? ` · ${escapeHtml(bonusText(armorSetBonus(set, armorSetWorn(commander, set))))}` : ` · ${ARMOR_SET_THRESHOLDS[0]}부위부터`}</small>` : ""}
+          ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">신화 · 세트 없음, 깡스탯</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} ${armorSetWorn(commander, set)}/${set.pieces.length}${Object.keys(armorSetBonus(set, armorSetWorn(commander, set))).length ? ` · ${escapeHtml(bonusText(armorSetBonus(set, armorSetWorn(commander, set))))}` : ` · ${ARMOR_SET_THRESHOLDS[0]}부위부터`}</small>` : ""}
           ${entry.lore ? `<small class="equipment-lore">${escapeHtml(entry.lore)}</small>` : ""}
           <i>${lacking.length ? `재료 부족 · ${escapeHtml(cost)}` : `제작 · ${escapeHtml(cost)}`}</i>
         </button>`;
@@ -2381,7 +2381,7 @@ function commanderEquipmentSection(state, selectedKit) {
             ${instance.options?.length
               ? `<small class="equipment-rolled">랜덤 ${escapeHtml(bonusText(Object.fromEntries(instance.options.map((o) => [o.key, o.value]))))}</small>`
               : ""}
-            ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">신화 · 한 번에 하나만 낀다</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} ${armorSetWorn(commander, set)}/${set.pieces.length}${Object.keys(armorSetBonus(set, armorSetWorn(commander, set))).length ? ` · ${escapeHtml(bonusText(armorSetBonus(set, armorSetWorn(commander, set))))}` : ` · ${ARMOR_SET_THRESHOLDS[0]}부위부터`}</small>` : ""}
+            ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">신화 · 세트 없음, 깡스탯</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} ${armorSetWorn(commander, set)}/${set.pieces.length}${Object.keys(armorSetBonus(set, armorSetWorn(commander, set))).length ? ` · ${escapeHtml(bonusText(armorSetBonus(set, armorSetWorn(commander, set))))}` : ` · ${ARMOR_SET_THRESHOLDS[0]}부위부터`}</small>` : ""}
             <i>${isEquipped ? "장착 중 · 눌러서 해제" : "장착하기"}</i>
             <u class="equipment-discard" data-action="discard-equipment" data-equipment-id="${instance.uid}" title="폐기">✕</u>
           </button>

@@ -1155,9 +1155,9 @@ export const ARMOR_SET_DEFS = {
     pieces: ["heavyHelm", "heavyPlate", "heavyGauntlets", "heavySabatons", "heavyMantle"],
     // 버티는 방향. 맞아도 서 있는 쪽으로만 오른다.
     tiers: {
-      2: { armorFlat: 12, maxHpBonus: 0.06 },
-      3: { armorFlat: 22, maxHpBonus: 0.14, statusResistBonus: 0.06 },
-      5: { armorFlat: 40, maxHpBonus: 0.28, statusResistBonus: 0.14, cooldownReduction: 0.04 }
+      2: { armorFlat: 26, maxHpBonus: 0.16 },
+      3: { armorFlat: 31, maxHpBonus: 0.19, statusResistBonus: 0.07 },
+      5: { armorFlat: 46, maxHpBonus: 0.28, statusResistBonus: 0.14, cooldownReduction: 0.05 }
     },
     description: "버티는 방향. 다 맞추면 방어와 체력이 크게 오른다."
   },
@@ -1166,9 +1166,9 @@ export const ARMOR_SET_DEFS = {
     pieces: ["scoutHood", "scoutLeather", "scoutGrips", "scoutBoots", "scoutCape"],
     // 굴리는 방향. 빨리 움직이고 빨리 다시 쓴다.
     tiers: {
-      2: { moveSpeedBonus: 0.08, cooldownReduction: 0.03 },
-      3: { moveSpeedBonus: 0.14, cooldownReduction: 0.07, attackSpeedBonus: 0.06 },
-      5: { moveSpeedBonus: 0.22, cooldownReduction: 0.13, attackSpeedBonus: 0.16, criticalChance: 0.06 }
+      2: { moveSpeedBonus: 0.16, cooldownReduction: 0.09, attackSpeedBonus: 0.08 },
+      3: { moveSpeedBonus: 0.2, cooldownReduction: 0.12, attackSpeedBonus: 0.12 },
+      5: { moveSpeedBonus: 0.26, cooldownReduction: 0.15, attackSpeedBonus: 0.2, criticalChance: 0.07 }
     },
     description: "굴리는 방향. 다 맞추면 움직임과 기술 회전이 크게 빨라진다."
   },
@@ -1177,9 +1177,9 @@ export const ARMOR_SET_DEFS = {
     pieces: ["wardenCirclet", "wardenRobe", "wardenWraps", "wardenSlippers", "wardenShroud"],
     // 마력 방향. 계속 쏟아붓고 상태이상으로 갉는다.
     tiers: {
-      2: { manaRegenBonus: 0.9, statusPowerBonus: 0.06 },
-      3: { manaRegenBonus: 1.6, statusPowerBonus: 0.14, cooldownReduction: 0.05 },
-      5: { manaRegenBonus: 2.6, statusPowerBonus: 0.3, cooldownReduction: 0.09, criticalDamage: 0.25 }
+      2: { manaRegenBonus: 1.8, statusPowerBonus: 0.16, cooldownReduction: 0.08 },
+      3: { manaRegenBonus: 2.3, statusPowerBonus: 0.21, cooldownReduction: 0.1 },
+      5: { manaRegenBonus: 3, statusPowerBonus: 0.32, cooldownReduction: 0.11, criticalDamage: 0.28 }
     },
     description: "마력 방향. 다 맞추면 마나와 상태이상 위력이 크게 오른다."
   }
@@ -1539,6 +1539,17 @@ export const MYTHIC_GEAR_DEFS = {
   archmageMythicStaff: { id: "archmageMythicStaff", slot: "weapon", setId: MYTHIC_SET_ID, name: "회로의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { reverseScale: 2, ancientCircuit: 2 }, bonus: { damageFlat: 12, cooldownReduction: 0.16 },
     uniqueEffect: { type: "manaRefund", chance: 0.4, ratio: 0.55 }, description: "고대 회로를 지팡이에 옮겨 그렸다. 주문이 손보다 빨리 끝난다." },
 
+  // --- 방어구 다섯 부위: 직업 제한 없음 ---
+  //
+  // 세트가 없다. 한 조각씩 끼워 "세트 두 개 + 신화 하나"를 만드는 자리다.
+  // 그래서 수치는 세트 5부위 보너스에 견줄 만큼 크되, 고유효과는 전설보다 약하다 —
+  // 신화만으로 채우면 전설 고유효과를 통째로 잃도록.
+  mythicHelm: { id: "mythicHelm", slot: "helmet", armorClass: "heavy", name: "폐왕의 투구", materials: { fallenCrown: 2, titanCore: 1 }, bonus: { maxHpBonus: 0.07, armorFlat: 10, statusResistBonus: 0.06 }, description: "썩어도 벗겨지지 않던 관을 투구로 다시 벼렸다. 쓰는 자를 가린다." },
+  mythicChest: { id: "mythicChest", slot: "chest", armorClass: "heavy", name: "거신의 흉갑", materials: { titanMarrow: 3, colossusReactor: 2 }, bonus: { maxHpBonus: 0.18, armorFlat: 24 }, description: "거인의 뼈에 거신의 노심을 앉혔다. 아직 미지근하다." },
+  mythicGauntlets: { id: "mythicGauntlets", slot: "gloves", armorClass: "heavy", name: "회로 건틀릿", materials: { ancientCircuit: 2, regicideSeal: 1 }, bonus: { attackSpeedBonus: 0.08, armorFlat: 6, criticalDamage: 0.11 }, description: "누구도 다시 못 그리는 배선이 손등을 지난다. 쥐면 손이 먼저 안다." },
+  mythicBoots: { id: "mythicBoots", slot: "boots", armorClass: "heavy", name: "공허를 밟는 각반", materials: { voidIchor: 2, titanMarrow: 1 }, bonus: { moveSpeedBonus: 0.1, armorFlat: 7, maxHpBonus: 0.06 }, description: "검은 진액이 발밑을 삼킨다. 딛는 자리가 조금씩 가까워진다." },
+  mythicCloak: { id: "mythicCloak", slot: "cloak", armorClass: "cloth", name: "심연의 장막", materials: { abyssEye: 2, regicideSeal: 1 }, bonus: { statusResistBonus: 0.12, moveSpeedBonus: 0.07, maxHpBonus: 0.08 }, description: "들여다보면 이쪽이 먼저 읽히는 눈을 등에 달았다. 뒤를 맡길 수 있다." },
+
   // --- 장신구 셋 ---
   mythicRingCore: { id: "mythicRingCore", slot: "ring", setId: MYTHIC_SET_ID, name: "심핵 반지", materials: { titanCore: 2, ancientCircuit: 1 }, bonus: { damageFlat: 3, maxHpBonus: 0.13, armorFlat: 11 },
     uniqueEffect: { type: "recoveryShield", ratio: 0.3, cooldownMs: 14000 }, description: "타이탄의 핵을 깎아 고리로 만들었다. 낀 손이 계속 따뜻하다." },
@@ -1547,22 +1558,6 @@ export const MYTHIC_GEAR_DEFS = {
   mythicNecklace: { id: "mythicNecklace", slot: "necklace", setId: MYTHIC_SET_ID, name: "여의주 목걸이", materials: { dragonPearl: 2, fallenCrown: 1 }, bonus: { maxHpBonus: 0.13, damageFlat: 5, manaRegenBonus: 0.9 },
     uniqueEffect: { type: "chargedBurst", hits: 5, bonus: 0.5 }, description: "용이 목에 품던 것을 사람이 목에 걸었다. 숨이 데워진다." }
 };
-
-// 신화는 **한 번에 하나만 낀다.** 세트가 아니라 "내 한 자리를 무엇에 줄
-// 것인가"라는 선택이다.
-//
-// 방어구를 신화에서 뺀 이유도 같다. 방어구는 2/3/5 세트가 성장축인데, 거기에
-// 신화가 끼면 세트를 포기하게 만든다 — 방금 크게 키운 세트가 죽는다.
-// 신화는 무기 한 자리와 장신구 세 자리에서만 겨룬다.
-export const MYTHIC_EQUIP_LIMIT = 1;
-
-// 지금 낀 신화가 몇 개인지. 한도를 넘겨 장착하려 하면 게임 엔진이 막는다.
-export function equippedMythicCount(commander, exceptSlot = null) {
-  return EQUIPMENT_SLOTS
-    .filter((slotId) => slotId !== exceptSlot)
-    .map((slotId) => findEquipmentInstance(commander, commander?.equipped?.[slotId])?.defId)
-    .filter((defId) => defId && MYTHIC_GEAR_DEFS[defId]).length;
-}
 
 // 지역 진행용 목걸이도 같은 목록에 합친다 — 제작·장착이 일반 장비와 같은 경로를 탄다.
 Object.assign(EQUIPMENT_DEFS, REGION_WARD_DEFS);
