@@ -1,7 +1,7 @@
 import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
 import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency , warehouseCap, WAREHOUSE_MAX_LEVEL, WAREHOUSE_UPGRADE_COST } from "./core.js";
 import { GameEngine } from "./game.js";
-import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, ENHANCE_MAX, enhanceCost, enhanceOdds, repairCost, combatPowerScore, companionEquippableSlots, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition , MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, canSpecialForge, MYTHIC_GEAR_DEFS, mythicSetBonus, findEquipmentInstance, EQUIPMENT_SLOTS } from "./classes.js";
+import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, ENHANCE_MAX, enhanceCost, enhanceOdds, repairCost, combatPowerScore, companionEquippableSlots, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition , MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, canSpecialForge, MYTHIC_GEAR_DEFS, mythicSetBonus, findEquipmentInstance, EQUIPMENT_SLOTS, armorSetBonus, ARMOR_SET_THRESHOLDS } from "./classes.js";
 import {
   DUNGEON_VIEW_SIZE,
   FIELD_VIEW_SIZE,
@@ -2313,6 +2313,13 @@ function commanderEquipmentSection(state, selectedKit) {
   const equipped = commander.equipped || {};
   const collection = legendaryCollection(commander);
   // 신화 세트는 3/6/9 단계라 지금 몇 조각을 꼈는지 알아야 표시할 수 있다.
+  // 지금 이 계열의 방어구를 몇 부위 맞췄는지.
+  const armorSetWorn = (cmd, set) => {
+    const worn = new Set(EQUIPMENT_SLOTS
+      .map((slotId) => findEquipmentInstance(cmd, cmd.equipped?.[slotId])?.defId)
+      .filter(Boolean));
+    return set.pieces.filter((pieceId) => worn.has(pieceId)).length;
+  };
   const mythicPieceCount = EQUIPMENT_SLOTS
     .map((slotId) => findEquipmentInstance(commander, equipped[slotId])?.defId)
     .filter((defId) => defId && MYTHIC_GEAR_DEFS[defId]).length;
@@ -2345,7 +2352,7 @@ function commanderEquipmentSection(state, selectedKit) {
           <strong>${escapeHtml(entry.name)}</strong>
           ${entry.legendary ? '<em class="equipment-tag">전설</em>' : ""}
           <small>기본 ${escapeHtml(bonusText(entry.bonus))}</small>
-          ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">종말의 세트 · 지금 ${mythicPieceCount}/9${Object.keys(mythicSetBonus(mythicPieceCount)).length ? ` · ${escapeHtml(bonusText(mythicSetBonus(mythicPieceCount)))}` : ""}</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} · 2세트 ${escapeHtml(bonusText(set.setBonus))}</small>` : ""}
+          ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">종말의 세트 · 지금 ${mythicPieceCount}/9${Object.keys(mythicSetBonus(mythicPieceCount)).length ? ` · ${escapeHtml(bonusText(mythicSetBonus(mythicPieceCount)))}` : ""}</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} ${armorSetWorn(commander, set)}/${set.pieces.length}${Object.keys(armorSetBonus(set, armorSetWorn(commander, set))).length ? ` · ${escapeHtml(bonusText(armorSetBonus(set, armorSetWorn(commander, set))))}` : ` · ${ARMOR_SET_THRESHOLDS[0]}부위부터`}</small>` : ""}
           ${entry.lore ? `<small class="equipment-lore">${escapeHtml(entry.lore)}</small>` : ""}
           <i>${lacking.length ? `재료 부족 · ${escapeHtml(cost)}` : `제작 · ${escapeHtml(cost)}`}</i>
         </button>`;
@@ -2377,7 +2384,7 @@ function commanderEquipmentSection(state, selectedKit) {
             ${instance.options?.length
               ? `<small class="equipment-rolled">랜덤 ${escapeHtml(bonusText(Object.fromEntries(instance.options.map((o) => [o.key, o.value]))))}</small>`
               : ""}
-            ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">종말의 세트 · 지금 ${mythicPieceCount}/9${Object.keys(mythicSetBonus(mythicPieceCount)).length ? ` · ${escapeHtml(bonusText(mythicSetBonus(mythicPieceCount)))}` : ""}</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} · 2세트 ${escapeHtml(bonusText(set.setBonus))}</small>` : ""}
+            ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">종말의 세트 · 지금 ${mythicPieceCount}/9${Object.keys(mythicSetBonus(mythicPieceCount)).length ? ` · ${escapeHtml(bonusText(mythicSetBonus(mythicPieceCount)))}` : ""}</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} ${armorSetWorn(commander, set)}/${set.pieces.length}${Object.keys(armorSetBonus(set, armorSetWorn(commander, set))).length ? ` · ${escapeHtml(bonusText(armorSetBonus(set, armorSetWorn(commander, set))))}` : ` · ${ARMOR_SET_THRESHOLDS[0]}부위부터`}</small>` : ""}
             <i>${isEquipped ? "장착 중 · 눌러서 해제" : "장착하기"}</i>
             <u class="equipment-discard" data-action="discard-equipment" data-equipment-id="${instance.uid}" title="폐기">✕</u>
           </button>

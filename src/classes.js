@@ -1101,29 +1101,29 @@ export const EQUIPMENT_DEFS = {
   // 안전하고, 쌓을수록 이득이 줄어 자연히 다른 스탯으로 눈을 돌리게 된다.
 
   // 몸통 — 가장 무겁고 가장 크다.
-  heavyPlate: { id: "heavyPlate", slot: "chest", armorClass: "heavy", setId: "ironbound", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.12, armorFlat: 12 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
-  scoutLeather: { id: "scoutLeather", slot: "chest", armorClass: "light", setId: "ranger", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorFlat: 6, cooldownReduction: 0.05 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
-  wardenRobe: { id: "wardenRobe", slot: "chest", armorClass: "cloth", setId: "warden", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorFlat: 6, manaRegenBonus: 0.8 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
+  heavyPlate: { id: "heavyPlate", slot: "chest", armorClass: "heavy", setId: "ironbound", name: "층철 판금갑", materials: { ingot: 5, blackSteel: 1 }, bonus: { maxHpBonus: 0.09, armorFlat: 9 }, description: "무겁게 겹쳐 두른 판금. 체력과 방어력이 함께 오른다." },
+  scoutLeather: { id: "scoutLeather", slot: "chest", armorClass: "light", setId: "ranger", name: "순찰자 경갑", materials: { wood: 2, ingot: 2, herb: 1 }, bonus: { armorFlat: 5, cooldownReduction: 0.03 }, description: "가벼운 가죽 경갑. 방어력이 조금 오르고 기술 회전이 빨라진다." },
+  wardenRobe: { id: "wardenRobe", slot: "chest", armorClass: "cloth", setId: "warden", name: "감시자의 예복", materials: { wood: 3, herb: 3 }, bonus: { armorFlat: 5, manaRegenBonus: 0.6 }, description: "마력을 머금은 예복. 방어력이 조금 오르고 마나 회복이 빨라진다." },
 
   // 투구 — 머리. 버티는 쪽과 정신 쪽이 갈린다.
-  heavyHelm: { id: "heavyHelm", slot: "helmet", armorClass: "heavy", name: "층철 투구", materials: { ingot: 3, blackSteel: 1 }, bonus: { maxHpBonus: 0.05, armorFlat: 6 }, description: "면갑을 내린 중투구. 체력과 방어가 함께 오른다." },
-  scoutHood: { id: "scoutHood", slot: "helmet", armorClass: "light", name: "순찰자 두건", materials: { wood: 1, ingot: 1, herb: 1 }, bonus: { armorFlat: 3, statusResistBonus: 0.04 }, description: "시야를 가리지 않는 가벼운 두건. 상태이상을 덜 탄다." },
-  wardenCirclet: { id: "wardenCirclet", slot: "helmet", armorClass: "cloth", name: "감시자의 관", materials: { ore: 2, herb: 2 }, bonus: { manaRegenBonus: 0.5, armorFlat: 2 }, description: "이마에 두르는 얇은 관. 마나 회복이 빨라진다." },
+  heavyHelm: { id: "heavyHelm", slot: "helmet", armorClass: "heavy", name: "층철 투구", materials: { ingot: 3, blackSteel: 1 }, bonus: { maxHpBonus: 0.04, armorFlat: 4 }, description: "면갑을 내린 중투구. 체력과 방어가 함께 오른다." },
+  scoutHood: { id: "scoutHood", slot: "helmet", armorClass: "light", name: "순찰자 두건", materials: { wood: 1, ingot: 1, herb: 1 }, bonus: { armorFlat: 2, statusResistBonus: 0.03 }, description: "시야를 가리지 않는 가벼운 두건. 상태이상을 덜 탄다." },
+  wardenCirclet: { id: "wardenCirclet", slot: "helmet", armorClass: "cloth", name: "감시자의 관", materials: { ore: 2, herb: 2 }, bonus: { manaRegenBonus: 0.4, armorFlat: 2 }, description: "이마에 두르는 얇은 관. 마나 회복이 빨라진다." },
 
   // 장갑 — 손. 때리는 쪽에 가장 가깝다.
-  heavyGauntlets: { id: "heavyGauntlets", slot: "gloves", armorClass: "heavy", name: "층철 건틀릿", materials: { ingot: 2, blackSteel: 1 }, bonus: { attackSpeedBonus: 0.04, armorFlat: 5 }, description: "주먹까지 감싼 강철 장갑. 방어가 오르고 손이 조금 빨라진다." },
-  scoutGrips: { id: "scoutGrips", slot: "gloves", armorClass: "light", name: "순찰자 손보호대", materials: { wood: 1, herb: 1 }, bonus: { attackSpeedBonus: 0.05, armorFlat: 2 }, description: "손가락이 자유로운 보호대. 공격 속도가 빨라진다." },
-  wardenWraps: { id: "wardenWraps", slot: "gloves", armorClass: "cloth", name: "감시자의 손싸개", materials: { herb: 2, ore: 1 }, bonus: { cooldownReduction: 0.04, armorFlat: 2 }, description: "인장을 새긴 천 손싸개. 기술 회전이 빨라진다." },
+  heavyGauntlets: { id: "heavyGauntlets", slot: "gloves", armorClass: "heavy", name: "층철 건틀릿", materials: { ingot: 2, blackSteel: 1 }, bonus: { attackSpeedBonus: 0.03, armorFlat: 4 }, description: "주먹까지 감싼 강철 장갑. 방어가 오르고 손이 조금 빨라진다." },
+  scoutGrips: { id: "scoutGrips", slot: "gloves", armorClass: "light", name: "순찰자 손보호대", materials: { wood: 1, herb: 1 }, bonus: { attackSpeedBonus: 0.04, armorFlat: 2 }, description: "손가락이 자유로운 보호대. 공격 속도가 빨라진다." },
+  wardenWraps: { id: "wardenWraps", slot: "gloves", armorClass: "cloth", name: "감시자의 손싸개", materials: { herb: 2, ore: 1 }, bonus: { cooldownReduction: 0.03, armorFlat: 2 }, description: "인장을 새긴 천 손싸개. 기술 회전이 빨라진다." },
 
   // 신발 — 발. 움직이는 쪽.
-  heavySabatons: { id: "heavySabatons", slot: "boots", armorClass: "heavy", name: "층철 각반", materials: { ingot: 3 }, bonus: { maxHpBonus: 0.05, armorFlat: 6 }, description: "정강이까지 덮은 철 각반. 체력과 방어가 오른다." },
-  scoutBoots: { id: "scoutBoots", slot: "boots", armorClass: "light", name: "순찰자 장화", materials: { wood: 2, herb: 1 }, bonus: { moveSpeedBonus: 0.09, armorFlat: 3 }, description: "오래 걷기 위한 가벼운 장화. 이동 속도가 오른다." },
-  wardenSlippers: { id: "wardenSlippers", slot: "boots", armorClass: "cloth", name: "감시자의 신", materials: { wood: 1, herb: 2 }, bonus: { moveSpeedBonus: 0.05, manaRegenBonus: 0.6 }, description: "발소리를 죽이는 신. 이동과 마나 회복이 함께 오른다." },
+  heavySabatons: { id: "heavySabatons", slot: "boots", armorClass: "heavy", name: "층철 각반", materials: { ingot: 3 }, bonus: { maxHpBonus: 0.04, armorFlat: 4 }, description: "정강이까지 덮은 철 각반. 체력과 방어가 오른다." },
+  scoutBoots: { id: "scoutBoots", slot: "boots", armorClass: "light", name: "순찰자 장화", materials: { wood: 2, herb: 1 }, bonus: { moveSpeedBonus: 0.06, armorFlat: 2 }, description: "오래 걷기 위한 가벼운 장화. 이동 속도가 오른다." },
+  wardenSlippers: { id: "wardenSlippers", slot: "boots", armorClass: "cloth", name: "감시자의 신", materials: { wood: 1, herb: 2 }, bonus: { moveSpeedBonus: 0.04, manaRegenBonus: 0.4 }, description: "발소리를 죽이는 신. 이동과 마나 회복이 함께 오른다." },
 
   // 망토 — 등. 흘리는 쪽.
-  heavyMantle: { id: "heavyMantle", slot: "cloak", armorClass: "heavy", name: "층철 어깨망토", materials: { ingot: 2, herb: 1 }, bonus: { maxHpBonus: 0.05, armorFlat: 4 }, description: "어깨를 덮는 두꺼운 망토. 체력과 방어가 오른다." },
-  scoutCape: { id: "scoutCape", slot: "cloak", armorClass: "light", name: "순찰자 망토", materials: { wood: 1, herb: 2 }, bonus: { moveSpeedBonus: 0.05, statusResistBonus: 0.05 }, description: "바람을 타는 얇은 망토. 이동이 빨라지고 상태이상을 덜 탄다." },
-  wardenShroud: { id: "wardenShroud", slot: "cloak", armorClass: "cloth", name: "감시자의 장막", materials: { herb: 3, ore: 1 }, bonus: { statusResistBonus: 0.07, manaRegenBonus: 0.3 }, description: "주문을 흘려보내는 장막. 상태이상 저항과 마나 회복이 오른다." },
+  heavyMantle: { id: "heavyMantle", slot: "cloak", armorClass: "heavy", name: "층철 어깨망토", materials: { ingot: 2, herb: 1 }, bonus: { maxHpBonus: 0.04, armorFlat: 3 }, description: "어깨를 덮는 두꺼운 망토. 체력과 방어가 오른다." },
+  scoutCape: { id: "scoutCape", slot: "cloak", armorClass: "light", name: "순찰자 망토", materials: { wood: 1, herb: 2 }, bonus: { moveSpeedBonus: 0.04, statusResistBonus: 0.04 }, description: "바람을 타는 얇은 망토. 이동이 빨라지고 상태이상을 덜 탄다." },
+  wardenShroud: { id: "wardenShroud", slot: "cloak", armorClass: "cloth", name: "감시자의 장막", materials: { herb: 3, ore: 1 }, bonus: { statusResistBonus: 0.05, manaRegenBonus: 0.25 }, description: "주문을 흘려보내는 장막. 상태이상 저항과 마나 회복이 오른다." },
 
   // --- 장신구: 직업 제한 없음. 각각 방어구 하나와 세트를 이룬다 ---
   guardianCharm: { id: "guardianCharm", slot: "necklace", setId: "ironbound", name: "수호의 부적", materials: { herb: 3, ingot: 1 }, bonus: { maxHpBonus: 0.09 }, description: "낡은 수호 부적. 최대 체력이 오른다." },
@@ -1136,11 +1136,64 @@ export const EQUIPMENT_DEFS = {
 // 둘 다 장착하면 작은 세트 보너스가 붙어, 세트를 맞출지 다른 세트끼리 섞을지가
 // 하나의 선택이 된다. 보너스를 작게 둔 건 "선택이 강함이 아니라 방향을 바꾼다"는
 // 원칙(docs/CHOICE_DESIGN.md) 때문이다.
+// ── 방어구 세트 ────────────────────────────────────────────────────────────
+//
+// 다섯 부위(투구·갑옷·장갑·신발·망토)가 한 세트다. **조각 하나하나는 일부러
+// 약하게 잡았다** — 값어치가 세트에 실려 있어서, 좋은 것만 골라 끼우는 것보다
+// 한 계열로 맞추는 쪽이 이득이 된다.
+//
+// 문턱을 2/3/5로 셋 둔 이유: 다섯을 다 모아야 열리면 네 개까지 아무 보상이
+// 없어서 도중에 포기한다. 두 개만 맞춰도 뭔가 붙어야 "맞춰볼까"가 시작된다.
+//
+// 세 계열이 각자 다른 방향으로 간다. 총량은 비슷하되 무엇이 오르는지가 다르다 —
+// 한 계열이 정답이 되면 나머지 둘은 존재할 이유가 없다.
+export const ARMOR_SET_THRESHOLDS = [2, 3, 5];
+
 export const ARMOR_SET_DEFS = {
-  ironbound: { id: "ironbound", name: "층철 세트", pieces: ["heavyPlate", "guardianCharm"], setBonus: { armorFlat: 6 }, description: "버티는 방향. 세트 완성 시 방어력이 조금 더 오른다." },
-  ranger: { id: "ranger", name: "순찰자 세트", pieces: ["scoutLeather", "sagesBand"], setBonus: { cooldownReduction: 0.03 }, description: "굴리는 방향. 세트 완성 시 기술 회전이 조금 더 빨라진다." },
-  warden: { id: "warden", name: "감시자 세트", pieces: ["wardenRobe", "runeSigil"], setBonus: { manaRegenBonus: 0.4 }, description: "마력 방향. 세트 완성 시 마나 회복이 조금 더 빨라진다." }
+  ironbound: {
+    id: "ironbound", name: "층철 세트", armorClass: "heavy",
+    pieces: ["heavyHelm", "heavyPlate", "heavyGauntlets", "heavySabatons", "heavyMantle"],
+    // 버티는 방향. 맞아도 서 있는 쪽으로만 오른다.
+    tiers: {
+      2: { armorFlat: 5 },
+      3: { maxHpBonus: 0.06, armorFlat: 5 },
+      5: { maxHpBonus: 0.08, armorFlat: 12, statusResistBonus: 0.06 }
+    },
+    description: "버티는 방향. 조각을 맞출수록 체력과 방어가 함께 오른다."
+  },
+  ranger: {
+    id: "ranger", name: "순찰자 세트", armorClass: "light",
+    pieces: ["scoutHood", "scoutLeather", "scoutGrips", "scoutBoots", "scoutCape"],
+    // 굴리는 방향. 빨리 움직이고 빨리 다시 쓴다.
+    tiers: {
+      2: { moveSpeedBonus: 0.04 },
+      3: { cooldownReduction: 0.04, moveSpeedBonus: 0.03 },
+      5: { attackSpeedBonus: 0.08, cooldownReduction: 0.05, moveSpeedBonus: 0.05 }
+    },
+    description: "굴리는 방향. 조각을 맞출수록 움직임과 기술 회전이 빨라진다."
+  },
+  warden: {
+    id: "warden", name: "감시자 세트", armorClass: "cloth",
+    pieces: ["wardenCirclet", "wardenRobe", "wardenWraps", "wardenSlippers", "wardenShroud"],
+    // 마력 방향. 계속 쏟아붓고 상태이상으로 갉는다.
+    tiers: {
+      2: { manaRegenBonus: 0.4 },
+      3: { statusPowerBonus: 0.08, manaRegenBonus: 0.3 },
+      5: { statusPowerBonus: 0.12, manaRegenBonus: 0.6, criticalChance: 0.05 }
+    },
+    description: "마력 방향. 조각을 맞출수록 마나와 상태이상 위력이 오른다."
+  }
 };
+
+// 지금 낀 조각 수로 쌓인 세트 보너스. 문턱은 누적되지 않고 **가장 높은 것 하나**만
+// 적용된다 — 누적하면 2·3·5가 전부 더해져서 5부위가 과하게 뛴다.
+export function armorSetBonus(set, pieceCount) {
+  let best = null;
+  for (const threshold of ARMOR_SET_THRESHOLDS) {
+    if (pieceCount >= threshold && set.tiers[threshold]) best = set.tiers[threshold];
+  }
+  return best ? { ...best } : {};
+}
 
 export function armorSetDefinition(setId) {
   return ARMOR_SET_DEFS[setId] || null;
@@ -1476,11 +1529,11 @@ export const MYTHIC_GEAR_DEFS = {
   archmageMythicStaff: { id: "archmageMythicStaff", slot: "weapon", setId: MYTHIC_SET_ID, name: "회로의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { reverseScale: 2, ancientCircuit: 2 }, bonus: { damageFlat: 10, cooldownReduction: 0.14 }, description: "고대 회로를 지팡이에 옮겨 그렸다. 주문이 손보다 빨리 끝난다." },
 
   // --- 방어구 다섯 부위: 직업 제한 없음 ---
-  mythicHelm: { id: "mythicHelm", slot: "helmet", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "폐왕의 투구", materials: { fallenCrown: 2, titanCore: 1 }, bonus: { maxHpBonus: 0.06, armorFlat: 8, statusResistBonus: 0.05 }, description: "썩어도 벗겨지지 않던 관을 투구로 다시 벼렸다. 쓰는 자를 가린다." },
-  mythicChest: { id: "mythicChest", slot: "chest", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "거신의 흉갑", materials: { titanMarrow: 3, colossusReactor: 2 }, bonus: { maxHpBonus: 0.18, armorFlat: 23 }, description: "거인의 뼈에 거신의 노심을 앉혔다. 아직 미지근하다." },
-  mythicGauntlets: { id: "mythicGauntlets", slot: "gloves", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "회로 건틀릿", materials: { ancientCircuit: 2, regicideSeal: 1 }, bonus: { attackSpeedBonus: 0.07, armorFlat: 7, criticalDamage: 0.1 }, description: "누구도 다시 못 그리는 배선이 손등을 지난다. 쥐면 손이 먼저 안다." },
-  mythicBoots: { id: "mythicBoots", slot: "boots", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "공허를 밟는 각반", materials: { voidIchor: 2, titanMarrow: 1 }, bonus: { moveSpeedBonus: 0.12, armorFlat: 9, maxHpBonus: 0.06 }, description: "검은 진액이 발밑을 삼킨다. 딛는 자리가 조금씩 가까워진다." },
-  mythicCloak: { id: "mythicCloak", slot: "cloak", setId: MYTHIC_SET_ID, armorClass: "cloth", name: "심연의 장막", materials: { abyssEye: 2, regicideSeal: 1 }, bonus: { statusResistBonus: 0.1, moveSpeedBonus: 0.05, maxHpBonus: 0.05 }, description: "들여다보면 이쪽이 먼저 읽히는 눈을 등에 달았다. 뒤를 맡길 수 있다." },
+  mythicHelm: { id: "mythicHelm", slot: "helmet", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "폐왕의 투구", materials: { fallenCrown: 2, titanCore: 1 }, bonus: { maxHpBonus: 0.05, armorFlat: 6, statusResistBonus: 0.04 }, description: "썩어도 벗겨지지 않던 관을 투구로 다시 벼렸다. 쓰는 자를 가린다." },
+  mythicChest: { id: "mythicChest", slot: "chest", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "거신의 흉갑", materials: { titanMarrow: 3, colossusReactor: 2 }, bonus: { maxHpBonus: 0.17, armorFlat: 22 }, description: "거인의 뼈에 거신의 노심을 앉혔다. 아직 미지근하다." },
+  mythicGauntlets: { id: "mythicGauntlets", slot: "gloves", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "회로 건틀릿", materials: { ancientCircuit: 2, regicideSeal: 1 }, bonus: { attackSpeedBonus: 0.06, armorFlat: 5, criticalDamage: 0.08 }, description: "누구도 다시 못 그리는 배선이 손등을 지난다. 쥐면 손이 먼저 안다." },
+  mythicBoots: { id: "mythicBoots", slot: "boots", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "공허를 밟는 각반", materials: { voidIchor: 2, titanMarrow: 1 }, bonus: { moveSpeedBonus: 0.09, armorFlat: 6, maxHpBonus: 0.05 }, description: "검은 진액이 발밑을 삼킨다. 딛는 자리가 조금씩 가까워진다." },
+  mythicCloak: { id: "mythicCloak", slot: "cloak", setId: MYTHIC_SET_ID, armorClass: "cloth", name: "심연의 장막", materials: { abyssEye: 2, regicideSeal: 1 }, bonus: { statusResistBonus: 0.08, moveSpeedBonus: 0.04, maxHpBonus: 0.04 }, description: "들여다보면 이쪽이 먼저 읽히는 눈을 등에 달았다. 뒤를 맡길 수 있다." },
 
   // --- 장신구 셋 ---
   mythicRingCore: { id: "mythicRingCore", slot: "ring", setId: MYTHIC_SET_ID, name: "심핵 반지", materials: { titanCore: 2, ancientCircuit: 1 }, bonus: { damageFlat: 3, maxHpBonus: 0.1, armorFlat: 8 }, description: "타이탄의 핵을 깎아 고리로 만들었다. 낀 손이 계속 따뜻하다." },
@@ -1662,10 +1715,11 @@ export function equippedBonuses(commander = {}, baseClassId = null) {
   const equippedDefIds = new Set(EQUIPMENT_SLOTS
     .map((slotId) => equippedInstance(slotId)?.defId)
     .filter(Boolean));
+  // 방어구 세트는 몇 조각을 맞췄느냐로 붙는다. 전부 모아야 열리는 구조면
+  // 네 조각까지 아무 보상이 없어서 도중에 포기한다.
   for (const set of Object.values(ARMOR_SET_DEFS)) {
-    const complete = set.pieces.every((pieceId) => equippedDefIds.has(pieceId));
-    if (!complete) continue;
-    for (const [key, value] of Object.entries(set.setBonus || {})) {
+    const worn = set.pieces.filter((pieceId) => equippedDefIds.has(pieceId)).length;
+    for (const [key, value] of Object.entries(armorSetBonus(set, worn))) {
       if (totals[key] === undefined) continue;
       totals[key] += Number(value) || 0;
     }

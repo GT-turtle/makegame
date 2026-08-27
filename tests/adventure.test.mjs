@@ -93,7 +93,11 @@ function readyPartyFor(engine) {
     .find((def) => def.slot === "weapon" && def.baseClassId === baseClassId).id;
 
   give(weaponId, "weapon");
+  give("heavyHelm", "helmet");
   give("heavyPlate", "chest");
+  give("heavyGauntlets", "gloves");
+  give("heavySabatons", "boots");
+  give("heavyMantle", "cloak");
   give("guardianCharm", "necklace");
   give("sagesBand", "ring1");
   give("sagesBand", "ring2");
@@ -102,7 +106,13 @@ function readyPartyFor(engine) {
     engine.state.adventure.unitProgress[unitId] = {
       mastery: 4, xp: 0, branchId: "combat", traitIds: ["survival", "forging"]
     };
+    // 방어구가 다섯 부위이므로 다 채운다. 몸통만 주던 잔재로 두면 개별 성능을
+    // 조정할 때마다 이 헬퍼가 먼저 무너진다.
+    give("heavyHelm", "helmet", unitId);
     give("heavyPlate", "chest", unitId);
+    give("heavyGauntlets", "gloves", unitId);
+    give("heavySabatons", "boots", unitId);
+    give("heavyMantle", "cloak", unitId);
     give("guardianCharm", "necklace", unitId);
     give("sagesBand", "ring1", unitId);
     give("sagesBand", "ring2", unitId);
@@ -2332,8 +2342,8 @@ test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지
 
   const second = dungeonClearRewards("west", 2, ["crusaderBastardSword"]);
   const westSet = ARMOR_SET_DEFS[REGION_ARMOR_SET.west];
-  assert.deepEqual(second, westSet.pieces, "2회차는 방어구 세트 전체(방어구+장신구)");
-  assert.equal(second.length, 2, "세트 설계도 하나로 두 조각이 함께 해금된다");
+  assert.deepEqual(second, westSet.pieces, "2회차는 방어구 세트 전체");
+  assert.equal(second.length, 5, "세트 설계도 하나로 다섯 부위가 함께 해금된다");
 
   const third = dungeonClearRewards("west", 3, ["crusaderBastardSword", ...westSet.pieces]);
   assert.deepEqual(third, ["necromancerArmorSword"], "3회차는 두 번째 직업 무기");

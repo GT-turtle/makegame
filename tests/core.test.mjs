@@ -32,7 +32,7 @@ import { ITEM_DEFS, MATERIAL_DEFS , ORE_SMELTING_DEFS } from "../src/data.js";
 import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport , DISCOVERY_SITE_DEFS } from "../src/frontier.js";
 import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
-import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, mythicSetBonus } from "../src/classes.js";
+import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, mythicSetBonus, ARMOR_SET_DEFS, armorSetBonus } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -609,29 +609,97 @@ test("구형 층제 원정 저장은 영구 성장만 보존하고 안전하게 
   assert.match(migrated.state.log[0].text, /직접 조작|다섯 지역|광역 지도 개편|세부 개척 지도|다단계 수성전|장비·광석·특수·기타|실제 생산 시간|생활권|불규칙 습격|토벌|동행 부대|기본 직업 고유 패시브|피격 회복|신성·자연 친화도|분대 병력|무기·방어구·장신구|투구·갑옷·장갑|등급\(일반~신화\)|반지 두 칸|동료에게 물려줄/);
 });
 
-test("방어구 세트를 완성하면 세트 보너스가 추가로 붙는다", () => {
+test("방어구 세트는 2·3·5부위에서 단계로 붙는다", () => {
+  // 조각 하나하나는 일부러 약하다. 값어치가 세트에 실려 있어서, 좋은 것만
+  // 골라 끼우는 것보다 한 계열로 맞추는 쪽이 이득이어야 한다.
   const engine = new GameEngine(new MemoryStorage());
   const commander = engine.state.adventure.commander;
-  engine.state.meta.materials.ingot = 30;
-  engine.state.meta.materials.blackSteel = 10;
-  engine.state.meta.materials.herb = 30;
+  for (const key of Object.keys(engine.state.meta.materials)) engine.state.meta.materials[key] = 999;
 
-  commander.unlockedBlueprints.push("heavyPlate", "guardianCharm");
-  assert.equal(engine.craftEquipment("heavyPlate"), true);
-  assert.equal(engine.craftEquipment("guardianCharm"), true);
-
+  const set = ARMOR_SET_DEFS.ironbound;
+  assert.equal(set.pieces.length, 5, "방어구 세트는 다섯 부위다");
+  for (const pieceId of set.pieces) {
+    commander.unlockedBlueprints.push(pieceId);
+    assert.equal(engine.craftEquipment(pieceId), true, `${pieceId} 제작`);
+  }
   const uidOf = (defId) => commander.equipmentOwned.find((entry) => entry.defId === defId).uid;
 
-  // 방어구만 착용
-  assert.equal(engine.equipEquipment(uidOf("heavyPlate")), true);
-  const armorOnly = playerCombatStats(commander, commander.combatKitId);
+  // 다섯을 다 모아야 열리면 네 조각까지 아무 보상이 없어 도중에 포기한다.
+  assert.deepEqual(armorSetBonus(set, 1), {}, "한 조각으론 아무것도 없다");
+  assert.ok(Object.keys(armorSetBonus(set, 2)).length > 0, "두 조각에서 첫 단계");
+  assert.ok(Object.keys(armorSetBonus(set, 3)).length > Object.keys(armorSetBonus(set, 2)).length);
+  assert.ok(armorSetBonus(set, 5).armorFlat > armorSetBonus(set, 3).armorFlat, "다섯 조각이 가장 크다");
 
-  // 짝 장신구까지 착용해 세트 완성 → 방어력에 세트 보너스가 더 붙는다
-  assert.equal(engine.equipEquipment(uidOf("guardianCharm")), true);
-  const fullSet = playerCombatStats(commander, commander.combatKitId);
+  // 문턱은 누적되지 않는다 — 2·3·5가 다 더해지면 마지막이 과하게 뛴다.
+  assert.equal(armorSetBonus(set, 4).armorFlat, armorSetBonus(set, 3).armorFlat,
+    "네 조각은 세 조각 단계에 머문다");
 
-  assert.ok(fullSet.armor > armorOnly.armor, "세트 완성 시 방어력이 더 오른다");
-  assert.ok(fullSet.maxHp > armorOnly.maxHp, "장신구 자체 체력 보너스도 함께 적용된다");
+  // 실제 능력치에 붙는지. 값만 계산하고 안 붙으면 의미가 없다.
+  const statsAt = (count) => {
+    for (const pieceId of set.pieces) {
+      const instance = commander.equipmentOwned.find((entry) => entry.defId === pieceId);
+      const slot = EQUIPMENT_DEFS[pieceId].slot;
+      if (commander.equipped[slot] === instance.uid) engine.equipEquipment(instance.uid);
+    }
+    set.pieces.slice(0, count).forEach((pieceId) => engine.equipEquipment(uidOf(pieceId)));
+    return playerCombatStats(commander, commander.combatKitId);
+  };
+  const two = statsAt(2);
+  const five = statsAt(5);
+  assert.ok(five.armor > two.armor, "조각을 더 맞추면 방어가 오른다");
+});
+
+test("세 계열은 총량이 비슷하되 오르는 것이 다르다", () => {
+  // 한 계열이 정답이 되면 나머지 둘은 존재할 이유가 없다.
+  const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), "crusader"));
+  const wear = (pieces) => {
+    const commander = createDefaultCommander();
+    commander.combatKitId = "crusader";
+    commander.equipmentOwned = [];
+    pieces.forEach((defId, index) => {
+      const def = EQUIPMENT_DEFS[defId];
+      const uid = `a${index}`;
+      commander.equipmentOwned.push({
+        uid, defId, grade: "rare",
+        options: rollEquipmentOptions(def.slot, "rare", 2, () => 0.5), enhance: 0, broken: false
+      });
+      commander.equipped[def.slot] = uid;
+    });
+    return combatPowerScore(playerCombatStats(commander, "crusader")) - bare;
+  };
+
+  const totals = Object.values(ARMOR_SET_DEFS).map((set) => wear(set.pieces));
+  const low = Math.min(...totals);
+  const high = Math.max(...totals);
+  assert.ok(high <= low * 1.15, `계열 간 총량 차가 15%를 넘는다 (${low} ~ ${high})`);
+
+  // 방향은 달라야 한다 — 같은 스탯만 올리면 계열이 셋일 이유가 없다.
+  const keys = Object.values(ARMOR_SET_DEFS).map((set) => Object.keys(set.tiers[5]).sort().join(","));
+  assert.equal(new Set(keys).size, 3, "다섯 부위 보너스가 계열마다 달라야 한다");
+});
+
+test("한 계열로 맞추는 것이 좋은 것만 골라 끼우는 것보다 낫다", () => {
+  // 이게 뒤집히면 세트라는 개념 자체가 무의미해진다.
+  const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), "crusader"));
+  const wear = (pieces) => {
+    const commander = createDefaultCommander();
+    commander.combatKitId = "crusader";
+    commander.equipmentOwned = [];
+    pieces.forEach((defId, index) => {
+      const def = EQUIPMENT_DEFS[defId];
+      const uid = `a${index}`;
+      commander.equipmentOwned.push({
+        uid, defId, grade: "rare",
+        options: rollEquipmentOptions(def.slot, "rare", 2, () => 0.5), enhance: 0, broken: false
+      });
+      commander.equipped[def.slot] = uid;
+    });
+    return combatPowerScore(playerCombatStats(commander, "crusader")) - bare;
+  };
+
+  const pure = wear(ARMOR_SET_DEFS.ironbound.pieces);
+  const mixed = wear(["heavyHelm", "scoutLeather", "wardenWraps", "scoutBoots", "heavyMantle"]);
+  assert.ok(pure > mixed, `세트를 맞추는 쪽이 나아야 한다 (섞음 ${mixed} vs 세트 ${pure})`);
 });
 
 test("장비 등급은 5단계이고 제작으로는 희귀까지만 나온다", () => {
