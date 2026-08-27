@@ -1233,7 +1233,7 @@ const LEGENDARY_GEAR_DEFS = {
     id: "warchiefPlate", slot: "chest", armorClass: "heavy", legendary: true,
     name: "대전사의 전투갑주",
     materials: { chitinPlate: 2, warchiefAxe: 1, shamanStone: 2 },
-    bonus: { maxHpBonus: 0.08, damageFlat: 4 },
+    bonus: { maxHpBonus: 0.1, attackSpeedBonus: 0.06, armorFlat: 6 },
     // 중갑의 둔중함을 깨는 공격형 중갑.
     uniqueEffect: { type: "battleTempo", attackSpeed: 0.1, moveSpeed: 0.12 },
     lore: "오크 대전사의 도끼를 녹여 덧댄 갑주. 무겁지만 몸이 앞선다."
@@ -1453,8 +1453,65 @@ export function legendaryCollection(commander = {}) {
 // 경로를 탈 필요가 없다(직업 제한·슬롯 규칙도 그대로 적용된다).
 Object.assign(EQUIPMENT_DEFS, LEGENDARY_DEFS);
 
+// ── 신화 장비 (지역 보스 전용 부산물로 만든다) ─────────────────────────────
+//
+// 전설의 상위 호환이다. 다만 "더 세다"가 전부면 전설이 죽으므로 두 가지를 지킨다.
+//
+//   1) 재료가 다섯 지역 보스에 흩어져 있다. 어느 한 조각도 **두 보스**의
+//      재료를 요구하므로, 한 보스만 반복해서는 아무것도 완성하지 못한다.
+//   2) 고유효과가 없다. 전설은 고유효과로, 신화는 수치와 세트로 갈린다 —
+//      둘 다 가지면 전설을 낄 이유가 사라진다.
+//
+// 아홉 칸을 다 채운다. 전설이 몸통·무기·장신구에만 있어서 투구·장갑·신발·망토는
+// 제작품이 최종이었는데, 신화가 그 자리를 메운다.
+export const MYTHIC_SET_ID = "worldEnd";
+
+export const MYTHIC_GEAR_DEFS = {
+  // --- 무기: 직업 전용. 여의주와 역린이 공통 핵이고 직업마다 짝 재료가 다르다 ---
+  crusaderMythicSword: { id: "crusaderMythicSword", slot: "weapon", setId: MYTHIC_SET_ID, name: "여명의 서약검", baseClassId: "crusader", weaponType: "bastardSword", materials: { dragonPearl: 2, titanCore: 2 }, bonus: { damageFlat: 12, armorFlat: 10 }, description: "용의 구슬을 자루에 앉히고 타이탄의 핵으로 벼렸다. 들면 팔보다 먼저 앞이 밝아진다." },
+  barbarianMythicAxe: { id: "barbarianMythicAxe", slot: "weapon", setId: MYTHIC_SET_ID, name: "산을 가른 도끼", baseClassId: "barbarian", weaponType: "greataxe", materials: { dragonPearl: 2, titanMarrow: 2 }, bonus: { damageFlat: 12, maxHpBonus: 0.16 }, description: "거인의 골수를 자루에 채웠다. 무게가 곧 이유가 된다." },
+  necromancerMythicSword: { id: "necromancerMythicSword", slot: "weapon", setId: MYTHIC_SET_ID, name: "시해의 아머 소드", baseClassId: "necromancer", weaponType: "armorSword", materials: { reverseScale: 2, regicideSeal: 2 }, bonus: { damageFlat: 11, cooldownReduction: 0.07 }, description: "왕을 벤 인장을 날에 새겼다. 다음 왕도 벨 수 있다는 뜻이다." },
+  trackerMythicBow: { id: "trackerMythicBow", slot: "weapon", setId: MYTHIC_SET_ID, name: "역린을 쏜 활", baseClassId: "tracker", weaponType: "shortBow", materials: { reverseScale: 2, abyssEye: 2 }, bonus: { damageFlat: 12, criticalChance: 0.05 }, description: "감지 못하는 눈을 조준경에 물렸다. 보이지 않는 것도 겨눈다." },
+  maehwaMythicSabre: { id: "maehwaMythicSabre", slot: "weapon", setId: MYTHIC_SET_ID, name: "일획의 매화도", baseClassId: "maehwa", weaponType: "sabre", materials: { dragonPearl: 2, voidIchor: 2 }, bonus: { damageFlat: 11, cooldownReduction: 0.07 }, description: "공허를 담금질에 섞었다. 벤 자리가 늦게 벌어진다." },
+  archmageMythicStaff: { id: "archmageMythicStaff", slot: "weapon", setId: MYTHIC_SET_ID, name: "회로의 지팡이", baseClassId: "archmage", weaponType: "staff", materials: { reverseScale: 2, ancientCircuit: 2 }, bonus: { damageFlat: 10, cooldownReduction: 0.14 }, description: "고대 회로를 지팡이에 옮겨 그렸다. 주문이 손보다 빨리 끝난다." },
+
+  // --- 방어구 다섯 부위: 직업 제한 없음 ---
+  mythicHelm: { id: "mythicHelm", slot: "helmet", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "폐왕의 투구", materials: { fallenCrown: 2, titanCore: 1 }, bonus: { maxHpBonus: 0.06, armorFlat: 8, statusResistBonus: 0.05 }, description: "썩어도 벗겨지지 않던 관을 투구로 다시 벼렸다. 쓰는 자를 가린다." },
+  mythicChest: { id: "mythicChest", slot: "chest", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "거신의 흉갑", materials: { titanMarrow: 3, colossusReactor: 2 }, bonus: { maxHpBonus: 0.18, armorFlat: 23 }, description: "거인의 뼈에 거신의 노심을 앉혔다. 아직 미지근하다." },
+  mythicGauntlets: { id: "mythicGauntlets", slot: "gloves", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "회로 건틀릿", materials: { ancientCircuit: 2, regicideSeal: 1 }, bonus: { attackSpeedBonus: 0.07, armorFlat: 7, criticalDamage: 0.1 }, description: "누구도 다시 못 그리는 배선이 손등을 지난다. 쥐면 손이 먼저 안다." },
+  mythicBoots: { id: "mythicBoots", slot: "boots", setId: MYTHIC_SET_ID, armorClass: "heavy", name: "공허를 밟는 각반", materials: { voidIchor: 2, titanMarrow: 1 }, bonus: { moveSpeedBonus: 0.12, armorFlat: 9, maxHpBonus: 0.06 }, description: "검은 진액이 발밑을 삼킨다. 딛는 자리가 조금씩 가까워진다." },
+  mythicCloak: { id: "mythicCloak", slot: "cloak", setId: MYTHIC_SET_ID, armorClass: "cloth", name: "심연의 장막", materials: { abyssEye: 2, regicideSeal: 1 }, bonus: { statusResistBonus: 0.1, moveSpeedBonus: 0.05, maxHpBonus: 0.05 }, description: "들여다보면 이쪽이 먼저 읽히는 눈을 등에 달았다. 뒤를 맡길 수 있다." },
+
+  // --- 장신구 셋 ---
+  mythicRingCore: { id: "mythicRingCore", slot: "ring", setId: MYTHIC_SET_ID, name: "심핵 반지", materials: { titanCore: 2, ancientCircuit: 1 }, bonus: { damageFlat: 3, maxHpBonus: 0.1, armorFlat: 8 }, description: "타이탄의 핵을 깎아 고리로 만들었다. 낀 손이 계속 따뜻하다." },
+  mythicRingSeal: { id: "mythicRingSeal", slot: "ring", setId: MYTHIC_SET_ID, name: "시해 반지", materials: { regicideSeal: 2, abyssEye: 1 }, bonus: { damageFlat: 3, criticalChance: 0.05, statusPowerBonus: 0.12 }, description: "왕을 죽인 자에게만 열린다. 열리면 다음을 부른다." },
+  mythicNecklace: { id: "mythicNecklace", slot: "necklace", setId: MYTHIC_SET_ID, name: "여의주 목걸이", materials: { dragonPearl: 2, fallenCrown: 1 }, bonus: { maxHpBonus: 0.09, damageFlat: 4, manaRegenBonus: 0.6 }, description: "용이 목에 품던 것을 사람이 목에 걸었다. 숨이 데워진다." }
+};
+
+// 신화 세트 보너스. 조각을 모을수록 붙는다 — 한두 개만 끼고 나머지를 전설로
+// 채우는 것도 성립해야 해서, 문턱을 낮게 세 단계로 나눴다.
+export const MYTHIC_SET_THRESHOLDS = [
+  { pieces: 3, bonus: { armorFlat: 6, maxHpBonus: 0.04 }, label: "세 조각" },
+  { pieces: 6, bonus: { damageFlat: 3, cooldownReduction: 0.04 }, label: "여섯 조각" },
+  { pieces: 9, bonus: { damageFlat: 4, armorFlat: 8, criticalDamage: 0.15 }, label: "아홉 조각" }
+];
+
+// 지금 낀 신화 조각 수에 따라 쌓인 세트 보너스. 문턱은 누적된다.
+export function mythicSetBonus(pieceCount) {
+  const total = {};
+  for (const step of MYTHIC_SET_THRESHOLDS) {
+    if (pieceCount < step.pieces) break;
+    for (const [key, value] of Object.entries(step.bonus)) {
+      total[key] = Math.round(((total[key] || 0) + value) * 1000) / 1000;
+    }
+  }
+  return total;
+}
+
 // 지역 진행용 목걸이도 같은 목록에 합친다 — 제작·장착이 일반 장비와 같은 경로를 탄다.
 Object.assign(EQUIPMENT_DEFS, REGION_WARD_DEFS);
+// 신화 장비도 같은 표에 올린다 — 제작·장착·강화가 전부 EQUIPMENT_DEFS를 본다.
+Object.assign(EQUIPMENT_DEFS, MYTHIC_GEAR_DEFS);
 
 // 강함의 척도. 이 게임에는 레벨이 없으므로 "스탯 총량"이 성장의 눈금이 된다.
 // 단위가 제각각이라(체력 60, 방어력 0.18, 치명타 0.055) 그대로 더할 수 없어
@@ -1612,6 +1669,14 @@ export function equippedBonuses(commander = {}, baseClassId = null) {
       if (totals[key] === undefined) continue;
       totals[key] += Number(value) || 0;
     }
+  }
+
+  // 신화 세트는 조각 수에 따라 단계로 붙는다. 아홉 칸을 다 채워야 열리는
+  // 구조면 여덟 개까지 아무 보상이 없어서 도중에 포기하기 쉽다.
+  const mythicPieces = [...equippedDefIds].filter((defId) => MYTHIC_GEAR_DEFS[defId]).length;
+  for (const [key, value] of Object.entries(mythicSetBonus(mythicPieces))) {
+    if (totals[key] === undefined) continue;
+    totals[key] += Number(value) || 0;
   }
   return totals;
 }

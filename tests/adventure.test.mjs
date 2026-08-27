@@ -46,7 +46,7 @@ import {
 , SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES , MONSTER_SPECIES_PENDING_ART , spawnBossZone , MATERIAL_RARITY_ORDER, MATERIAL_RARITY_LABELS, materialRarity } from "../src/adventure.js";
 import { MATERIAL_DEFS, ORE_SMELTING_DEFS } from "../src/data.js";
 import { DISCOVERY_SITE_DEFS } from "../src/frontier.js";
-import { EQUIPMENT_GRADES, combatPowerBreakdown, combatPowerScore, masterySlots, MASTERY_TRAIT_SLOTS, ENHANCE_MAX, playerKitDefinition } from "../src/classes.js";
+import { EQUIPMENT_GRADES, combatPowerBreakdown, combatPowerScore, masterySlots, MASTERY_TRAIT_SLOTS, ENHANCE_MAX, playerKitDefinition, MYTHIC_GEAR_DEFS } from "../src/classes.js";
 import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, LEGENDARY_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, legendariesForRegion, legendaryCollection, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
 
@@ -2456,7 +2456,8 @@ test("전설 장비는 수치가 아니라 보너스 '조합'으로 차별화된
   // 제작 무기도 같은 규칙을 받는다 — 시작 직업 선택이 곧 성능 선택이 되면 안 된다.
   // EQUIPMENT_DEFS에는 전설도 함께 들어 있어서 걸러낸다.
   const craftedWeapons = Object.values(EQUIPMENT_DEFS)
-    .filter((def) => def.slot === "weapon" && def.baseClassId && !LEGENDARY_DEFS[def.id]);
+    .filter((def) => def.slot === "weapon" && def.baseClassId
+      && !LEGENDARY_DEFS[def.id] && !MYTHIC_GEAR_DEFS[def.id]);
   const crafted = craftedWeapons.map((def) => ({ id: def.id, value: weaponContribution(def.id, def.baseClassId) }));
   const craftLow = crafted.reduce((a, b) => (a.value <= b.value ? a : b));
   const craftHigh = crafted.reduce((a, b) => (a.value >= b.value ? a : b));
