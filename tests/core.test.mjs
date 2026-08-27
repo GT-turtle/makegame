@@ -122,6 +122,54 @@ test("터치 이동 경로는 벽·적·미확인 칸을 우회한다", () => {
   assert.deepEqual(findPath(tiles, start, target, new Set(), new Set([keyOf(1, 1), keyOf(3, 1)])), []);
 });
 
+test("동굴에 들어가 구조 전투를 이기면 특수 동료가 합류하고 필드로 돌아온다", () => {
+  // 예전에는 그 지역 동료 셋을 다 모으면 조용히 명부에 들어왔다.
+  // 이제 직접 들어가서 꺼내와야 한다.
+  const engine = new GameEngine(new MemoryStorage());
+  assert.equal(engine.startRegionAdventure("north", 12345), true);
+  const run = engine.state.adventure.run;
+
+  const cave = run.battle.triggers.find((trigger) => trigger.type === "rescueCave");
+  assert.ok(cave, "필드에 동굴이 있어야 한다");
+  assert.ok(!engine.state.adventure.roster.includes("tower_architect"));
+
+  // 동굴로 걸어 들어간다.
+  const player = run.battle.units.find((unit) => unit.id === run.battle.playerId);
+  player.x = cave.x;
+  player.y = cave.y;
+  assert.equal(engine.advanceRealtimeBattle(50), "rescueCave");
+  assert.ok(run.battle.rescueMode, "구조 전투로 바뀐다");
+  assert.ok(run.fieldBattleStash, "필드 전투는 치워 두고 나중에 되돌린다");
+
+  // 둘러싼 것들을 전멸시킨다.
+  for (const enemy of run.battle.enemies) enemy.hp = 0;
+  assert.equal(engine.advanceRealtimeBattle(50), "victory");
+
+  assert.ok(engine.state.adventure.roster.includes("tower_architect"), "영입된다");
+  assert.ok(run.battle?.fieldMode, "필드로 돌아온다");
+  assert.equal(run.fieldBattleStash, null, "치워둔 것을 비운다");
+  assert.equal(run.rescueCaveRegionId, null);
+});
+
+test("구조 전투에서 물러나면 동료는 안 오지만 필드는 그대로다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.startRegionAdventure("north", 4242);
+  const run = engine.state.adventure.run;
+  const cave = run.battle.triggers.find((trigger) => trigger.type === "rescueCave");
+  const player = run.battle.units.find((unit) => unit.id === run.battle.playerId);
+  player.x = cave.x;
+  player.y = cave.y;
+  engine.advanceRealtimeBattle(50);
+
+  // 이쪽이 전멸한다.
+  for (const unit of run.battle.units) unit.hp = 0;
+  const status = engine.advanceRealtimeBattle(50);
+  assert.notEqual(status, "victory");
+
+  assert.ok(!engine.state.adventure.roster.includes("tower_architect"), "영입되지 않는다");
+  assert.ok(run.battle?.fieldMode, "필드로는 돌아온다");
+});
+
 test("기억 던전은 재료뿐 아니라 경험치와 동료 스킬 경험치도 준다", () => {
   // 영지 계층 던전을 기억 던전에 합친 결과다. 예전에는 부산물 절반만 줘서
   // 숙련 상한 6을 찍고 나면 갈 이유가 없었다.

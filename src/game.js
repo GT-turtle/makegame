@@ -53,6 +53,7 @@ import {
   moveRunPlayer,
   selectPlayerTarget,
   tickAutoBattle,
+  createRescueBattle,
   createMemoryBattle,
   memoryRewards,
   REGION_TONIC_DEFS,
@@ -1180,6 +1181,25 @@ export class GameEngine {
     // 트리거를 밟으면 그때 던전으로 넘어간다(화면 전환 없이 이어지는 흐름).
     if (run.battle.fieldMode) {
       const trigger = consumeFieldTrigger(run.battle);
+      // 동굴에 들어가면 필드 전투를 잠시 치워 두고 구조 전투를 연다.
+      // 던전과 달리 화면(run.location)은 필드 그대로다 — 잠깐 들어갔다 나오는 곳이라.
+      if (trigger?.type === "rescueCave") {
+        const rescue = createRescueBattle(run.regionId, run.party, run.unitProgress, {
+          seed: (run.seed || 1) + run.fieldSteps,
+          commander: run.commander,
+          roster: run.roster,
+          hazardMitigation: run.hazardMitigation,
+          hazardAbsorbed: run.hazardAbsorbed
+        });
+        if (rescue) {
+          run.fieldBattleStash = run.battle;
+          run.rescueCaveRegionId = trigger.regionId;
+          run.battle = rescue;
+          this.addLog(`${trigger.name}에 들어섰다. 안쪽에서 사람 소리가 난다.`, "item");
+          this.emit();
+          return "rescueCave";
+        }
+      }
       if (trigger?.type === "dungeonEntrance") {
         run.pendingEntrance = true;
         run.battle = null;
@@ -1187,6 +1207,22 @@ export class GameEngine {
         this.emit();
         return "dungeonEntrance";
       }
+    }
+    // 구조 전투 결말. 이기면 영입, 지면 동굴은 닫히지 않고 남는다.
+    if (run.rescueCaveRegionId && before === "active" && status !== "active") {
+      const regionId = run.rescueCaveRegionId;
+      run.rescueCaveRegionId = null;
+      if (status === "victory") {
+        const rescued = this.rescueSpecialCompanion(regionId);
+        if (rescued) run.roster = [...this.state.adventure.roster];
+      } else {
+        this.addLog("동굴에서 물러났다. 안쪽은 그대로다.", "bad");
+      }
+      // 필드로 돌아간다. 동굴 트리거는 이미 fired라 다시 안 걸린다.
+      run.battle = run.fieldBattleStash || null;
+      run.fieldBattleStash = null;
+      this.emit(true);
+      return status;
     }
     if (before === "active" && status !== "active") {
       const result = completeBattle(run);

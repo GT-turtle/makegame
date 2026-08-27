@@ -776,6 +776,26 @@ export function grantCompanionSkillXp(progress = {}, amount = 0) {
   return { progress: next, levels };
 }
 
+// 동굴 안의 구조 전투. 그 지역 몬스터가 갇힌 사람을 둘러싸고 있다.
+//
+// 일반 조우보다 적이 많다(enemyCopies 3) — 구하러 들어간 자리라 그래야 한다.
+// 전멸시키면 구조, 물러나면 동굴은 다시 닫히지 않고 남아 재도전할 수 있다.
+export function createRescueBattle(regionId, partyIds, unitProgress = {}, options = {}) {
+  const region = WORLD_REGION_DEFS[regionId];
+  if (!region) return null;
+  const encounterId = region.enemyPool[region.enemyPool.length - 1] || region.enemyPool[0];
+  const battle = createAutoBattle(encounterId, null, "cave", partyIds, unitProgress, {
+    ...options,
+    regionId,
+    enemyCopies: 3,
+    rollSeed: (options.seed || 1) + 51203
+  });
+  if (!battle) return null;
+  battle.rescueMode = true;
+  battle.log.unshift("안쪽에서 사람 소리가 난다. 둘러싸여 있다.");
+  return battle;
+}
+
 // 재현 전투의 보상. 부산물만, 그것도 절반만 나온다.
 export function memoryRewards(battle) {
   const materials = {};
@@ -1229,6 +1249,28 @@ export function golemCount(roster = []) {
 // 게임은 "놓친 동료가 있다"고 알려주지 않는다 — 이름도 직업도 밝히지 않고
 // 그냥 시체 한 구가 있을 뿐이다. 다른 회차에 다른 순서로 가면 그 사람이
 // 살아 있는 모습으로 나온다. 그 차이를 게임이 설명하지 않는 게 핵심이다.
+// 특수 동료가 갇혀 있는 동굴. 필드 안쪽 어딘가에 있고, 들어가면 구조 전투가
+// 벌어진다. **던전 입구와 달리 지나칠 수 있다** — 선택 콘텐츠이므로
+// requiresClear를 걸지 않는다.
+//
+// 이미 다섯 중 하나를 구했으면 동굴은 열리되 안에 시체만 있다.
+// 게임은 그 사실을 미리 알려주지 않는다 — 들어가 봐야 안다.
+export function rescueCaveTrigger(regionId, bounds, roster = []) {
+  const special = Object.values(SPECIAL_UNIT_DEFS).find((unit) => unit.regionId === regionId);
+  if (!special || roster.includes(special.id)) return null;
+  return {
+    id: `${regionId}-rescue-cave`,
+    type: "rescueCave",
+    name: "무너진 동굴",
+    regionId,
+    // 던전 입구(오른쪽 끝)와 겹치지 않게 위쪽으로 치워 둔다.
+    x: bounds.minX + (bounds.maxX - bounds.minX) * 0.55,
+    y: bounds.minY + (bounds.maxY - bounds.minY) * 0.22,
+    radius: 9,
+    requiresClear: false
+  };
+}
+
 export function specialCompanionTaken(roster = []) {
   return Object.values(SPECIAL_UNIT_DEFS).some((unit) => roster.includes(unit.id));
 }
@@ -2507,7 +2549,9 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
       y: (bounds.minY + bounds.maxY) / 2,
       radius: 8,
       requiresClear: true
-    }]
+    },
+    // 동굴은 **뒤에** 붙인다 — triggers[0]이 던전 입구라고 보는 곳이 여럿 있다.
+    ...(rescueCaveTrigger(regionId, bounds, options.roster) ? [rescueCaveTrigger(regionId, bounds, options.roster)] : [])]
   });
   if (!battle) return null;
 
@@ -2525,7 +2569,8 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
     const x = bounds.minX + 40 + rng() * (bounds.maxX - bounds.minX - 60);
     const y = bounds.minY + 10 + rng() * (bounds.maxY - bounds.minY - 20);
     if (Math.hypot(x - spawnX, y - centerY) < 45 + radius) continue;
-    if (trigger && Math.hypot(x - trigger.x, y - trigger.y) < 30 + radius) continue;
+    // 던전 입구뿐 아니라 동굴 주변도 비워야 한다 — 바위로 막히면 못 들어간다.
+    if (battle.triggers.some((entry) => Math.hypot(x - entry.x, y - entry.y) < 30 + radius)) continue;
     if (obstacles.some((other) => Math.hypot(x - other.x, y - other.y) < radius + other.radius + 14)) continue;
     obstacles.push({ x, y, radius });
   }
