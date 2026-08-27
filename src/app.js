@@ -14,6 +14,7 @@ import {
   REGION_ENTRY_POWER,
   regionEntryCheck,
   partyPowerScore,
+  RECALL_CHARM,
   REGION_TONIC_DEFS,
   REGION_CORE_ABSORPTION,
   TONIC_CARRY_LIMIT,
@@ -1274,6 +1275,7 @@ function adventureScreen(state) {
         <button class="ghost" data-action="adventure-back">뒤로</button>
         <button class="secondary" data-action="open-zone-map">지역 지도</button>
         <button class="secondary" data-action="open-bag">가방</button>
+        ${(state.meta.recallCharms || 0) > 0 ? `<button class="secondary" data-action="use-recall-charm">${escapeHtml(RECALL_CHARM.name)} ${state.meta.recallCharms}</button>` : ""}
         <button class="danger" data-action="request-adventure-retreat">원정 종료</button>
       </nav>
     </main>
@@ -2147,8 +2149,21 @@ function regionCounterSection(state) {
       + `${coreButton}</article>`;
   }).join("");
 
+  const charms = meta.recallCharms || 0;
+  const charmCost = Object.entries(RECALL_CHARM.materials)
+    .map(([id, amount]) => `${MATERIAL_DEFS[id]?.name || id} ${amount}`).join(" · ");
+  const charmOk = Object.entries(RECALL_CHARM.materials)
+    .every(([id, amount]) => (materials[id] || 0) >= amount);
+  const charmCard = `<article class="party-management-card">`
+    + `<div><span>귀환</span><strong>${escapeHtml(RECALL_CHARM.name)} ${charms}/${RECALL_CHARM.carryLimit}</strong>`
+    + `<small>${escapeHtml(RECALL_CHARM.description)}</small></div>`
+    + `<button class="ghost" data-action="craft-recall-charm"`
+    + `${ongoing || charms >= RECALL_CHARM.carryLimit || !charmOk ? " disabled" : ""}>`
+    + `엮기 · ${escapeHtml(charmCost)}</button></article>`;
+
   return `<div class="section-heading"><h2>지역 대응</h2><span>장신구 칸을 안 먹는 길</span></div>`
     + rows
+    + charmCard
     + `<p class="facility-note">소모품은 출정할 때 하나 소모하고 그 원정 내내 대응 +2를 준다.`
     + ` 핵 흡수는 완전 차단 문턱을 내릴 뿐 면역이 아니다 — 흡수만으로는 못 막는다.`
     + ` 재료가 신화 장비 재료와 같으니 장비로 만들지 흡수할지가 선택이다.</p>`;
@@ -3559,6 +3574,12 @@ app.addEventListener("click", (event) => {
   }
   if (action === "load-tower-spell") {
     if (!engine.loadMageTowerSpell(button.dataset.spellId || null)) showToast("마탑을 먼저 세워야 해.");
+  }
+  if (action === "craft-recall-charm") {
+    if (!engine.craftRecallCharm()) showToast("재료가 부족하거나 이미 세 개 다 엮었어.");
+  }
+  if (action === "use-recall-charm") {
+    if (!engine.useRecallCharm()) showToast("귀환 부적이 없어.");
   }
   if (action === "craft-tonic") {
     if (!engine.craftRegionTonic(button.dataset.regionId)) showToast("재료가 부족하거나 이미 세 개 다 챙겼어.");

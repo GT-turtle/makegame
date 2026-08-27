@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  FIELD_STAGE_COUNT,
   rescueCaveTrigger,
   COMPANION_SKILL_DEFS,
   COMPANION_SKILL_MAX_LEVEL,
@@ -434,9 +435,23 @@ test("필드 조우부터 던전 우두머리와 영지 정산까지 한 원정�
     "필드 보스는 살아 있는데도 필드가 정리된다");
   assert.equal(fieldBattle.status, "active", "필드를 비워도 전투 자체는 끝나지 않는다");
 
-  // 2단계: 던전 입구로 걸어가면 그대로 던전으로 이어진다.
-  const entrance = fieldBattle.triggers[0];
-  const fieldPlayer = fieldBattle.units.find((unit) => unit.controlled);
+  // 2단계: 필드 셋을 지나야 던전 입구가 나온다.
+  //  1·2필드 끝에는 다음 필드로 넘어가는 출구가 있고, 3필드 끝에 입구가 있다.
+  let stageGuard = 0;
+  while (engine.state.adventure.run.battle?.triggers[0]?.type === "fieldExit" && stageGuard < 5) {
+    const current = engine.state.adventure.run.battle;
+    const exit = current.triggers[0];
+    const walker = current.units.find((unit) => unit.controlled);
+    walker.x = exit.x;
+    walker.y = exit.y;
+    assert.equal(engine.advanceRealtimeBattle(120), "fieldAdvance");
+    stageGuard += 1;
+  }
+  assert.equal(engine.state.adventure.run.fieldStage, FIELD_STAGE_COUNT, "마지막 필드까지 왔다");
+
+  const fieldBattle2 = engine.state.adventure.run.battle;
+  const entrance = fieldBattle2.triggers[0];
+  const fieldPlayer = fieldBattle2.units.find((unit) => unit.controlled);
   fieldPlayer.x = entrance.x;
   fieldPlayer.y = entrance.y;
   assert.equal(engine.advanceRealtimeBattle(120), "dungeonEntrance");
@@ -1800,7 +1815,7 @@ test("구미호의 외투는 총량은 같게 두고 한 방의 크기만 줄인
 });
 
 test("필드 보스는 선택 콘텐츠라 지나칠 수 있고, 멀어지면 추격을 멈춘다", () => {
-  const battle = createFieldBattle("central", STARTING_PARTY, {}, { seed: 4455 });
+  const battle = createFieldBattle("central", STARTING_PARTY, {}, { seed: 4455, fieldStage: FIELD_STAGE_COUNT });
   const boss = battle.enemies.find((enemy) => enemy.fieldBoss);
   assert.ok(boss, "중부 필드에도 보스가 배치된다");
 
@@ -1828,7 +1843,7 @@ test("필드 보스는 선택 콘텐츠라 지나칠 수 있고, 멀어지면 �
 });
 
 test("필드 보스가 살아 있어도 일반 무리만 정리하면 던전으로 갈 수 있다", () => {
-  const battle = createFieldBattle("central", STARTING_PARTY, {}, { seed: 4455 });
+  const battle = createFieldBattle("central", STARTING_PARTY, {}, { seed: 4455, fieldStage: FIELD_STAGE_COUNT });
   const boss = battle.enemies.find((enemy) => enemy.fieldBoss);
   const player = battle.units.find((unit) => unit.id === battle.playerId);
 
@@ -2071,7 +2086,7 @@ test("특수 동료 동굴은 필드에 깔리되 지나칠 수 있다", () => {
 });
 
 test("필드에는 던전 입구와 동굴이 함께 깔리고 입구가 먼저다", () => {
-  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 12345, roster: [] });
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 12345, roster: [], fieldStage: FIELD_STAGE_COUNT });
   const types = battle.triggers.map((trigger) => trigger.type);
   assert.equal(types[0], "dungeonEntrance",
     "triggers[0]을 던전 입구로 보는 곳이 여럿 있어 순서가 중요하다");
@@ -2937,7 +2952,7 @@ test("필드 몬스터는 가까이 가야 무리 단위로 깨어나고, 멀리
 });
 
 test("던전 입구 트리거는 적을 정리해야 열리고, 밟으면 한 번만 발동한다", () => {
-  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 909, groupCount: 2 });
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 909, groupCount: 2, fieldStage: FIELD_STAGE_COUNT });
   const player = battle.units.find((unit) => unit.id === battle.playerId);
   const trigger = battle.triggers[0];
   assert.equal(trigger.type, "dungeonEntrance");
@@ -3023,7 +3038,8 @@ test("광역 필드 런: 무리를 정리하고 던전 입구까지 걸어가면
   const engine = new GameEngine(new MemoryStorage());
   const run = createRegionRun("north", 2024, STARTING_PARTY, {}, engine.state.adventure.commander, {
     fieldBattle: true,
-    groupCount: 2
+    groupCount: 2,
+    fieldStage: FIELD_STAGE_COUNT
   });
   assert.ok(run, "필드 전투 런이 만들어진다");
   assert.equal(run.fieldBattle, true);

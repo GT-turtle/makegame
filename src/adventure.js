@@ -72,11 +72,36 @@ export function resolveMove(battle, x, y) {
 // 디아블로식 광역 전장. 기존 조우 아레나(90×84)의 약 4배 폭으로, 화면 전환
 // 없이 필드를 돌아다니며 흩어진 몬스터 무리와 싸우고 던전 입구까지 걸어가는
 // 공간이다. 여기서만 쓰는 별도 상수라 기존 조우 전투 크기는 그대로 유지된다.
-export const FIELD_BOUNDS = { minX: 5, maxX: 395, minY: 8, maxY: 292 };
+export const FIELD_BOUNDS = { minX: 5, maxX: 815, minY: 8, maxY: 520 };
 
 // 몬스터 무리가 "깨어나는" 거리. 이 거리 밖에서는 적이 플레이어를 추격하지도
 // 공격하지도 않아서, 넓은 전장을 한 번에 다 어그로 끌지 않고 무리 단위로
 // 차례차례 교전하게 된다.
+// 한 지역은 필드 셋을 지나 던전(지역 보스)으로 이어진다(몬스터 컨셉.txt).
+// 필드 끝에 닿으면 다음 필드로 넘어가고, 마지막 필드 끝에 던전 입구가 있다.
+export const FIELD_STAGE_COUNT = 3;
+
+// 단계가 오를수록 무리를 더 깔고 적도 더 붙인다.
+export function fieldStageGroups(stage = 1) {
+  return 3 + Math.max(0, Math.min(FIELD_STAGE_COUNT, stage) - 1);
+}
+
+// 다음 필드로 넘어가는 지점. 마지막 단계에서는 던전 입구가 그 자리를 대신한다.
+export function fieldExitTrigger(stage, bounds) {
+  if (stage >= FIELD_STAGE_COUNT) return null;
+  return {
+    id: `field-exit-${stage}`,
+    type: "fieldExit",
+    name: `${stage + 1}번째 필드`,
+    stage,
+    x: bounds.maxX - 30,
+    y: (bounds.minY + bounds.maxY) / 2,
+    radius: 10,
+    // 뒤에 남겨둔 무리를 상대하지 않고 지나갈 수 있다 — 필드는 통로지 관문이 아니다.
+    requiresClear: false
+  };
+}
+
 export const FIELD_AGGRO_RADIUS = 26;
 
 export const ATTACK_TELEGRAPH_MS = 320;
@@ -706,6 +731,16 @@ export const REGION_TONIC_DEFS = {
 };
 
 export const TONIC_CARRY_LIMIT = 3;
+
+// 영지 귀환 부적. 원정 도중 아무 때나 써서 짐을 지킨 채 돌아온다.
+//
+// 전멸하면 미보관 자원이 절반으로 깎이므로, "여기까지"를 스스로 정할 수단이
+// 있어야 깊이 들어가는 판단에 의미가 생긴다. 물러나는 것도 선택이어야 한다.
+export const RECALL_CHARM = {
+  id: "recallCharm", name: "귀환 부적", carryLimit: 3,
+  materials: { herb: 2, ingot: 1, runeFragment: 1 },
+  description: "태우면 왔던 길이 접힌다. 짐을 지킨 채 영지로 돌아온다."
+};
 
 // 지역 핵 흡수. 그 지역 보스의 핵 계열 부산물을 먹는다 — 신화 장비 재료와
 // 같은 것이라 "장비로 만들 것인가, 흡수할 것인가"가 실제 선택이 된다.
@@ -2025,7 +2060,9 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
       commander: commanderState,
       hazardMitigation: 0,
       groupCount: options.groupCount,
-      obstacleCount: options.obstacleCount
+      obstacleCount: options.obstacleCount,
+      fieldStage: options.fieldStage || 1,
+      roster: options.roster
     })
     : null;
   return {
@@ -2061,6 +2098,8 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
     // 구조한 특수 동료가 남긴 플레이어 패시브를 판정하려면 명부가 필요하다.
     // 편성(party)이 아니라 명부(roster) 전체다 — 데려가지 않아도 효과는 남는다.
     roster: [...(options.roster || [])],
+    // 한 지역은 필드 셋을 지나 던전으로 이어진다.
+    fieldStage: options.fieldStage || 1,
     hazardMitigation,
     // 지역 핵을 흡수했으면 완전 차단 문턱이 내려간다(면역이 아니라 문턱만).
     hazardAbsorbed: Boolean(options.hazardAbsorbed),
@@ -2540,7 +2579,9 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
     bounds,
     fieldMode: true,
     enemyCopies: groupCount,
-    triggers: options.triggers || [{
+    fieldStage: options.fieldStage || 1,
+    // 마지막 필드에서만 던전 입구가 열린다. 그 전에는 다음 필드로 넘어가는 출구다.
+    triggers: options.triggers || [fieldExitTrigger(options.fieldStage || 1, bounds) || {
       id: `${regionId}-dungeon-entrance`,
       type: "dungeonEntrance",
       name: region.dungeonName,

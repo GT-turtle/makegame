@@ -53,6 +53,10 @@ import {
   moveRunPlayer,
   selectPlayerTarget,
   tickAutoBattle,
+  createFieldBattle,
+  FIELD_STAGE_COUNT,
+  fieldStageGroups,
+  RECALL_CHARM,
   createRescueBattle,
   createMemoryBattle,
   memoryRewards,
@@ -1181,6 +1185,26 @@ export class GameEngine {
     // 트리거를 밟으면 그때 던전으로 넘어간다(화면 전환 없이 이어지는 흐름).
     if (run.battle.fieldMode) {
       const trigger = consumeFieldTrigger(run.battle);
+      // 필드 끝에 닿으면 다음 필드로 넘어간다. 화면 전환 없이 새 전장을 깐다.
+      if (trigger?.type === "fieldExit") {
+        const nextStage = Math.min(FIELD_STAGE_COUNT, (run.fieldStage || 1) + 1);
+        const nextBattle = createFieldBattle(run.regionId, run.party, run.unitProgress, {
+          seed: (run.seed || 1) + nextStage * 7717,
+          commander: run.commander,
+          roster: run.roster,
+          hazardMitigation: run.hazardMitigation,
+          hazardAbsorbed: run.hazardAbsorbed,
+          fieldStage: nextStage,
+          groupCount: fieldStageGroups(nextStage)
+        });
+        if (nextBattle) {
+          run.fieldStage = nextStage;
+          run.battle = nextBattle;
+          this.addLog(`${nextStage}번째 필드로 넘어갔다. 안쪽일수록 무리가 두껍다.`, "item");
+          this.emit();
+          return "fieldAdvance";
+        }
+      }
       // 동굴에 들어가면 필드 전투를 잠시 치워 두고 구조 전투를 연다.
       // 던전과 달리 화면(run.location)은 필드 그대로다 — 잠깐 들어갔다 나오는 곳이라.
       if (trigger?.type === "rescueCave") {
@@ -2611,6 +2635,29 @@ export class GameEngine {
 
   // 소모품 제작. 재료는 전부 그 지역 약재다 — 재료 컨셉.txt에 적힌 실제 약효가
   // 그 지역 패널티와 그대로 맞물린다.
+  // 귀환 부적 제작. 원정 중에는 못 만든다 — 챙겨서 나가는 물건이다.
+  craftRecallCharm() {
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    const held = this.state.meta.recallCharms || 0;
+    if (held >= RECALL_CHARM.carryLimit) return false;
+    if (!this.spendMaterials(RECALL_CHARM.materials)) return false;
+    this.state.meta.recallCharms = held + 1;
+    this.addLog(`${RECALL_CHARM.name}을 엮었다. (${held + 1}/${RECALL_CHARM.carryLimit})`, "item");
+    this.emit();
+    return true;
+  }
+
+  // 원정 도중 사용. 짐을 지킨 채 돌아온다 — 전멸과 달리 자원이 안 깎인다.
+  useRecallCharm() {
+    const run = this.state.adventure?.run;
+    if (!run) return false;
+    const held = this.state.meta.recallCharms || 0;
+    if (held <= 0) return false;
+    this.state.meta.recallCharms = held - 1;
+    this.addLog(`${RECALL_CHARM.name}을 태웠다. 왔던 길이 접힌다.`, "item");
+    return this.returnAdventureToEstate("recall");
+  }
+
   craftRegionTonic(regionId) {
     const definition = REGION_TONIC_DEFS[regionId];
     if (!definition) return false;

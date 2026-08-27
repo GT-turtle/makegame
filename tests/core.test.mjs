@@ -30,7 +30,7 @@ import {
   warehouseCap
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS , ORE_SMELTING_DEFS } from "../src/data.js";
-import { ENEMY_COMBATANTS, REGION_TONIC_DEFS, REGION_CORE_ABSORPTION, TONIC_CARRY_LIMIT, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
+import { ENEMY_COMBATANTS, FIELD_STAGE_COUNT, RECALL_CHARM, REGION_TONIC_DEFS, REGION_CORE_ABSORPTION, TONIC_CARRY_LIMIT, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport , DISCOVERY_SITE_DEFS } from "../src/frontier.js";
 import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
 import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, ARMOR_SET_DEFS, armorSetBonus, armorSetEffect } from "../src/classes.js";
@@ -120,6 +120,78 @@ test("터치 이동 경로는 벽·적·미확인 칸을 우회한다", () => {
   const knownCorridor = new Set([keyOf(1, 1), keyOf(2, 1), keyOf(3, 1)]);
   assert.equal(findPath(tiles, start, target, new Set(), knownCorridor).length, 3);
   assert.deepEqual(findPath(tiles, start, target, new Set(), new Set([keyOf(1, 1), keyOf(3, 1)])), []);
+});
+
+test("필드 끝에 닿으면 다음 필드로 넘어가고 마지막에 던전이 나온다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  assert.equal(engine.startRegionAdventure("north", 777), true);
+  const run = engine.state.adventure.run;
+  assert.equal(run.fieldStage, 1, "첫 필드에서 시작한다");
+
+  const seen = [];
+  for (let step = 0; step < FIELD_STAGE_COUNT + 1; step += 1) {
+    const exit = run.battle.triggers[0];
+    seen.push(exit.type);
+    const player = run.battle.units.find((unit) => unit.id === run.battle.playerId);
+    player.x = exit.x;
+    player.y = exit.y;
+    if (exit.type === "dungeonEntrance") {
+      for (const enemy of run.battle.enemies) enemy.hp = 0;
+      assert.equal(engine.advanceRealtimeBattle(50), "dungeonEntrance");
+      break;
+    }
+    assert.equal(engine.advanceRealtimeBattle(50), "fieldAdvance");
+  }
+
+  assert.deepEqual(seen, ["fieldExit", "fieldExit", "dungeonEntrance"],
+    "필드 둘을 지나야 던전 입구가 나온다");
+  assert.equal(run.fieldStage, FIELD_STAGE_COUNT);
+});
+
+test("안쪽 필드일수록 무리가 두껍다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.startRegionAdventure("north", 777);
+  const run = engine.state.adventure.run;
+  const first = run.battle.enemies.length;
+
+  const exit = run.battle.triggers[0];
+  const player = run.battle.units.find((unit) => unit.id === run.battle.playerId);
+  player.x = exit.x;
+  player.y = exit.y;
+  engine.advanceRealtimeBattle(50);
+
+  assert.ok(run.battle.enemies.length > first,
+    `2필드(${run.battle.enemies.length})가 1필드(${first})보다 두꺼워야 한다`);
+});
+
+test("귀환 부적은 짐을 지킨 채 영지로 돌려보낸다", () => {
+  // 전멸하면 미보관 자원이 절반으로 깎인다. 스스로 물러날 수단이 있어야
+  // 깊이 들어가는 판단에 의미가 생긴다.
+  const engine = new GameEngine(new MemoryStorage());
+  const materials = engine.state.meta.materials;
+
+  assert.equal(engine.craftRecallCharm(), false, "재료 없이 못 만든다");
+  for (const id of Object.keys(RECALL_CHARM.materials)) materials[id] = 9;
+  assert.equal(engine.craftRecallCharm(), true);
+  for (const [id, amount] of Object.entries(RECALL_CHARM.materials)) {
+    assert.equal(materials[id], 9 - amount, `${id} 소모량이 어긋난다`);
+  }
+
+  engine.craftRecallCharm();
+  engine.craftRecallCharm();
+  assert.equal(engine.craftRecallCharm(), false, "한도를 넘겨 쌓이지 않는다");
+
+  engine.startRegionAdventure("north", 111);
+  assert.equal(engine.craftRecallCharm(), false, "원정 중에는 못 만든다");
+  engine.state.adventure.run.cargo.scrap = 42;
+
+  const before = engine.state.meta.scrap;
+  assert.equal(engine.useRecallCharm(), true);
+  assert.equal(engine.state.meta.recallCharms, RECALL_CHARM.carryLimit - 1);
+  assert.equal(engine.state.adventure.run, null, "원정이 끝난다");
+  assert.equal(engine.state.meta.scrap, before + 42, "짐이 깎이지 않고 그대로 들어온다");
+
+  assert.equal(engine.useRecallCharm(), false, "원정 중이 아니면 못 쓴다");
 });
 
 test("동굴에 들어가 구조 전투를 이기면 특수 동료가 합류하고 필드로 돌아온다", () => {

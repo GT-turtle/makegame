@@ -252,6 +252,8 @@ export function createInitialState() {
       absorbedCores: [],
       // 늦어서 못 구한 특수 동료의 자리. 시체를 본 지역만 들어간다.
       foundCorpses: [],
+      // 영지 귀환 부적 보유량.
+      recallCharms: 0,
       blueprints: ["frontierMantle"],
       // 선언된 재료는 **전부** 0으로 깔고 시작 보유분만 덮어쓴다.
       // 예전엔 손으로 적은 43개만 있어서 보스 부산물 30종이 통째로 빠져 있었다
@@ -1621,6 +1623,7 @@ export function migrateState(rawState) {
     state.meta.regionTonics ||= {};
     state.meta.absorbedCores ||= [];
     state.meta.foundCorpses ||= [];
+    state.meta.recallCharms ||= 0;
     // 동료 스킬이 생겼다. 기존 저장의 동료에게 레벨 1을 깔아 준다.
     for (const progress of Object.values(state.adventure.unitProgress || {})) {
       progress.skillLevel ||= 1;
