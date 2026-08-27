@@ -30,7 +30,7 @@ import {
   warehouseCap
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS , ORE_SMELTING_DEFS } from "../src/data.js";
-import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
+import { ENEMY_COMBATANTS, REGION_TONIC_DEFS, REGION_CORE_ABSORPTION, TONIC_CARRY_LIMIT, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport , DISCOVERY_SITE_DEFS } from "../src/frontier.js";
 import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
 import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, ARMOR_SET_DEFS, armorSetBonus, armorSetEffect } from "../src/classes.js";
@@ -120,6 +120,59 @@ test("터치 이동 경로는 벽·적·미확인 칸을 우회한다", () => {
   const knownCorridor = new Set([keyOf(1, 1), keyOf(2, 1), keyOf(3, 1)]);
   assert.equal(findPath(tiles, start, target, new Set(), knownCorridor).length, 3);
   assert.deepEqual(findPath(tiles, start, target, new Set(), new Set([keyOf(1, 1), keyOf(3, 1)])), []);
+});
+
+test("지역 대응 소모품은 재료를 먹고 만들어져 휴대 한도까지만 쌓인다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const definition = REGION_TONIC_DEFS.west;
+  const materials = engine.state.meta.materials;
+
+  // 재료가 없으면 못 만든다.
+  for (const id of Object.keys(definition.materials)) materials[id] = 0;
+  assert.equal(engine.craftRegionTonic("west"), false, "재료 없이 만들어지면 안 된다");
+
+  // 넉넉히 주고 한도까지 만든다.
+  for (const id of Object.keys(definition.materials)) materials[id] = 99;
+  for (let i = 0; i < TONIC_CARRY_LIMIT; i += 1) {
+    assert.equal(engine.craftRegionTonic("west"), true, `${i + 1}번째 제작이 실패했다`);
+  }
+  assert.equal(engine.state.meta.regionTonics.west, TONIC_CARRY_LIMIT);
+  assert.equal(engine.craftRegionTonic("west"), false, "한도를 넘겨 쌓이면 안 된다");
+
+  // 재료가 실제로 줄었는지 — 필드에 값만 박히는 게 아니라.
+  for (const [id, amount] of Object.entries(definition.materials)) {
+    assert.equal(materials[id], 99 - amount * TONIC_CARRY_LIMIT, `${id} 소모량이 어긋난다`);
+  }
+
+  // 출정하면 하나 줄어든다.
+  assert.equal(engine.consumeRegionTonic("west"), true);
+  assert.equal(engine.state.meta.regionTonics.west, TONIC_CARRY_LIMIT - 1);
+});
+
+test("지역 핵 흡수는 재료를 먹고 한 번만 되며 저장에 남는다", () => {
+  const storage = new MemoryStorage();
+  const engine = new GameEngine(storage);
+  const definition = REGION_CORE_ABSORPTION.north;
+
+  engine.state.meta.materials[definition.material] = 0;
+  assert.equal(engine.absorbRegionCore("north"), false, "재료 없이 흡수되면 안 된다");
+  assert.equal(engine.isCoreAbsorbed("north"), false);
+
+  engine.state.meta.materials[definition.material] = definition.amount;
+  assert.equal(engine.absorbRegionCore("north"), true);
+  assert.equal(engine.isCoreAbsorbed("north"), true);
+  assert.equal(engine.state.meta.materials[definition.material], 0, "핵이 실제로 소모돼야 한다");
+
+  // 두 번은 안 된다.
+  engine.state.meta.materials[definition.material] = 9;
+  assert.equal(engine.absorbRegionCore("north"), false, "두 번 흡수되면 안 된다");
+  assert.equal(engine.state.meta.materials[definition.material], 9, "실패했으면 재료를 안 먹어야 한다");
+
+  // 다른 지역은 따로다.
+  assert.equal(engine.isCoreAbsorbed("west"), false);
+
+  const restored = new GameEngine(storage);
+  assert.equal(restored.isCoreAbsorbed("north"), true, "저장 후에도 남아야 한다");
 });
 
 test("연구와 가방 확장은 저장 후에도 유지된다", () => {

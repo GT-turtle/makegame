@@ -55,6 +55,9 @@ import {
   tickAutoBattle,
   createMemoryBattle,
   memoryRewards,
+  REGION_TONIC_DEFS,
+  REGION_CORE_ABSORPTION,
+  TONIC_CARRY_LIMIT,
   memorySummonable,
   regionEntryCheck
 , GOLEM_UNIT_DEFS, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , SPECIAL_UNIT_DEFS, materialRarity } from "./adventure.js";
@@ -299,7 +302,9 @@ export class GameEngine {
     const run = createRegionRun(regionId, seed, party, adventure.unitProgress, adventure.commander, {
       fieldBattle: true,
       clearCount,
-      roster: adventure.roster
+      roster: adventure.roster,
+      tonicApplied: this.consumeRegionTonic(regionId),
+      hazardAbsorbed: this.isCoreAbsorbed(regionId)
     });
     if (!run) return false;
     adventure.selectedRegionId = regionId;
@@ -384,7 +389,9 @@ export class GameEngine {
         purpose,
         roster: adventure.roster,
         bossEncounterId: definition.bossEncounterId,
-        ambushInterval: { safe: [8, 13], watch: [6, 10], danger: [4, 8] }[definition.tier]
+        ambushInterval: { safe: [8, 13], watch: [6, 10], danger: [4, 8] }[definition.tier],
+        tonicApplied: this.consumeRegionTonic(definition.regionId),
+        hazardAbsorbed: this.isCoreAbsorbed(definition.regionId)
       }
     );
     if (!run) return false;
@@ -2542,6 +2549,58 @@ export class GameEngine {
 
   // 영지 기억 던전. 직접 쓰러뜨려 본 보스를 다시 세워 반복 공략한다.
   // 강화·수리 재료를 벌기 위한 수단이며, 새 설계도는 나오지 않는다.
+  // ── 지역 패널티 대응: 소모품과 핵 흡수 ───────────────────────────────────
+  //
+  // 지역 대응 반지가 유일한 길이면 장신구 세 칸 중 하나가 늘 묶여서 세트를
+  // 2셋까지밖에 못 맞춘다. 반지 말고도 닿는 길을 둘 더 연다.
+
+  // 소모품 제작. 재료는 전부 그 지역 약재다 — 재료 컨셉.txt에 적힌 실제 약효가
+  // 그 지역 패널티와 그대로 맞물린다.
+  craftRegionTonic(regionId) {
+    const definition = REGION_TONIC_DEFS[regionId];
+    if (!definition) return false;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    const held = this.state.meta.regionTonics?.[regionId] || 0;
+    if (held >= TONIC_CARRY_LIMIT) return false;
+    if (!this.spendMaterials(definition.materials)) return false;
+    this.state.meta.regionTonics ||= {};
+    this.state.meta.regionTonics[regionId] = held + 1;
+    this.addLog(`${definition.name}을 조제했다. (${held + 1}/${TONIC_CARRY_LIMIT})`, "item");
+    this.emit();
+    return true;
+  }
+
+  // 출정할 때 한 개 소모한다. 없으면 그냥 대응 없이 나간다 — 막지는 않는다.
+  consumeRegionTonic(regionId) {
+    const held = this.state.meta.regionTonics?.[regionId] || 0;
+    if (held <= 0) return false;
+    this.state.meta.regionTonics[regionId] = held - 1;
+    this.addLog(`${REGION_TONIC_DEFS[regionId]?.name || "대응 약"}을 챙겨 나섰다.`, "item");
+    return true;
+  }
+
+  isCoreAbsorbed(regionId) {
+    return (this.state.meta.absorbedCores || []).includes(regionId);
+  }
+
+  // 지역 핵 흡수. 면역이 아니라 **완전 차단 문턱이 내려갈 뿐**이다 —
+  // 영구 면역으로 만들면 지역마다 다른 압박을 준다는 설계가 통째로 죽는다.
+  // 재료가 신화 장비 재료와 같아서 "장비로 만들 것인가, 흡수할 것인가"가 선택이 된다.
+  absorbRegionCore(regionId) {
+    const definition = REGION_CORE_ABSORPTION[regionId];
+    if (!definition) return false;
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    if (this.isCoreAbsorbed(regionId)) return false;
+    if (!this.spendMaterials({ [definition.material]: definition.amount })) return false;
+    this.state.meta.absorbedCores ||= [];
+    this.state.meta.absorbedCores.push(regionId);
+    const region = WORLD_REGION_DEFS[regionId];
+    const coreName = MATERIAL_DEFS[definition.material]?.name || "핵";
+    this.addLog(`${coreName}을 몸에 새겼다. ${region?.name || regionId}의 압박이 예전만큼 깊이 파고들지 않는다.`, "good");
+    this.emit();
+    return true;
+  }
+
   memoryBossList() {
     return memorySummonable(this.state.meta.rememberedBosses || []);
   }

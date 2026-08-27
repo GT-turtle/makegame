@@ -679,6 +679,55 @@ export function regionEntryCheck(regionId, commander, partyIds, unitProgress) {
 // - 고철·지역 재료 같은 원정 정산도 없다
 //
 // 즉 재현은 **강화·수리를 위한 반복 수단**이지 새 전설을 여는 길이 아니다.
+// ── 지역 패널티 대응: 장비 밖의 세 갈래 ──────────────────────────────────────
+//
+// 지역 대응 반지(+3)가 유일한 길이면 장신구 세 칸 중 한 칸이 늘 묶인다.
+// 그러면 장신구 세트를 2셋까지밖에 못 맞춘다. 그래서 반지 말고도 닿는 길을 연다:
+//
+//   지역 출신 동료 +1 (이미 있음, createRegionRun의 partyMitigation)
+//   지역 대응 소모품 +2 (아래 REGION_TONIC_DEFS)
+//   지역 핵 흡수 — 완전 차단 문턱을 0.6배로 (아래 REGION_CORE_ABSORPTION)
+//
+// 하나로는 못 넘고 섞어야 넘는다는 기존 배분은 유지한다.
+
+// 소모품. 재료는 전부 **그 지역 약재**다 — 재료 컨셉.txt에 적힌 실제 약효가
+// 그 지역 패널티와 그대로 맞물린다(로디올라=고지 적응, 알로에=화상 재생 …).
+export const REGION_TONIC_DEFS = {
+  north: { id: "northTonic", regionId: "north", name: "고지 적응 강장제", mitigation: 2,
+    materials: { rhodiola: 2, arnica: 1 }, description: "굳어가는 마력 순환을 억지로 돌린다. 북부의 마나 고갈에 듣는다." },
+  south: { id: "southTonic", regionId: "south", name: "해독 탕약", mitigation: 2,
+    materials: { cinchonaBark: 2, clove: 1 }, description: "들이켜면 목이 타지만 독이 퍼지지 않는다." },
+  east: { id: "eastTonic", regionId: "east", name: "기맥 보약", mitigation: 2,
+    materials: { cordyceps: 2, ginseng: 1 }, description: "기맥을 눌러 붙잡는다. 씻겨나가려는 것이 덜 씻긴다." },
+  west: { id: "westTonic", regionId: "west", name: "진정 향유", mitigation: 2,
+    materials: { chamomile: 2, lavender: 1, willowBark: 1 }, description: "동료의 손 떨림이 멎는다. 저주가 공포로 번지는 것을 늦춘다." },
+  central: { id: "centralTonic", regionId: "central", name: "냉각 연고", mitigation: 2,
+    materials: { aloeVera: 2, myrrh: 1 }, description: "바르면 살갗이 서늘해진다. 폭염에 살이 익는 것을 막는다." }
+};
+
+export const TONIC_CARRY_LIMIT = 3;
+
+// 지역 핵 흡수. 그 지역 보스의 핵 계열 부산물을 먹는다 — 신화 장비 재료와
+// 같은 것이라 "장비로 만들 것인가, 흡수할 것인가"가 실제 선택이 된다.
+// 기억 던전으로 다시 벌 수 있으므로 영구 손실은 아니다.
+export const REGION_CORE_ABSORPTION = {
+  north: { regionId: "north", material: "titanCore", amount: 1 },
+  south: { regionId: "south", material: "abyssEye", amount: 1 },
+  east: { regionId: "east", material: "dragonPearl", amount: 1 },
+  west: { regionId: "west", material: "fallenCrown", amount: 1 },
+  central: { regionId: "central", material: "colossusReactor", amount: 1 }
+};
+
+// 흡수해도 **면역은 아니다.** 완전 차단에 필요한 대응 수치가 0.6배로 내려갈 뿐이라
+// (기본 4 → 2) 소모품 하나로도 닿게 된다. 영구 면역으로 만들면 지역마다 다른
+// 압박을 준다는 설계 자체가 죽는다 — 처음 한 번만 존재하는 관문이 되어버린다.
+export const ABSORBED_RESIST_SCALE = 0.6;
+
+export function absorbedResistThreshold(base, absorbed) {
+  const threshold = Number(base) || 4;
+  return absorbed ? Math.max(1, Math.round(threshold * ABSORBED_RESIST_SCALE)) : threshold;
+}
+
 export const MEMORY_YIELD_RATIO = 0.5;
 
 export function memorySummonable(remembered = []) {
@@ -1797,7 +1846,10 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
   const wardMitigation = equippedUniqueEffects(commander || {})
     .filter((effect) => effect.type === "regionWard" && effect.regionId === regionId)
     .reduce((total, effect) => total + (effect.mitigation || 0), 0);
-  const hazardMitigation = partyMitigation + wardMitigation;
+  // 지역 대응 소모품. 출정할 때 한 개 소모하고 그 원정 내내 유지된다 —
+  // 장신구 칸을 안 먹는 대신 매번 다시 만들어야 한다.
+  const tonicMitigation = options.tonicApplied ? (REGION_TONIC_DEFS[regionId]?.mitigation || 0) : 0;
+  const hazardMitigation = partyMitigation + wardMitigation + tonicMitigation;
   const ambushInterval = Array.isArray(options.ambushInterval) ? options.ambushInterval : [7, 12];
   const firstAmbushRandom = mulberry32(seed + 99173)();
   const firstAmbushStep = ambushInterval[0] + Math.floor(firstAmbushRandom * (ambushInterval[1] - ambushInterval[0] + 1));
@@ -1845,6 +1897,8 @@ export function createRegionRun(regionId, seed = Date.now() % 2147483647, partyI
     // 편성(party)이 아니라 명부(roster) 전체다 — 데려가지 않아도 효과는 남는다.
     roster: [...(options.roster || [])],
     hazardMitigation,
+    // 지역 핵을 흡수했으면 완전 차단 문턱이 내려간다(면역이 아니라 문턱만).
+    hazardAbsorbed: Boolean(options.hazardAbsorbed),
     cargo: { scrap: 0, materials: {}, weaponBlueprints: [] },
     encountersWon: 0,
     bossDefeated: false,
@@ -1875,6 +1929,7 @@ function maybeStartIrregularAmbush(run) {
     rollSeed: (run.seed || 1) + (run.battleSeq = (run.battleSeq || 0) + 1) * 7919,
     regionId: run.regionId,
     hazardMitigation: run.hazardMitigation,
+    hazardAbsorbed: run.hazardAbsorbed,
     commander: run.commander,
     roster: run.roster,
     awaitingPlayerStart: true,
@@ -1972,6 +2027,7 @@ export function moveRunPlayer(run, x, y) {
       rollSeed: (run.seed || 1) + (run.battleSeq = (run.battleSeq || 0) + 1) * 7919,
       regionId: run.regionId,
       hazardMitigation: run.hazardMitigation,
+    hazardAbsorbed: run.hazardAbsorbed,
       commander: run.commander,
       roster: run.roster,
       forceBoss: Boolean(feature.boss),
@@ -2243,6 +2299,7 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     regionId: options.regionId || null,
     hazard: options.defense ? null : region?.hazard || null,
     hazardMitigation: options.hazardMitigation || 0,
+    hazardAbsorbed: Boolean(options.hazardAbsorbed),
     nextHazardAt: 5200,
     commandAura,
     defense: Boolean(options.defense),
@@ -2898,7 +2955,8 @@ export function tickAutoBattle(battle, deltaMs) {
     // 효과를 함께 건다(몬스터 컨셉.txt 지역별 카운터).
     // 대응 수치(hazardMitigation)가 높으면 아예 걸리지 않는다.
     const counter = battle.hazard.counterEffect;
-    if (counter && (battle.hazardMitigation || 0) < (counter.resistedAt || 4)) {
+    const resistThreshold = absorbedResistThreshold(counter?.resistedAt, battle.hazardAbsorbed);
+    if (counter && (battle.hazardMitigation || 0) < resistThreshold) {
       if (counter.type === "manaDrain") {
         // 북부 — 아크메이지 카운터. 마나가 많고 회복이 빠른 직업일수록 크게 잃는다.
         for (const unit of living(battle.units)) {

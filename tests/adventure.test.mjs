@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 import {
+  REGION_TONIC_DEFS,
+  REGION_CORE_ABSORPTION,
+  absorbedResistThreshold,
   DUNGEON_SIZE,
   ENCOUNTER_DEFS,
   FIELD_SIZE,
@@ -2040,6 +2043,83 @@ test("저주는 대응 수치가 충분하면 아예 걸리지 않는다", () =>
   };
   assert.ok(measure(0) > 0, "대응이 없으면 이탈한다");
   assert.equal(measure(4), 0, "대응 수치를 갖추면 이탈하지 않는다");
+});
+
+test("지역 대응 소모품이 실제로 대응 수치를 올린다", () => {
+  // 반지가 유일한 길이면 장신구 세 칸 중 하나가 늘 묶인다. 소모품은 칸을 안 먹는
+  // 대신 매번 다시 만들어야 하는 축이다.
+  const withTonic = createRegionRun("west", 7, STARTING_PARTY, {}, {}, { tonicApplied: true });
+  const without = createRegionRun("west", 7, STARTING_PARTY, {}, {}, {});
+  const gain = withTonic.hazardMitigation - without.hazardMitigation;
+  assert.equal(gain, REGION_TONIC_DEFS.west.mitigation,
+    `소모품이 대응 ${REGION_TONIC_DEFS.west.mitigation}를 줘야 하는데 ${gain}이다`);
+  assert.equal(gain, 2, "현재 설계값은 +2다");
+});
+
+test("소모품 다섯 종은 전부 그 지역 약재로만 만든다", () => {
+  // 재료 컨셉.txt의 지역별 약제가 그대로 그 지역 대응 소모품의 재료가 된다.
+  // 다른 지역 재료가 섞이면 "그 지역에서 구해 쓴다"는 고리가 끊긴다.
+  const regionHerbs = {
+    north: ["rhodiola", "arnica"],
+    south: ["cinchonaBark", "clove"],
+    east: ["cordyceps", "ginseng"],
+    west: ["chamomile", "lavender", "willowBark"],
+    central: ["aloeVera", "myrrh"]
+  };
+  for (const [regionId, allowed] of Object.entries(regionHerbs)) {
+    const definition = REGION_TONIC_DEFS[regionId];
+    assert.ok(definition, `${regionId} 소모품이 없다`);
+    for (const materialId of Object.keys(definition.materials)) {
+      assert.ok(allowed.includes(materialId),
+        `${definition.name}에 ${regionId} 약재가 아닌 ${materialId}가 들어갔다`);
+    }
+  }
+});
+
+test("핵 흡수는 면역이 아니라 완전 차단 문턱만 내린다", () => {
+  // 영구 면역으로 만들면 지역 압박이 "처음 한 번만 있는 관문"이 되어
+  // 지역마다 다른 압박을 준다는 설계가 통째로 죽는다.
+  const base = 4;
+  assert.equal(absorbedResistThreshold(base, false), 4, "흡수 전에는 그대로다");
+  const lowered = absorbedResistThreshold(base, true);
+  assert.ok(lowered < base, `흡수하면 문턱이 내려가야 하는데 ${lowered}다`);
+  assert.ok(lowered >= 1, "0이 되면 면역이 되어버린다");
+  assert.equal(lowered, 2, "4 * 0.6 = 2.4 -> 2");
+});
+
+test("흡수하면 소모품만으로도 저주를 완전히 막는다", () => {
+  // 이게 이번 작업의 목적이다 — 반지를 빼고도 갈 수 있어야 장신구 3셋이
+  // 실제 선택지가 된다. 필드에 박힌 값이 아니라 이탈자 수로 잰다.
+  const measure = (mitigation, absorbed) => {
+    const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
+      { rollSeed: 3, regionId: "west", hazardMitigation: mitigation, hazardAbsorbed: absorbed });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 99999;
+    for (const enemy of battle.enemies) enemy.dormant = true;
+    for (let t = 0; t < 600; t += 1) { tickAutoBattle(battle, 100); player.hp = 99999; }
+    return (battle.fledUnits || []).length;
+  };
+
+  const tonic = REGION_TONIC_DEFS.west.mitigation;
+  assert.ok(measure(tonic, false) > 0, "흡수 전에는 소모품만으로 부족하다");
+  assert.equal(measure(tonic, true), 0, "흡수하면 소모품(+2)만으로 막힌다");
+  assert.ok(measure(0, true) > 0, "흡수만으로는 못 막는다 — 면역이 아니다");
+});
+
+test("지역 핵 흡수 재료는 그 지역 보스의 신화 부산물이다", () => {
+  // 신화 장비 재료와 같은 것을 먹으므로 "장비로 만들 것인가, 흡수할 것인가"가
+  // 실제 선택이 된다. 겹치지 않으면 그냥 공짜 버프가 된다.
+  const used = new Set();
+  for (const [regionId, definition] of Object.entries(REGION_CORE_ABSORPTION)) {
+    assert.equal(definition.regionId, regionId, `${regionId} 항목의 regionId가 어긋난다`);
+    assert.ok(MATERIAL_DEFS[definition.material], `${definition.material}는 없는 재료다`);
+    assert.ok(!used.has(definition.material), `${definition.material}가 두 지역에 쓰였다`);
+    used.add(definition.material);
+    const inMythic = Object.values(MYTHIC_GEAR_DEFS)
+      .some((gear) => Object.keys(gear.materials || {}).includes(definition.material));
+    assert.ok(inMythic, `${definition.material}가 신화 장비 재료가 아니라 선택이 안 생긴다`);
+  }
+  assert.equal(used.size, 5, "다섯 지역 전부 서로 다른 핵을 쓴다");
 });
 
 test("지역별 필드 진행 순서가 문서와 일치한다", () => {

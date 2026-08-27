@@ -20,7 +20,7 @@ import { FRONTIER_ZONE_DEFS, LIVING_AREA_DEFS, createInitialFrontierState, creat
 import { createDefenseDeployments } from "./defense.js";
 import { EQUIPMENT_DEFS, MASTERY_MAX, PLAYER_KIT_DEFS, createDefaultCommander, newUnitProgress, createEmptyEquipped, createEquipmentInstance, findEquipmentInstance, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition } from "./classes.js";
 
-export const SAVE_VERSION = 26;
+export const SAVE_VERSION = 27;
 
 // 영지 행복도(state.meta.estate.happiness)가 생산 속도에 미치는 배율.
 // 기준치(70, 신규 영지의 시작값)에서는 정확히 1.0배 — 기존 저장/테스트의 기준 생산량을 그대로 유지한다.
@@ -247,6 +247,9 @@ export function createInitialState() {
       favorClaimed: {},
       // 직접 쓰러뜨려 본 보스. 영지 기억 던전에서 다시 세울 수 있는 목록이다.
       rememberedBosses: [],
+      // 지역 대응 소모품 보유량과, 흡수해 둔 지역 핵.
+      regionTonics: {},
+      absorbedCores: [],
       blueprints: ["frontierMantle"],
       // 선언된 재료는 **전부** 0으로 깔고 시작 보유분만 덮어쓴다.
       // 예전엔 손으로 적은 43개만 있어서 보스 부산물 30종이 통째로 빠져 있었다
@@ -1610,6 +1613,12 @@ export function migrateState(rawState) {
     }
     commander.equipped = equipped;
     state.log.unshift({ text: "장신구가 반지 두 칸과 목걸이로 나뉘었다.", tone: "item" });
+  }
+  if (previousVersion < 27) {
+    // 지역 패널티를 장비 밖에서도 막을 수 있게 됐다 — 대응 소모품과 핵 흡수.
+    state.meta.regionTonics ||= {};
+    state.meta.absorbedCores ||= [];
+    state.log.unshift({ text: "지역 약재로 대응 약을 조제하고, 지역 핵을 몸에 새길 수 있게 됐다.", tone: "item" });
   }
   if (previousVersion < 25) {
     // 영지 명성·외교 우호도, 기억 던전에 남는 보스 목록이 생겼다.
