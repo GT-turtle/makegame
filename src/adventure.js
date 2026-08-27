@@ -1496,6 +1496,35 @@ export const ENEMY_COMBATANTS = {
     statusOnHit: { id: "stun", durationMs: 750 }, statusEvery: 3 }
 };
 
+// 재료 등급 — 오프라인 수급률과 창고 상한이 이걸 본다.
+//
+// MATERIAL_DEFS의 category는 못 쓴다. special 하나에 약초 48종과 보스 부산물이
+// 섞여 있어서 "귀한 것"을 가려낼 수가 없다. 대신 **어디서 떨어지는가**로 역산한다.
+//
+//   regionBoss  지역 보스만 떨어뜨린다 — 가장 귀하다
+//   fieldBoss   필드 보스가 떨어뜨린다
+//   common      일꾼이 캐거나 만든다
+//
+// 이 함수를 쓰는 쪽(core.js 오프라인 정산)이 adventure.js를 임포트하지 않도록
+// 결과를 한 번 계산해 표로 굳혀 내보낸다.
+export const MATERIAL_TIERS = (() => {
+  const fieldBoss = new Set();
+  const regionBoss = new Set();
+  for (const enemy of Object.values(ENEMY_COMBATANTS)) {
+    if (!enemy.byproducts) continue;
+    const target = enemy.fieldTier ? fieldBoss : regionBoss;
+    for (const id of Object.keys(enemy.byproducts)) target.add(id);
+  }
+  const tiers = {};
+  for (const id of regionBoss) if (!fieldBoss.has(id)) tiers[id] = "regionBoss";
+  for (const id of fieldBoss) tiers[id] = "fieldBoss";
+  return tiers;
+})();
+
+export function materialTier(materialId) {
+  return MATERIAL_TIERS[materialId] || "common";
+}
+
 export const ENCOUNTER_DEFS = {
   sandHunters: { name: "모래 늑대 매복", glyph: "!", enemies: ["centralWolf", "centralWolf", "centralGoblin"], scrap: 3 },
   duneRaiders: { name: "사구 혼성 약탈대", glyph: "!", enemies: ["centralOrc", "centralGoblin", "centralWolf"], scrap: 4 },

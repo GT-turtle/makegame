@@ -4318,3 +4318,24 @@ body.battle-active .modal-wrap { z-index: 3200; }
   text-shadow: 0 1px 2px rgba(0, 0, 0, .9);
   pointer-events: none;
 }
+
+/* 복귀 보고서 — 자리를 비운 동안 있었던 일. 한 번 보고 닫는다.
+ * 뼈대는 기존 .overlay/.sheet를 쓰고 여기서는 크기만 좁힌다. */
+.offline-overlay { z-index: 170; }
+.offline-report { max-width: 460px; }
+.offline-gain-list {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.offline-gain-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .04);
+  font-size: 13px;
+}
+.offline-gain-list li b { color: #e8c98a; }

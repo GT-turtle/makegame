@@ -30,7 +30,7 @@ import {
   revealFloor,
   synergyItemUids,
   useHerbKit
-, mulberry32 } from "./core.js";
+, mulberry32, settleOffline, storeMaterial, warehouseCap, WAREHOUSE_MAX_LEVEL, WAREHOUSE_UPGRADE_COST } from "./core.js";
 import {
   ENCOUNTER_DEFS,
   ENEMY_COMBATANTS,
@@ -57,7 +57,7 @@ import {
   memoryRewards,
   memorySummonable,
   regionEntryCheck
-, GOLEM_UNIT_DEFS, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , SPECIAL_UNIT_DEFS } from "./adventure.js";
+, GOLEM_UNIT_DEFS, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , SPECIAL_UNIT_DEFS , materialTier } from "./adventure.js";
 import {
   DISCOVERY_SITE_DEFS,
   FRONTIER_FACTION_DEFS,
@@ -201,6 +201,11 @@ export class GameEngine {
     this.listeners = new Set();
     this.state = this.load();
     if (this.state.expedition?.phase === "active") revealFloor(this.state);
+
+    // 자리를 비운 동안 영지가 돌아 있다. 보고서는 UI가 한 번 보여주고 지운다 —
+    // 안 보여주면 재료가 늘어난 걸 눈치도 못 챈다.
+    this.offlineReport = settleOffline(this.state, materialTier, this.offlineDungeonIncome());
+    if (this.offlineReport) this.save();
   }
 
   load() {
@@ -214,6 +219,8 @@ export class GameEngine {
 
   save() {
     try {
+      // 오프라인 정산이 이 시각을 기준으로 경과를 잰다.
+      this.state.meta.savedAt = Date.now();
       this.storage?.setItem(SAVE_KEY, JSON.stringify(this.state));
     } catch {
       // 저장 공간을 사용할 수 없어도 현재 세션은 계속 진행한다.
@@ -964,6 +971,26 @@ export class GameEngine {
   //
   // 수익은 클리어 횟수에 따라 완만히 오르되 상한을 둔다. 같은 던전만 무한히
   // 돌아서 경제가 터지지 않도록, 회차 보너스는 5회에서 멈춘다.
+  // 오프라인 정산에 넘길 개방 던전 수익표. collectOpenedDungeonIncome과
+  // **같은 식**을 쓴다 — 따로 계산하면 온라인과 오프라인이 조용히 어긋난다.
+  offlineDungeonIncome() {
+    const records = this.state.adventure?.records || {};
+    const rows = [];
+    for (const [regionId, record] of Object.entries(records)) {
+      if (!record?.dungeonOpened) continue;
+      const region = WORLD_REGION_DEFS[regionId];
+      if (!region) continue;
+      const depth = Math.min(5, Math.max(1, record.victories || 1));
+      rows.push({
+        materialId: region.rewardMaterial,
+        amountPerCycle: 1 + Math.floor(depth / 3),
+        scrapPerCycle: 2 + depth,
+        label: region.dungeonName
+      });
+    }
+    return rows;
+  }
+
   collectOpenedDungeonIncome() {
     const adventure = this.state.adventure;
     if (!adventure?.records) return;
@@ -2592,6 +2619,22 @@ export class GameEngine {
     adventure.roster.push(unitId);
     adventure.unitProgress[unitId] = newUnitProgress();
     this.addLog("고대 골렘을 복원했다. 원정대 하나를 통째로 맡길 수 있다.", "good");
+    this.emit();
+    return true;
+  }
+
+  // 창고 증축. 재료 종류당 상한이 올라간다 — 오프라인으로 쌓이는 양이
+  // 여기서 잘리므로, 오래 자리를 비우는 사람일수록 먼저 손대게 된다.
+  upgradeWarehouse() {
+    if (this.state.adventure?.run || this.state.estateDefense?.campaign) return false;
+    const estate = this.state.meta.estate;
+    const level = estate.warehouseLevel || 0;
+    if (level >= WAREHOUSE_MAX_LEVEL) return false;
+    const cost = WAREHOUSE_UPGRADE_COST[level + 1];
+    if (this.state.meta.scrap < cost) return false;
+    this.state.meta.scrap -= cost;
+    estate.warehouseLevel = level + 1;
+    this.addLog(`창고를 넓혔다. 재료 종류당 ${warehouseCap(estate.warehouseLevel)}까지 보관한다.`, "good");
     this.emit();
     return true;
   }

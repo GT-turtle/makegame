@@ -21,10 +21,15 @@ import {
   resolveBagTrigger,
   rotateMask,
   synergyItemUids,
-  workerProficiency
+  workerProficiency,
+  OFFLINE_YIELD_BY_TIER,
+  WAREHOUSE_LEVEL_CAP,
+  WAREHOUSE_MAX_LEVEL,
+  offlineExpeditionRate,
+  warehouseCap
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS } from "../src/data.js";
-import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle } from "../src/adventure.js";
+import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle , materialTier } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport } from "../src/frontier.js";
 import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
 import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS } from "../src/classes.js";
@@ -1501,4 +1506,122 @@ test("특수 시설 UI가 부르는 엔진 동작 네 가지가 모두 실제로
   assert.equal(engine.specialForgeEquipment("e1"), true);
   assert.equal(commander.equipmentOwned[0].options.length, before + 1);
   assert.equal(engine.specialForgeEquipment("e1"), false, "장비당 한 번뿐이다");
+});
+
+test("오프라인 정산은 느리게 돌고, 귀한 재료일수록 덜 나오고, 창고에서 잘린다", () => {
+  const build = ({ hours, warehouseLevel = 0, towerLevel = 0, preFillWood = 0 }) => {
+    const storage = new MemoryStorage();
+    const engine = new GameEngine(storage);
+    engine.state.meta.estate.workers.lumberjack = 5;
+    engine.state.meta.estate.workers.miner = 5;
+    engine.state.meta.estate.warehouseLevel = warehouseLevel;
+    engine.state.meta.estate.mageTower = { level: towerLevel, loadedSpellId: null, chargesUsed: 0 };
+    if (preFillWood) engine.state.meta.materials.wood = preFillWood;
+    engine.save();
+    const saved = JSON.parse(storage.getItem(SAVE_KEY));
+    saved.meta.savedAt = Date.now() - hours * 3600000;
+    storage.setItem(SAVE_KEY, JSON.stringify(saved));
+    return new GameEngine(storage);
+  };
+
+  // 잠깐 껐다 켠 것까지 보고서를 띄우면 성가시다.
+  assert.equal(build({ hours: 0.1 }).offlineReport, null, "짧은 이탈은 정산하지 않는다");
+
+  const eight = build({ hours: 8 }).offlineReport;
+  assert.ok(eight, "8시간이면 정산한다");
+  assert.ok(eight.gained.wood > 0, "일꾼 생산은 자리를 비워도 돈다");
+
+  // 오프라인이 온라인보다 이득이면 게임을 안 켜는 게 최선이 된다.
+  const online = new GameEngine(new MemoryStorage());
+  online.state.meta.estate.workers.lumberjack = 5;
+  const beforeWood = online.state.meta.materials.wood;
+  advanceEstate(online.state, eight.turns);
+  const onlineGain = online.state.meta.materials.wood - beforeWood;
+  assert.ok(eight.gained.wood < onlineGain,
+    `오프라인이 온라인보다 적어야 한다 (오프 ${eight.gained.wood} vs 온 ${onlineGain})`);
+
+  // 창고가 상한이다. 총량이 아니라 종류별이라 흔한 재료가 귀한 것 자리를 안 뺏는다.
+  const cramped = build({ hours: 48, warehouseLevel: 0, preFillWood: 115 }).offlineReport;
+  assert.ok(cramped.overflowed.wood > 0, "창고가 차면 넘친 만큼 버려진다");
+  assert.equal(
+    cramped.gained.wood + 115, warehouseCap(0),
+    "상한까지만 담긴다"
+  );
+  const roomy = build({ hours: 48, warehouseLevel: 3, preFillWood: 115 }).offlineReport;
+  assert.ok(roomy.gained.wood > cramped.gained.wood, "창고를 키우면 더 담긴다");
+  assert.equal(Object.keys(roomy.overflowed).length, 0, "넉넉하면 안 넘친다");
+
+  // 마탑이 오프라인 원정 수급률을 끌어올린다 — 30%에서 60%까지.
+  assert.equal(offlineExpeditionRate(0), 0.3);
+  assert.ok(Math.abs(offlineExpeditionRate(3) - 0.6) < 1e-9, "3층이면 60%");
+  assert.ok(offlineExpeditionRate(3) > offlineExpeditionRate(0), "층을 올리면 오른다");
+});
+
+test("보스 부산물은 자면서 쌓이지 않는다", () => {
+  // 이게 뚫리면 파밍이 통째로 무의미해진다. 지역 보스 재료는 0이어야 한다.
+  assert.equal(materialTier("frostIron"), "regionBoss");
+  assert.equal(OFFLINE_YIELD_BY_TIER.regionBoss, 0, "지역 보스 재료는 오프라인에 안 나온다");
+
+  assert.equal(materialTier("dragonScale"), "fieldBoss");
+  assert.equal(OFFLINE_YIELD_BY_TIER.fieldBoss, 0, "필드 보스 재료도 자면서는 안 나온다");
+
+  assert.equal(materialTier("wood"), "common");
+
+  // 등급이 어느 쪽에도 안 잡힌 재료가 있으면 조용히 common으로 새어 나간다.
+  for (const id of Object.keys(MATERIAL_DEFS)) {
+    assert.ok(["common", "fieldBoss", "regionBoss"].includes(materialTier(id)), `${id} 등급 불명`);
+  }
+});
+
+test("창고 증축은 고철을 쓰고 상한을 올린다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.state.meta.scrap = 999;
+  assert.equal(warehouseCap(0), WAREHOUSE_LEVEL_CAP[0]);
+
+  for (let level = 1; level <= WAREHOUSE_MAX_LEVEL; level += 1) {
+    assert.equal(engine.upgradeWarehouse(), true, `${level}단계 증축`);
+    assert.equal(engine.state.meta.estate.warehouseLevel, level);
+  }
+  assert.equal(engine.upgradeWarehouse(), false, "최대치를 넘지 않는다");
+
+  // 고철이 없으면 못 올린다.
+  const poor = new GameEngine(new MemoryStorage());
+  poor.state.meta.scrap = 0;
+  assert.equal(poor.upgradeWarehouse(), false);
+});
+
+test("마탑은 오프라인 고철을 늘리지만 보스 재료를 열지는 않는다", () => {
+  // 마탑이 귀한 재료를 뚫어주는 안을 넣어봤다가 걷어냈다 — 3층에서 지역 보스
+  // 재료가 실제로 나오는 걸 재보니 과했다. 그 결정을 여기서 잠근다.
+  const run = (towerLevel) => {
+    const storage = new MemoryStorage();
+    const engine = new GameEngine(storage);
+    for (const worker of Object.keys(engine.state.meta.estate.workers)) {
+      engine.state.meta.estate.workers[worker] = 3;
+    }
+    engine.state.meta.estate.warehouseLevel = 3;
+    engine.state.meta.estate.mageTower = { level: towerLevel, loadedSpellId: null, chargesUsed: 0 };
+    for (const record of Object.values(engine.state.adventure.records)) {
+      record.dungeonOpened = true;
+      record.victories = 5;
+    }
+    engine.save();
+    const saved = JSON.parse(storage.getItem(SAVE_KEY));
+    saved.meta.savedAt = Date.now() - 24 * 3600000;
+    storage.setItem(SAVE_KEY, JSON.stringify(saved));
+    return new GameEngine(storage).offlineReport;
+  };
+
+  const none = run(0);
+  const full = run(3);
+
+  // 마탑이 하는 일: 원정 수급률을 30%에서 60%로 끌어올린다.
+  assert.ok(full.scrap > none.scrap * 1.8,
+    `마탑 3층이면 고철이 두 배 가까이 (${none.scrap} -> ${full.scrap})`);
+
+  // 마탑이 하지 않는 일: 보스 재료를 여는 것.
+  for (const report of [none, full]) {
+    const rare = Object.keys(report.gained).filter((id) => materialTier(id) !== "common");
+    assert.deepEqual(rare, [], `보스 재료가 오프라인에 나왔다: ${rare.join(", ")}`);
+  }
 });

@@ -238,6 +238,8 @@ export function createInitialState() {
       // 장비 제작 굴림용 시드. 저장에 남아 이어지므로 되돌려 다시 굴릴 수 없다.
       // 플레이마다 다른 결과가 나오도록 시작값을 흩어둔다(테스트는 직접 지정).
       craftSeed: (Date.now() ^ 0x9e3779b9) >>> 0,
+      // 마지막 저장 시각. 오프라인 정산이 이걸 기준으로 경과 시간을 잰다.
+      savedAt: Date.now(),
       // 영지 명성과 주변 세력 우호도. 명성이 쌓이면 우호도가 오르고
       // 임계를 넘으면 설계도를 선물받는다(수평 컨텐츠 유입 경로).
       renown: 0,
@@ -268,7 +270,10 @@ export function createInitialState() {
         happiness: 70,
         // 마탑 — 북부 특수 동료(마탑 설계자)를 구조해야 지을 수 있다.
         // level 0은 아직 없는 상태다.
-        mageTower: { level: 0, loadedSpellId: null, chargesUsed: 0 }
+        mageTower: { level: 0, loadedSpellId: null, chargesUsed: 0 },
+        // 창고 등급. 재료 **종류당** 상한을 정한다(총량이 아니다).
+        // 오프라인으로 쌓이는 양이 여기서 잘리므로, 오래 비울수록 키울 이유가 생긴다.
+        warehouseLevel: 0
       },
       merchant: createInitialMerchantState(frontier),
       villageFriendship: { north: 0, south: 0, east: 0, west: 0, central: 0 },
@@ -732,6 +737,177 @@ function advanceWorkerCycle(state, workerId, interval, activeWorkers) {
   const cycles = Math.floor((progress.cycle + 1e-9) / interval);
   if (cycles > 0) progress.cycle -= cycles * interval;
   return { cycles, ...work };
+}
+
+// ── 오프라인 정산 ──────────────────────────────────────────────────────────
+//
+// 게임을 껐다 켜면 그동안 흐른 시간만큼 영지가 돌아 있다. 다만 세 겹으로 조인다.
+//
+//   1) 속도    — 오프라인은 온라인보다 느리다. 안 켜는 게 이득이면 안 되기 때문이다.
+//   2) 귀함    — 귀한 재료일수록 더 적게 나온다. 보스 부산물이 자면서 쌓이면
+//                파밍이 무의미해진다.
+//   3) 창고    — 재료마다 상한이 있고, 차면 더 안 쌓인다. 오래 비울수록
+//                창고를 키울 이유가 생긴다.
+//
+// 재료 등급은 카테고리가 아니라 **어디서 나오는가**로 가른다. MATERIAL_DEFS의
+// category는 special 하나에 약초와 보스 부산물이 섞여 있어 쓸 수가 없다.
+// ENEMY_COMBATANTS의 byproducts에서 역산하면 정확히 갈린다.
+
+// 오프라인 1시간이 온라인 몇 턴에 해당하는가. 원정 한 번이 대략 여러 턴이므로
+// 자리를 비운 값이 직접 도는 것보다 항상 못하도록 낮게 잡는다.
+export const OFFLINE_TURNS_PER_HOUR = 4;
+
+// 오프라인 몇 시간이 개척 주기 하나인가. 직접 "주기 진행"을 누르는 것보다
+// 훨씬 느려야 자리를 비우는 게 이득이 되지 않는다.
+export const OFFLINE_HOURS_PER_CYCLE = 3;
+
+// 축이 둘이다. 섞으면 한쪽을 조일 때 다른 쪽이 같이 움직여서 조절이 안 된다.
+//
+//   1) 무엇이 도는가   — 일꾼 생산은 자리를 비워도 어느 정도 돌지만,
+//                        원정은 사람이 붙어야 하는 일이라 더 많이 깎인다.
+//   2) 무엇이 나오는가 — 귀한 재료일수록 덜 나온다. 보스 부산물이 자면서
+//                        쌓이면 파밍이 통째로 무의미해진다.
+//
+// 최종 수급 = 활동 배율 × 등급 배율.
+
+// 일꾼 생산·던전 수익. 일꾼은 내가 없어도 일하므로 절반은 돈다.
+export const OFFLINE_PRODUCTION_RATE = 0.5;
+
+// 분대 원정. 기본은 낮고 마탑이 끌어올린다 — 마탑의 동사("먼 곳에 손을 뻗는다")를
+// 오프라인으로 확장한 것이다. 원정은 직접 컨트롤하지 않는 대신, 미리 지어두면
+// 손실이 준다는 준비 요소가 된다.
+export const OFFLINE_EXPEDITION_BASE = 0.3;
+export const OFFLINE_EXPEDITION_PER_TOWER_LEVEL = 0.1; // 3층이면 0.6
+
+export function offlineExpeditionRate(towerLevel = 0) {
+  return OFFLINE_EXPEDITION_BASE
+    + Math.max(0, Math.min(3, towerLevel || 0)) * OFFLINE_EXPEDITION_PER_TOWER_LEVEL;
+}
+
+// 등급 배율. 활동 배율 위에 곱해진다.
+//
+// **보스 재료는 오프라인에 나오지 않는다.** 자면서 쌓이면 파밍이 통째로
+// 무의미해진다 — 강화 파손 수리가 보스 부산물을 요구하는 구조인데, 그게
+// 자동으로 들어오면 원정을 나갈 이유가 사라진다.
+//
+// 마탑이 이걸 뚫어주는 안도 넣어봤다가 걷어냈다. 3층에서 frostIron·glassSand가
+// 실제로 나오는 걸 재보니 과했다. 마탑은 대신 원정 수급률(고철)을 30%→60%로
+// 올리는 쪽으로만 일한다.
+export const OFFLINE_YIELD_BY_TIER = {
+  common: 1,       // 일꾼이 캐는 것 — 활동 배율만 적용된다
+  fieldBoss: 0,    // 필드 보스 부산물 — 자면서는 안 나온다
+  regionBoss: 0    // 지역 보스 부산물 — 자면서는 안 나온다
+};
+
+export function offlineTierYield(tier) {
+  return OFFLINE_YIELD_BY_TIER[tier] ?? 1;
+}
+
+// 창고 등급별 재료 **종류당** 상한. 총량이 아니다 — 총량이면 흔한 재료가
+// 귀한 재료 자리를 밀어내는데, 그게 오프라인 보상에서 일어나면 억울하다.
+export const WAREHOUSE_LEVEL_CAP = [120, 240, 420, 700];
+export const WAREHOUSE_MAX_LEVEL = WAREHOUSE_LEVEL_CAP.length - 1;
+export const WAREHOUSE_UPGRADE_COST = [0, 40, 90, 180]; // 고철
+
+export function warehouseCap(level = 0) {
+  return WAREHOUSE_LEVEL_CAP[Math.max(0, Math.min(WAREHOUSE_MAX_LEVEL, level || 0))];
+}
+
+// 자리를 비운 시간(시간 단위). 상한은 여기서 걸지 않는다 —
+// "얼마나 담기느냐"는 창고가 정하므로 시간 자체는 그대로 센다.
+export function offlineHours(savedAt, now = Date.now()) {
+  if (!savedAt) return 0;
+  return Math.max(0, now - savedAt) / 3600000;
+}
+
+// 창고 상한을 적용해 재료를 담는다. 넘치는 만큼은 버려지고, 얼마나 버려졌는지
+// 돌려준다 — 보고 화면에서 "창고가 꽉 차서 놓쳤다"를 보여줘야 창고를 키운다.
+export function storeMaterial(state, materialId, amount) {
+  if (amount <= 0) return { stored: 0, overflow: 0 };
+  const cap = warehouseCap(state.meta.estate.warehouseLevel);
+  const current = state.meta.materials[materialId] || 0;
+  const room = Math.max(0, cap - current);
+  const stored = Math.min(room, amount);
+  state.meta.materials[materialId] = current + stored;
+  return { stored, overflow: amount - stored };
+}
+
+// 오프라인 정산. 자리를 비운 동안 영지가 얼마나 돌았는지 계산해 실제로 반영하고,
+// 무슨 일이 있었는지 보고서를 돌려준다.
+//
+// tierOf는 adventure.js의 materialTier를 넘겨받는다 — core가 adventure를
+// 임포트하면 순환 참조가 생기기 때문이다.
+// dungeonIncome은 호출자가 넘긴다 — 개방 던전 목록과 보상 재료는 game.js가
+// 알고 있고, core가 adventure.js를 임포트하면 순환 참조가 생긴다.
+// 형태: [{ materialId, amountPerCycle, scrapPerCycle, label }]
+export function settleOffline(state, tierOf, dungeonIncome = [], now = Date.now()) {
+  const savedAt = state.meta.savedAt || 0;
+  const hours = offlineHours(savedAt, now);
+  // 너무 짧으면 정산하지 않는다. 창을 잠깐 껐다 켠 것까지 보고서를 띄우면 성가시다.
+  if (hours < 0.25) return null;
+
+  const towerLevel = state.meta.estate.mageTower?.level || 0;
+  const expeditionRate = offlineExpeditionRate(towerLevel);
+  const before = { ...state.meta.materials };
+  const beforeScrap = state.meta.scrap;
+  const turns = Math.floor(hours * OFFLINE_TURNS_PER_HOUR);
+  if (turns <= 0) return null;
+
+  // 일꾼 생산은 advanceEstate를 그대로 돌린다. 온라인과 다른 계산을 만들면
+  // 둘이 어긋나기 시작한다 — 대신 결과를 배율로 깎는다.
+  advanceEstate(state, turns);
+
+  // 실제로 얼마나 늘었는지 보고, 배율과 창고 상한을 다시 적용한다.
+  const gained = {};
+  const overflowed = {};
+  for (const [id, after] of Object.entries(state.meta.materials)) {
+    const delta = after - (before[id] || 0);
+    if (delta <= 0) continue;
+    const tier = tierOf(id);
+    const rate = OFFLINE_PRODUCTION_RATE * offlineTierYield(tier);
+    const target = Math.floor(delta * rate);
+    // 일단 되돌린 뒤 상한을 걸어 다시 담는다.
+    state.meta.materials[id] = before[id] || 0;
+    const { stored, overflow } = storeMaterial(state, id, target);
+    if (stored > 0) gained[id] = stored;
+    if (overflow > 0) overflowed[id] = overflow;
+  }
+
+  // 개방 던전 수익. **귀한 재료가 오프라인에 나오는 유일한 통로다** —
+  // 일꾼은 보스 부산물을 캐지 못하므로, 이게 없으면 등급 배율이 한 번도
+  // 발동하지 않는 죽은 코드가 된다.
+  //
+  // 주기당 수익이므로 오프라인 시간을 주기로 환산해 곱한다.
+  const cycles = Math.floor(hours / OFFLINE_HOURS_PER_CYCLE);
+  let dungeonScrap = 0;
+  for (const entry of dungeonIncome) {
+    if (cycles <= 0) break;
+    const tier = tierOf(entry.materialId);
+    const rate = expeditionRate * offlineTierYield(tier);
+    const amount = Math.floor(entry.amountPerCycle * cycles * rate);
+    if (amount > 0) {
+      const { stored, overflow } = storeMaterial(state, entry.materialId, amount);
+      if (stored > 0) gained[entry.materialId] = (gained[entry.materialId] || 0) + stored;
+      if (overflow > 0) overflowed[entry.materialId] = (overflowed[entry.materialId] || 0) + overflow;
+    }
+    dungeonScrap += Math.floor(entry.scrapPerCycle * cycles * expeditionRate);
+  }
+  state.meta.scrap += dungeonScrap;
+
+  const scrapDelta = Math.floor((state.meta.scrap - beforeScrap - dungeonScrap) * expeditionRate) + dungeonScrap;
+  state.meta.scrap = beforeScrap + Math.max(0, scrapDelta);
+
+  state.meta.savedAt = now;
+  return {
+    hours: Math.round(hours * 10) / 10,
+    turns,
+    gained,
+    overflowed,
+    scrap: Math.max(0, scrapDelta),
+    towerLevel,
+    expeditionRate,
+    warehouseCap: warehouseCap(state.meta.estate.warehouseLevel)
+  };
 }
 
 export function advanceEstate(state, turns = 1) {

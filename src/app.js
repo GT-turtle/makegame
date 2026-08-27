@@ -1,5 +1,5 @@
 import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
-import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency } from "./core.js";
+import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency , warehouseCap, WAREHOUSE_MAX_LEVEL, WAREHOUSE_UPGRADE_COST } from "./core.js";
 import { GameEngine } from "./game.js";
 import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, ENHANCE_MAX, enhanceCost, enhanceOdds, repairCost, combatPowerScore, companionEquippableSlots, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition , MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, canSpecialForge } from "./classes.js";
 import {
@@ -456,6 +456,7 @@ function facilityOverlay(state) {
   `;
 
   if (facility.id === "warehouse") content = `
+    ${warehouseCapacityCard(state)}
     ${warehouseCategoryTabs(state)}
     ${warehouseCategoryContent(state, activeCount, linkedItems)}
   `;
@@ -2153,6 +2154,54 @@ function golemBlock(state, roster) {
     + `<p class="facility-note">골렘은 편성에 넣을 수 없다. 분대장 자리를 대신 채우는 병기라, 늘어나는 건 화력이 아니라 동시에 굴릴 수 있는 원정 수다.</p>`;
 }
 
+// 창고 용량. 재료 **종류당** 상한이라 흔한 재료가 귀한 것 자리를 뺏지 않는다.
+// 오프라인으로 쌓이는 양이 여기서 잘리므로, 자리를 오래 비우는 사람일수록 먼저 손댄다.
+function warehouseCapacityCard(state) {
+  const level = state.meta.estate.warehouseLevel || 0;
+  const cap = warehouseCap(level);
+  const maxed = level >= WAREHOUSE_MAX_LEVEL;
+  const cost = maxed ? 0 : WAREHOUSE_UPGRADE_COST[level + 1];
+  const canAfford = !maxed && state.meta.scrap >= cost;
+
+  // 지금 상한에 가장 근접한 재료를 보여준다 — 숫자만 있으면 체감이 안 된다.
+  const materials = state.meta.materials || {};
+  const [fullestId, fullestAmount] = Object.entries(materials)
+    .sort((a, b) => b[1] - a[1])[0] || [null, 0];
+  const fullestName = fullestId ? (MATERIAL_DEFS[fullestId]?.name || fullestId) : null;
+
+  const button = maxed
+    ? '<em class="upkeep-safe">최대 확장</em>'
+    : `<button class="ghost" data-action="upgrade-warehouse"${canAfford ? "" : " disabled"}>증축 · 고철 ${cost}</button>`;
+
+  return `<article class="party-management-card"><div><span>보관 용량</span>`
+    + `<strong>재료 종류당 ${cap}${maxed ? "" : ` → ${warehouseCap(level + 1)}`}</strong>`
+    + `<small>${fullestName ? `가장 많은 ${escapeHtml(fullestName)} ${fullestAmount}/${cap}` : "아직 쌓인 재료가 없다"} · 자리를 비운 동안 쌓이는 양도 여기서 잘린다</small></div>${button}</article>`;
+}
+
+// 자리를 비운 동안 있었던 일. 한 번 보여주고 지운다 — 안 보여주면 재료가
+// 늘어난 걸 눈치도 못 챈다.
+function offlineReportPanel(report) {
+  if (!report) return "";
+  const rows = Object.entries(report.gained)
+    .sort((a, b) => b[1] - a[1]).slice(0, 8)
+    .map(([id, amount]) => `<li><span>${escapeHtml(MATERIAL_DEFS[id]?.name || id)}</span><b>+${amount}</b></li>`).join("");
+  const lost = Object.entries(report.overflowed).sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const lostRows = lost.length
+    ? `<p class="facility-note">창고가 차서 ${lost.map(([id, n]) => `${escapeHtml(MATERIAL_DEFS[id]?.name || id)} ${n}`).join(" · ")}을 놓쳤다. 증축하면 더 담긴다.</p>`
+    : "";
+
+  return `
+    <div class="overlay offline-overlay" role="dialog" aria-modal="true" aria-label="복귀 보고">
+      <section class="sheet offline-report">
+        <header class="sheet-header"><div><p class="eyebrow">${report.hours}시간 동안</p><h2>돌아왔다</h2></div>
+        <button class="primary" data-action="dismiss-offline-report">확인</button></header>
+        ${rows ? `<ul class="offline-gain-list">${rows}</ul>` : '<p class="facility-note">쌓인 것이 없다. 일꾼을 고용하면 자리를 비운 동안에도 모은다.</p>'}
+        ${report.scrap > 0 ? `<p class="facility-note">원정 정산 고철 +${report.scrap} · 마탑 ${report.towerLevel}층이라 수급률 ${Math.round(report.expeditionRate * 100)}%` + `</p>` : ""}
+        ${lostRows}
+      </section>
+    </div>`;
+}
+
 function renownSection(state) {
   const renown = state.meta.renown || 0;
   const favor = state.meta.favor || {};
@@ -2552,6 +2601,7 @@ function render() {
       ${facilityOverlay(state)}
       ${defensePlanningOverlay(state)}
       ${rosterOverlay(state)}
+      ${offlineReportPanel(engine.offlineReport)}
       ${bagOverlay(state)}
       ${classOverlay(state)}
       ${worldMapOverlay(state)}
@@ -3402,6 +3452,15 @@ app.addEventListener("click", (event) => {
   if (action === "discard-equipment") engine.discardEquipment(button.dataset.equipmentId);
   if (action === "special-forge") {
     if (!engine.specialForgeEquipment(button.dataset.equipmentId)) showToast("재료가 부족하거나 이미 새긴 장비야.");
+  }
+  if (action === "dismiss-offline-report") {
+    // 한 번 보고 나면 지운다. 다시 띄우면 성가시다.
+    engine.offlineReport = null;
+    render(engine.snapshot());
+    return;
+  }
+  if (action === "upgrade-warehouse") {
+    if (!engine.upgradeWarehouse()) showToast("고철이 부족하거나 이미 최대 확장이야.");
   }
   if (action === "build-mage-tower") {
     if (!engine.buildMageTower()) showToast("고철이 부족하거나 이미 최고층이야.");
