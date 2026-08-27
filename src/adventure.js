@@ -1,4 +1,5 @@
 import { ORE_SMELTING_DEFS } from "./data.js";
+import { DISCOVERY_SITE_DEFS } from "./frontier.js";
 import { ARMOR_MAX_REDUCTION, ARMOR_SOFTCAP, MASTERY_BRANCH_DEFS, MASTERY_STEPS, MASTERY_TRAIT_SLOTS, MASTERY_MAX, masterySlots, masteryBranchUnlocked, masteryXpNeeded, ARMOR_SET_DEFS, armorReduction, combatPowerScore, companionBonuses, EQUIPMENT_DEFS, equippedUniqueEffects, LEGENDARY_CLEAR_REQUIREMENT, legendariesForRegion, PLAYER_BASE_CLASS_DEFS, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition } from "./classes.js";
 
 export const FIELD_SIZE = 41;
@@ -1403,7 +1404,7 @@ export const ENEMY_COMBATANTS = {
     patterns: ["tentacleLash", "inkSpray", "coilCrush"],
     phase2Patterns: ["tentacleCascade", "coreBurst", "callPack"],
     phaseMode: "replace", phase2Form: "risen",
-    byproducts: { tentacleRoot: 3, inkSac: 2 }
+    byproducts: { abyssEye: 2, voidIchor: 3 }
   },
   eastDragon: {
     name: "동양용", species: "dragon", variant: "동부 지역 보스", glyph: "龍",
@@ -1413,7 +1414,7 @@ export const ENEMY_COMBATANTS = {
     patterns: ["centipedeDash", "foxfire", "oniCleave"],
     phase2Patterns: ["dragonBreath", "ruinCharge", "spiritCleanse"],
     phaseMode: "replace", phase2Form: "ascended",
-    byproducts: { spiritCore: 3, dragonScale: 2 }
+    byproducts: { dragonPearl: 2, reverseScale: 3 }
   },
   westFallenKing: {
     name: "타락한 왕", species: "undead", variant: "서부 지역 보스", glyph: "K",
@@ -1422,7 +1423,7 @@ export const ENEMY_COMBATANTS = {
     patterns: ["wraithCharge", "curseWave", "relicBurst"],
     phase2Patterns: ["cursedProcession", "ruinCharge", "coreBurst"],
     phaseMode: "replace", phase2Form: "cursed",
-    byproducts: { fallenRelic: 2, cursedPlate: 3 }
+    byproducts: { fallenCrown: 2, regicideSeal: 3 }
   },
   centralColossus: {
     name: "거신병", species: "construct", variant: "중부 지역 보스", glyph: "G",
@@ -1431,7 +1432,7 @@ export const ENEMY_COMBATANTS = {
     patterns: ["groundSlam", "chargeRush", "callPack"],
     phase2Patterns: ["coreBurst", "quakeRoar", "ruinCharge"],
     phaseMode: "replace", phase2Form: "coreExposed",
-    byproducts: { glassSand: 4, sunShard: 2 }
+    byproducts: { colossusReactor: 2, ancientCircuit: 3 }
   },
 
   // 북부 지역 보스(docs/BOSS_DESIGN.md §4 타이탄).
@@ -1449,7 +1450,7 @@ export const ENEMY_COMBATANTS = {
     phase2Patterns: ["coreBurst", "stoneRow", "ruinCharge"],
     phaseMode: "replace",
     phase2Form: "coreExposed",
-    byproducts: { frostIron: 3, bearHide: 2 }
+    byproducts: { titanCore: 2, titanMarrow: 3 }
   },
   northBear: { fieldTier: 2, name: "빙맥 큰곰", species: "bear", variant: "빙맥 우두머리", glyph: "B", maxHp: 96, damage: 11, range: 9, speed: 4, attackMs: 1650, armor: 0.12, color: "#79aec7", boss: true,
     // 북부 필드 보스(docs/EQUIPMENT_DESIGN.md §9 "설원 거대 곰").
@@ -1548,6 +1549,17 @@ export const MATERIAL_RARITY = (() => {
     for (const id of Object.keys(outputs)) rarity[id] = "fine";
   }
   for (const id of FANTASY_RAW_MATERIALS) rarity[id] = "fine";
+
+  // 특수 발견지(위험 12 이상)에서 나오는 것은 최소 고급이다.
+  // 같은 심층광산에서 나오는데 산철은 전설, 설철은 노멀이던 상태를 막는다 —
+  // 위험을 무릅쓰고 지은 시설의 산출물이 목재와 같은 등급일 수는 없다.
+  // 바닥값이라 보스 부산물이나 2차 가공품은 그대로 위에 남는다.
+  for (const site of Object.values(DISCOVERY_SITE_DEFS)) {
+    if ((site.risk || 0) < 12) continue;
+    for (const id of [site.materialId, ...Object.values(site.materialByRegion || {})]) {
+      if (!rarity[id]) rarity[id] = "fine";
+    }
+  }
   for (const id of SECOND_STAGE_MATERIALS) rarity[id] = "rare";
   // 보스 부산물이 가장 세다 — 가공 여부와 무관하게 덮어쓴다.
   // 신화가 전설을 이긴다: "신화 보스가 드랍하는 부산물은 모두 신화"가 규칙이라,

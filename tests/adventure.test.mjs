@@ -45,6 +45,7 @@ import {
   REGION_ARMOR_SET
 , SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES , MONSTER_SPECIES_PENDING_ART , spawnBossZone , MATERIAL_RARITY_ORDER, MATERIAL_RARITY_LABELS, materialRarity } from "../src/adventure.js";
 import { MATERIAL_DEFS, ORE_SMELTING_DEFS } from "../src/data.js";
+import { DISCOVERY_SITE_DEFS } from "../src/frontier.js";
 import { EQUIPMENT_GRADES, combatPowerBreakdown, combatPowerScore, masterySlots, MASTERY_TRAIT_SLOTS, ENHANCE_MAX, playerKitDefinition } from "../src/classes.js";
 import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, LEGENDARY_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, legendariesForRegion, legendaryCollection, playerCombatStats } from "../src/classes.js";
 import { GameEngine } from "../src/game.js";
@@ -3048,5 +3049,51 @@ test("곰 우두머리 다섯은 모두 필드 보스다", () => {
   assert.equal(regionBosses.length, 5, "지역 보스는 지역당 하나씩 다섯이다");
   for (const [id, def] of regionBosses) {
     assert.ok(def.maxHp >= 200, `${id}는 지역 보스답게 단단해야 한다 (${def.maxHp})`);
+  }
+});
+
+test("지역 보스는 자기만의 부산물을 떨구고, 필드 보스와 겹치지 않는다", () => {
+  // 전에는 설산의 타이탄이 곰 가죽을 떨궜다. 신화 등급이 이름만 신화고
+  // 실은 곰을 잡아도 나오는 재료였다는 뜻이다.
+  const fieldDrops = new Set();
+  const regionDrops = new Set();
+  for (const enemy of Object.values(ENEMY_COMBATANTS)) {
+    if (!enemy.byproducts) continue;
+    const target = enemy.fieldTier ? fieldDrops : regionDrops;
+    for (const id of Object.keys(enemy.byproducts)) target.add(id);
+  }
+
+  const overlap = [...regionDrops].filter((id) => fieldDrops.has(id));
+  assert.deepEqual(overlap, [], `지역 보스와 필드 보스가 재료를 공유한다: ${overlap.join(", ")}`);
+
+  // 다섯 보스가 각자 둘씩, 서로도 겹치지 않아야 "이 보스를 잡을 이유"가 생긴다.
+  const regionBosses = Object.entries(ENEMY_COMBATANTS)
+    .filter(([, def]) => def.boss && !def.fieldTier && def.byproducts);
+  assert.equal(regionBosses.length, 5);
+  const seen = new Map();
+  for (const [id, def] of regionBosses) {
+    const ids = Object.keys(def.byproducts);
+    assert.equal(ids.length, 2, `${id}는 부산물이 둘이어야 한다`);
+    for (const material of ids) {
+      assert.ok(!seen.has(material), `${material}을 ${seen.get(material)}와 ${id}가 함께 떨군다`);
+      seen.set(material, id);
+      assert.equal(materialRarity(material), "mythic", `${material}은 신화여야 한다`);
+      assert.ok(MATERIAL_DEFS[material], `${material} 정의가 없다`);
+    }
+  }
+  assert.equal(seen.size, 10, "신화 재료는 정확히 10종이다");
+});
+
+test("특수 발견지 산출물은 최소 고급이다", () => {
+  // 같은 심층광산(위험 18)에서 나오는데 산철은 전설, 설철은 노멀이던 상태를 막는다.
+  // 위험을 무릅쓰고 지은 시설의 산출물이 목재와 같은 등급일 수는 없다.
+  const order = MATERIAL_RARITY_ORDER;
+  for (const site of Object.values(DISCOVERY_SITE_DEFS)) {
+    if ((site.risk || 0) < 12) continue;
+    for (const id of [site.materialId, ...Object.values(site.materialByRegion || {})]) {
+      if (!MATERIAL_DEFS[id]) continue;
+      assert.ok(order.indexOf(materialRarity(id)) >= order.indexOf("fine"),
+        `${site.id}의 ${id}가 노멀이다 (위험 ${site.risk})`);
+    }
   }
 });

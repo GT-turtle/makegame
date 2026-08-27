@@ -361,6 +361,29 @@ export const MATERIAL_DEFS = {
   emberroot: { id: "emberroot", name: "불꽃뿌리", glyph: "✿", category: "special", description: "중부 사막 지하수맥을 따라 자라는 약재. 만지면 따끔하다" },
   emberrootExtract: { id: "emberrootExtract", name: "불꽃뿌리 정제액", glyph: "❉", category: "special", description: "불꽃뿌리를 졸여 뽑은 액. 한 방울로 몸이 데워진다" },
 
+  // ── 지역 보스 전용 부산물 (신화) ────────────────────────────────────────
+  //
+  // 지역 보스 다섯이 **자기만의 재료**를 떨군다. 전에는 필드 보스와 재료를
+  // 공유해서 "설산의 타이탄이 곰 가죽을 떨구는" 상태였다 — 신화 등급이
+  // 이름만 신화고 실은 곰을 잡아도 나오는 것이었다.
+  //
+  // 던전 수익(rewardMaterial)과는 다른 축이다. 그쪽은 "던전을 열어두면
+  // 들어오는 것"이고, 이쪽은 "보스를 직접 잡아야 나오는 것"이다.
+  titanCore: { id: "titanCore", name: "타이탄 심핵", glyph: "◉", category: "special", description: "자세가 무너진 타이탄의 가슴에서 드러나는 핵. 아직 미지근하다" },
+  titanMarrow: { id: "titanMarrow", name: "거인 골수", glyph: "◍", category: "special", description: "산을 지탱하던 뼈의 속. 굳으면 강철보다 질기다" },
+
+  abyssEye: { id: "abyssEye", name: "심연안", glyph: "◎", category: "special", description: "감지 못하는 눈. 들여다보면 이쪽이 먼저 읽힌다" },
+  voidIchor: { id: "voidIchor", name: "공허 체액", glyph: "◐", category: "special", description: "빛을 삼키는 검은 진액. 그릇을 가리지 않고 스며든다" },
+
+  dragonPearl: { id: "dragonPearl", name: "여의주", glyph: "◈", category: "special", description: "용이 목에 품고 있던 구슬. 쥐면 숨이 데워진다" },
+  reverseScale: { id: "reverseScale", name: "역린", glyph: "◭", category: "special", description: "턱 아래 거꾸로 난 비늘 한 장. 이것만은 건드리면 안 됐다" },
+
+  fallenCrown: { id: "fallenCrown", name: "폐왕의 관", glyph: "♛", category: "special", description: "썩어도 벗겨지지 않던 관. 주인이 죽고서야 떨어졌다" },
+  regicideSeal: { id: "regicideSeal", name: "시해의 인장", glyph: "⚿", category: "special", description: "왕을 죽인 자에게만 열리는 봉인. 다음 왕을 부른다" },
+
+  colossusReactor: { id: "colossusReactor", name: "거신 동력로", glyph: "⚙", category: "special", description: "천 년을 돌던 노심. 멈춘 지금도 손이 델 만큼 뜨겁다" },
+  ancientCircuit: { id: "ancientCircuit", name: "고대 회로", glyph: "▤", category: "special", description: "누구도 다시 못 그리는 배선. 태우면 그걸로 끝이다" },
+
   // 필드 보스 부산물(docs/EQUIPMENT_DESIGN.md §9). 전설 장비 제작의 재료가 된다.
   // 보스마다 2종씩 나오며, 여러 보스의 부산물을 섞는 고정 조합표를 쓴다(§5).
   // 지금은 북부 설원 거대 곰 것만 있고 나머지 보스는 순차적으로 추가한다.

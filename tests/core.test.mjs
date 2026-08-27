@@ -1559,11 +1559,12 @@ test("오프라인 정산은 느리게 돌고, 귀한 재료일수록 덜 나오
 
 test("보스 부산물은 자면서 쌓이지 않는다", () => {
   // 이게 뚫리면 파밍이 통째로 무의미해진다. 지역 보스 재료는 0이어야 한다.
-  assert.equal(materialRarity("frostIron"), "mythic");
+  assert.equal(materialRarity("frostIron"), "fine", "설철은 심층광산 산출물이라 최소 고급이다");
   assert.equal(OFFLINE_YIELD_BY_RARITY.mythic, 0, "신화 재료는 오프라인에 안 나온다");
 
-  // 고룡(지역 보스)이 떨구므로 신화다 — 신화가 전설을 이긴다.
-  assert.equal(materialRarity("dragonScale"), "mythic");
+  // 지역 보스는 전용 재료를 떨군다 — 필드 보스와 겹치지 않는다.
+  assert.equal(materialRarity("titanCore"), "mythic", "타이탄 전용 재료는 신화다");
+  assert.equal(materialRarity("dragonScale"), "legendary", "고룡 비늘은 필드 보스 몫으로 남았다");
   assert.equal(materialRarity("spiderFang"), "legendary", "필드 보스만 떨구는 것은 전설이다");
   assert.equal(OFFLINE_YIELD_BY_RARITY.legendary, 0, "전설 재료는 자면서 안 나온다");
   assert.equal(OFFLINE_YIELD_BY_RARITY.rare, 0, "희귀(2차 가공)도 직접 해야 한다");
