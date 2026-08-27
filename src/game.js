@@ -1,5 +1,5 @@
 import { AFFIX_DEFS, AREA_DEFS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TRAIT_DEFS, WORKER_DEFS } from "./data.js";
-import { MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, ENHANCE_MAX, enhanceCost, enhanceOdds, equipmentGradeDefinition, findEquipmentInstance, releaseEquipmentEverywhere, repairCost, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem , SPECIAL_RUNE_DROP_RATE, specialRuneUnlocked , canSpecialForge, rollSpecialForgeOption } from "./classes.js";
+import { MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, EQUIPMENT_DEFS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, EQUIPMENT_SLOT_LABELS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, RUNE_DEFS, createEquipmentInstance, ENHANCE_MAX, enhanceCost, enhanceOdds, equipmentGradeDefinition, findEquipmentInstance, releaseEquipmentEverywhere, repairCost, normalizedPlayerLoadout, playerKitDefinition, rollCraftGrade, rollEquipmentOptions, slotsAcceptingItem , SPECIAL_RUNE_DROP_RATE, specialRuneUnlocked , canSpecialForge, rollSpecialForgeOption, MYTHIC_GEAR_DEFS, MYTHIC_EQUIP_LIMIT, equippedMythicCount } from "./classes.js";
 import {
   activeWorkerCount,
   addMaterial,
@@ -2814,6 +2814,11 @@ export class GameEngine {
       const kit = playerKitDefinition(commander.combatKitId);
       if (definition.baseClassId !== kit.baseClassId) return false;
     }
+
+    // 신화는 한 번에 하나만. 세트가 아니라 "내 한 자리를 무엇에 줄 것인가"라는
+    // 선택이라, 여러 개를 겹쳐 끼면 그 선택이 사라진다.
+    if (MYTHIC_GEAR_DEFS[definition.id]
+      && equippedMythicCount(commander, target) >= MYTHIC_EQUIP_LIMIT) return false;
 
     // 같은 물건을 두 곳에서 동시에 낄 수 없다 — 지휘관의 다른 칸이든 동료가 끼고
     // 있든 전부 떼고 여기 붙인다(보관함을 공유하기 때문).

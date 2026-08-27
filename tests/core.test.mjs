@@ -33,7 +33,7 @@ import { ITEM_DEFS, MATERIAL_DEFS , ORE_SMELTING_DEFS } from "../src/data.js";
 import { ENEMY_COMBATANTS, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport , DISCOVERY_SITE_DEFS } from "../src/frontier.js";
 import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
-import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, mythicSetBonus, ARMOR_SET_DEFS, armorSetBonus } from "../src/classes.js";
+import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, MYTHIC_EQUIP_LIMIT, ARMOR_SET_DEFS, armorSetBonus } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
 class MemoryStorage {
@@ -1738,21 +1738,36 @@ test("환상종 재료는 발견지에서 나와 가공까지 이어진다", () 
     "환상 광맥이 심층광산보다 위험해야 한다");
 });
 
-test("신화 장비는 아홉 칸을 채우고 부위마다 전설의 상위 호환이다", () => {
+test("신화는 무기와 장신구뿐이고, 한 번에 하나만 낀다", () => {
   const pieces = Object.values(MYTHIC_GEAR_DEFS);
-  assert.equal(pieces.length, 14, "무기 6 + 방어구 5 + 장신구 3");
+  assert.equal(pieces.length, 9, "무기 6 + 반지 2 + 목걸이 1");
 
-  // 아홉 칸이 다 채워져야 "세트"다. 전설은 몸통·무기·장신구뿐이라
-  // 투구·장갑·신발·망토는 제작품이 최종이었다.
+  // 방어구는 2/3/5 세트가 성장축이다. 거기에 신화가 끼면 세트를 포기하게 만들어
+  // 방금 크게 키운 세트가 죽는다.
   const slots = new Set(pieces.map((p) => p.slot));
-  assert.deepEqual([...slots].sort(),
-    ["boots", "chest", "cloak", "gloves", "helmet", "necklace", "ring", "weapon"].sort());
+  assert.deepEqual([...slots].sort(), ["necklace", "ring", "weapon"]);
+  for (const armorSlot of ["helmet", "chest", "gloves", "boots", "cloak"]) {
+    assert.ok(!pieces.some((p) => p.slot === armorSlot), `${armorSlot}에 신화가 있으면 안 된다`);
+  }
 
-  // 무기는 여섯 직업에 하나씩. 한 직업이 둘을 갖지 않는다.
-  const weapons = pieces.filter((p) => p.slot === "weapon");
-  assert.equal(weapons.length, 6);
-  assert.equal(new Set(weapons.map((w) => w.baseClassId)).size, 6);
+  assert.equal(MYTHIC_EQUIP_LIMIT, 1);
+  const engine = new GameEngine(new MemoryStorage());
+  const commander = engine.state.adventure.commander;
+  commander.equipmentOwned = [
+    { uid: "w", defId: "crusaderMythicSword", grade: "mythic", options: [], enhance: 0, broken: false },
+    { uid: "r", defId: "mythicRingCore", grade: "mythic", options: [], enhance: 0, broken: false },
+    { uid: "L", defId: "solomonSeal", grade: "legendary", options: [], enhance: 0, broken: false }
+  ];
+  assert.equal(engine.equipEquipment("w"), true, "첫 신화는 낀다");
+  assert.equal(engine.equipEquipment("r"), false, "두 번째 신화는 막힌다");
+  assert.equal(engine.equipEquipment("L"), true, "전설은 몇 개든 낀다");
+  assert.equal(engine.equipEquipment(null, "weapon"), true);
+  assert.equal(engine.equipEquipment("r"), true, "자리를 비우면 다른 신화를 낄 수 있다");
+});
 
+test("신화 한 점은 그 자리 최고 전설의 1.3~1.75배다", () => {
+  // 한 자리를 통째로 내주는 대가다. 1.2배면 굳이 낄 이유가 없고,
+  // 2배가 넘으면 선택이 아니라 정답이 된다.
   const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), "crusader"));
   const score = (slot, defId) => {
     const commander = createDefaultCommander();
@@ -1765,47 +1780,21 @@ test("신화 장비는 아홉 칸을 채우고 부위마다 전설의 상위 호
     return combatPowerScore(playerCombatStats(commander, "crusader")) - bare;
   };
 
-  // 각 부위에서 기존 최고보다 위이되, 크게 벌어지면 전설을 낄 이유가 사라진다.
-  for (const piece of pieces) {
+  for (const piece of Object.values(MYTHIC_GEAR_DEFS)) {
     if (piece.baseClassId && piece.baseClassId !== "crusader") continue;
     const rivals = Object.values(EQUIPMENT_DEFS).filter((def) =>
       def.slot === piece.slot && !MYTHIC_GEAR_DEFS[def.id]
       && (!def.baseClassId || def.baseClassId === "crusader"));
     const best = Math.max(...rivals.map((def) => score(piece.slot, def.id)));
-    const mine = score(piece.slot, piece.id);
-    assert.ok(mine > best, `${piece.name}이 기존 최고(${best})보다 못하다 (${mine})`);
-    assert.ok(mine <= best * 1.4,
-      `${piece.name}이 기존 최고보다 40% 넘게 세다 (${best} -> ${mine})`);
+    const ratio = score(piece.slot, piece.id) / best;
+    assert.ok(ratio >= 1.3 && ratio <= 1.75,
+      `${piece.name}의 배율이 범위를 벗어난다 (${ratio.toFixed(2)}배)`);
   }
-});
 
-test("신화 세트는 조각을 모을수록 단계로 붙는다", () => {
-  // 아홉 개를 다 모아야 열리면 여덟 개까지 아무 보상이 없어 도중에 포기한다.
-  assert.deepEqual(mythicSetBonus(2), {}, "두 조각으론 아직 아무것도 없다");
-  const three = mythicSetBonus(3);
-  const six = mythicSetBonus(6);
-  const nine = mythicSetBonus(9);
-  assert.ok(Object.keys(three).length > 0, "세 조각에서 첫 단계가 열린다");
-  assert.ok(Object.keys(six).length > Object.keys(three).length, "여섯 조각에서 늘어난다");
-  assert.ok(nine.armorFlat > six.armorFlat, "아홉 조각이 가장 크다");
-
-  // 실제 전투 능력치에 반영되는지 — 값만 계산하고 안 붙으면 의미가 없다.
-  const build = (count) => {
-    const ids = ["crusaderMythicSword", "mythicHelm", "mythicChest", "mythicGauntlets",
-      "mythicBoots", "mythicCloak", "mythicRingCore", "mythicRingSeal", "mythicNecklace"];
-    const commander = createDefaultCommander();
-    commander.combatKitId = "crusader";
-    commander.equipmentOwned = [];
-    ids.slice(0, count).forEach((defId, index) => {
-      const def = EQUIPMENT_DEFS[defId];
-      const uid = `m${index}`;
-      commander.equipmentOwned.push({ uid, defId, grade: "mythic", options: [], enhance: 0, broken: false });
-      commander.equipped[def.slot === "ring" ? (commander.equipped.ring1 ? "ring2" : "ring1") : def.slot] = uid;
-    });
-    return equippedBonuses(commander, "crusader");
-  };
-  assert.ok(build(3).armorFlat > build(2).armorFlat + 1,
-    "세 번째 조각에서 세트 보너스가 실제 스탯에 붙는다");
+  // 세트가 없으니 고유효과가 값어치를 채운다. 하나도 빠지면 안 된다.
+  for (const piece of Object.values(MYTHIC_GEAR_DEFS)) {
+    assert.ok(piece.uniqueEffect?.type, `${piece.name}에 고유효과가 없다`);
+  }
 });
 
 test("신화 장비는 다섯 지역 보스를 모두 잡아야 완성된다", () => {
