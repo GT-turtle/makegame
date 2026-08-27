@@ -1395,18 +1395,32 @@ function rescueSpecial(engine, regionId) {
   return engine.rescueSpecialCompanion(regionId);
 }
 
-test("특수 동료는 그 지역 동료를 다 모은 뒤에야 구조된다", () => {
+test("특수 동료는 다섯 중 하나만 구할 수 있고, 나머지는 시체로 남는다", () => {
+  // 예전 규칙("그 지역 동료 셋을 다 모으면 조용히 합류")을 걷어냈다.
+  // 이제 던전을 클리어하면 구조되고, 한 명을 구하면 나머지 넷은 늦는다.
   const engine = new GameEngine(new MemoryStorage());
   const adventure = engine.state.adventure;
 
-  // 아직 북부 동료를 다 모으지 않았다 — 나타나지 않는다.
-  assert.equal(engine.rescueSpecialCompanion("north"), null);
-  assert.ok(!adventure.roster.includes("tower_architect"));
-
-  assert.equal(rescueSpecial(engine, "north"), "tower_architect");
+  // 동료를 안 모아도 구조된다 — 직접 들어가서 꺼내오는 것이므로.
+  assert.equal(engine.rescueSpecialCompanion("north"), "tower_architect");
   assert.ok(adventure.roster.includes("tower_architect"));
-  // 두 번 구조되지 않는다.
+
+  // 같은 곳에서 두 번은 안 된다.
   assert.equal(engine.rescueSpecialCompanion("north"), null);
+
+  // 다른 지역은 늦었다. 명부에 안 오르고 시체만 남는다.
+  assert.equal(engine.rescueSpecialCompanion("east"), null);
+  assert.ok(!adventure.roster.includes("hunted_smith"), "둘째는 영입되지 않는다");
+  assert.ok(engine.state.meta.foundCorpses.includes("east"), "시체가 기록된다");
+
+  // 로그가 누구인지 밝히지 않는다 — 놓친 동료가 있다고 알려주지 않는 원칙.
+  const corpseLog = engine.state.log.find((entry) => entry.text.includes("시체 한 구"));
+  assert.ok(corpseLog, "시체 로그가 뜬다");
+  assert.ok(!corpseLog.text.includes("대장장이"), "이름을 밝히면 안 된다");
+
+  // 같은 곳을 다시 가도 시체가 두 번 쌓이지 않는다.
+  assert.equal(engine.rescueSpecialCompanion("east"), null);
+  assert.equal(engine.state.meta.foundCorpses.filter((id) => id === "east").length, 1);
 });
 
 test("주술 각인 룬은 주술사를 구조해야 떨어지고, 살 수는 없다", () => {
@@ -1610,9 +1624,13 @@ test("특수 시설 UI가 부르는 엔진 동작 네 가지가 모두 실제로
     }
     return engine.rescueSpecialCompanion(regionId);
   };
-  rescue("north");
-  rescue("east");
-  rescue("central");
+  // 이 테스트가 보는 건 시설 넷이 실제로 도는지이지 구조 규칙이 아니다.
+  // 상호배타(다섯 중 하나)를 의도적으로 우회해 명부에 직접 올린다 —
+  // 실제 플레이에서는 이 셋을 동시에 가질 수 없다.
+  for (const unitId of ["tower_architect", "hunted_smith", "relic_scholar"]) {
+    adventure.roster.push(unitId);
+    adventure.unitProgress[unitId] = { mastery: 0, xp: 0, branchId: null, traitIds: [null, null] };
+  }
 
   // 마탑: 짓고 → 장전하고 → 원정에 실린다.
   assert.equal(engine.buildMageTower(), true);

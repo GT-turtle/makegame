@@ -58,6 +58,7 @@ import {
   REGION_TONIC_DEFS,
   REGION_CORE_ABSORPTION,
   TONIC_CARRY_LIMIT,
+  specialCompanionTaken,
   memorySummonable,
   regionEntryCheck
 , GOLEM_UNIT_DEFS, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , SPECIAL_UNIT_DEFS, materialRarity } from "./adventure.js";
@@ -2403,15 +2404,28 @@ export class GameEngine {
   // 도감이나 남은 인원 수를 보여주지도 않는다(COMPANION_EVENT_DESIGN.md §5).
   //
   // 구조 자체가 다섯 시스템(마탑·특수룬·특수단조·골렘·흑마법)의 트리거다.
+  // 던전을 클리어하면 그 지역 특수 동료를 구조한다.
+  //
+  // 예전에는 "그 지역 일반 동료 셋을 다 모으면 조용히 명부에 들어온다"였다.
+  // 발견했다는 맛이 없어서 걷어냈다 — 이제 직접 들어가서 꺼내와야 한다.
+  //
+  // 다섯 중 **하나만** 구할 수 있다. 이미 다른 지역에서 구했다면 여기는 늦었고,
+  // 시체 한 구가 있을 뿐이다.
   rescueSpecialCompanion(regionId, seed = 0) {
     const adventure = this.state.adventure;
-    const region = WORLD_REGION_DEFS[regionId];
-    // 그 지역 일반 동료를 다 모으기 전에는 나타나지 않는다.
-    if (!region.recruits.every((unitId) => adventure.roster.includes(unitId))) return null;
+    const special = Object.values(SPECIAL_UNIT_DEFS).find((unit) => unit.regionId === regionId);
+    if (!special || adventure.roster.includes(special.id)) return null;
 
-    const special = Object.values(SPECIAL_UNIT_DEFS)
-      .find((unit) => unit.regionId === regionId && !adventure.roster.includes(unit.id));
-    if (!special) return null;
+    if (specialCompanionTaken(adventure.roster)) {
+      const meta = this.state.meta;
+      meta.foundCorpses ||= [];
+      if (!meta.foundCorpses.includes(regionId)) {
+        meta.foundCorpses.push(regionId);
+        // 누구인지, 무엇을 할 수 있었는지 말하지 않는다.
+        this.addLog("안쪽에 시체 한 구가 있다. 오래된 것은 아니다.", "bad");
+      }
+      return null;
+    }
 
     adventure.roster.push(special.id);
     adventure.unitProgress[special.id] = newUnitProgress();

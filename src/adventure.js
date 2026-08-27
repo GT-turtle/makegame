@@ -1197,6 +1197,16 @@ export function golemCount(roster = []) {
   return roster.filter((id) => id.startsWith(GOLEM_UNIT_ID)).length;
 }
 
+// 특수 동료는 다섯 중 **하나만** 얻는다. 먼저 닿은 쪽을 구하면 나머지 넷은
+// 시체로 발견된다(COMPANION_EVENT_DESIGN.md §6 상호배타 원칙).
+//
+// 게임은 "놓친 동료가 있다"고 알려주지 않는다 — 이름도 직업도 밝히지 않고
+// 그냥 시체 한 구가 있을 뿐이다. 다른 회차에 다른 순서로 가면 그 사람이
+// 살아 있는 모습으로 나온다. 그 차이를 게임이 설명하지 않는 게 핵심이다.
+export function specialCompanionTaken(roster = []) {
+  return Object.values(SPECIAL_UNIT_DEFS).some((unit) => roster.includes(unit.id));
+}
+
 export const SPECIAL_UNIT_DEFS = {
   tower_architect: {
     id: "tower_architect", name: "마탑 설계자", regionId: "north", role: "유틸", glyph: "▲", color: "#8fb6e0",

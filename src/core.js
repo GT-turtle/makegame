@@ -250,6 +250,8 @@ export function createInitialState() {
       // 지역 대응 소모품 보유량과, 흡수해 둔 지역 핵.
       regionTonics: {},
       absorbedCores: [],
+      // 늦어서 못 구한 특수 동료의 자리. 시체를 본 지역만 들어간다.
+      foundCorpses: [],
       blueprints: ["frontierMantle"],
       // 선언된 재료는 **전부** 0으로 깔고 시작 보유분만 덮어쓴다.
       // 예전엔 손으로 적은 43개만 있어서 보스 부산물 30종이 통째로 빠져 있었다
@@ -1618,6 +1620,7 @@ export function migrateState(rawState) {
     // 지역 패널티를 장비 밖에서도 막을 수 있게 됐다 — 대응 소모품과 핵 흡수.
     state.meta.regionTonics ||= {};
     state.meta.absorbedCores ||= [];
+    state.meta.foundCorpses ||= [];
     state.log.unshift({ text: "지역 약재로 대응 약을 조제하고, 지역 핵을 몸에 새길 수 있게 됐다.", tone: "item" });
   }
   if (previousVersion < 25) {
