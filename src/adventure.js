@@ -1136,9 +1136,17 @@ export const SECONDARY_DEFS = {
   mana: { id: "mana", name: "마나 순환", glyph: "✦", description: "공격력이 크게 증가하지만 최대 체력이 감소한다.", damageBonus: 0.18, hpBonus: -0.08 }
 };
 
+// mapArea — 대륙 그림에서 그 지역이 차지하는 구획(%)이다.
+//
+// 노드 카드만 누르게 하면 화면에서 눌리는 데가 손톱만 해서, 지도를 보고
+// "저 눈 덮인 데"를 눌렀는데 아무 일도 안 일어난다. 그림 자체를 다섯으로
+// 갈라 어디를 눌러도 그 땅으로 들어가게 한다.
+//
+// 빈틈 없이 맞물린다(0~30 / 30~78 / 78~100). 남는 자리가 있으면 거기를
+// 누른 사람만 아무 반응을 못 받는다.
 export const WORLD_REGION_DEFS = {
   north: {
-    id: "north", direction: "북부", name: "북부 설산", subtitle: "북유럽과 루스풍의 눈 덮인 변경",
+    id: "north", direction: "북부", name: "북부 설산", mapArea: { x1: 0, y1: 0, x2: 100, y2: 30 }, subtitle: "북유럽과 루스풍의 눈 덮인 변경",
     description: "방패벽과 중무기, 혹한 생존술이 발달한 산악권. 눈보라 속 폐광의 빙맥 거상을 추적한다.",
     glyph: "❄", accent: "#79adc5", danger: "위험 2", pressure: "혹한", mapX: 51, mapY: 16,
     hazard: { name: "혹한", glyph: "❄", description: "체력을 깎고 마력 순환을 굳혀 마나를 빼앗는다.", techniqueId: "survival",
@@ -1150,7 +1158,7 @@ export const WORLD_REGION_DEFS = {
     recruits: ["snow_guard", "winter_berserker", "snow_shaman"], techniqueId: "survival"
   },
   south: {
-    id: "south", direction: "남부", name: "남부 우림", subtitle: "동남아와 중남미풍의 거대 밀림",
+    id: "south", direction: "남부", name: "남부 우림", mapArea: { x1: 0, y1: 78, x2: 100, y2: 100 }, subtitle: "동남아와 중남미풍의 거대 밀림",
     description: "독과 약초, 매복과 소환술이 함께 발달한 습윤 지대. 수관 아래 뿌리 군락이 개척로를 삼킨다.",
     glyph: "♣", accent: "#66a978", danger: "위험 2", pressure: "독성", mapX: 50, mapY: 84,
     hazard: { name: "독성 포자", glyph: "♢", description: "교전이 길어질수록 중독 피해가 쌓인다.", techniqueId: "poison" },
@@ -1159,7 +1167,7 @@ export const WORLD_REGION_DEFS = {
     recruits: ["venom_tracker", "vine_keeper", "sap_healer"], techniqueId: "poison"
   },
   east: {
-    id: "east", direction: "동부", name: "동부 산악권", subtitle: "단조와 무예, 산성의 문화권",
+    id: "east", direction: "동부", name: "동부 산악권", mapArea: { x1: 67, y1: 30, x2: 100, y2: 78 }, subtitle: "단조와 무예, 산성의 문화권",
     description: "공방 도시와 문파, 산성국과 도국이 이어진다. 무예서와 단조 설계를 둘러싼 분쟁이 끊이지 않는다.",
     glyph: "山", accent: "#c18469", danger: "위험 2", pressure: "험로", mapX: 81, mapY: 51,
     // 동부는 지역 환경 디버프를 두지 않는다(REGION_PROGRESSION_HAZARDS.md).
@@ -1170,7 +1178,7 @@ export const WORLD_REGION_DEFS = {
     recruits: ["formation_officer", "duel_swordsman", "meridian_fighter", "blade_dancer"], techniqueId: "forging"
   },
   west: {
-    id: "west", direction: "서부", name: "서부 제후국", subtitle: "기사와 마나, 정령의 봉건령",
+    id: "west", direction: "서부", name: "서부 제후국", mapArea: { x1: 0, y1: 30, x2: 33, y2: 78 }, subtitle: "기사와 마나, 정령의 봉건령",
     description: "석성 사이에 오래된 계약과 마력 유적이 남아 있다. 서약은 정의가 아니라 힘을 빌리는 방식이다.",
     glyph: "♜", accent: "#c6a66b", danger: "위험 2", pressure: "마력 이상", mapX: 18, mapY: 51,
     // 서부는 저주가 동료에게 누적된다(REGION_PROGRESSION_HAZARDS.md 서부).
@@ -1182,7 +1190,7 @@ export const WORLD_REGION_DEFS = {
     recruits: ["oath_knight", "mana_weaver", "spirit_ranger"], techniqueId: "oath"
   },
   central: {
-    id: "central", direction: "중부", name: "중부 사막", subtitle: "대상단과 유목민이 오가는 교역로",
+    id: "central", direction: "중부", name: "중부 사막", mapArea: { x1: 33, y1: 30, x2: 67, y2: 78 }, subtitle: "대상단과 유목민이 오가는 교역로",
     description: "오아시스와 유리 협곡이 이어지는 대륙의 중심. 물과 보급을 지키는 자가 길을 지배한다.",
     glyph: "☀", accent: "#c99150", danger: "위험 1", pressure: "작열", mapX: 51, mapY: 68,
     hazard: { name: "작열", glyph: "☀", description: "열기와 갈증이 장기 교전을 불리하게 만든다.", techniqueId: "mobility" },

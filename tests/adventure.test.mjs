@@ -2240,6 +2240,40 @@ test("대상단 길잡이는 편성했을 때만 지역 대응을 올린다", ()
   assert.equal(companionHazardMitigation(["snow_guard"], {}), 0, "다른 동료는 안 준다");
 });
 
+test("대륙 지도 구획이 빈틈 없이 맞물린다", () => {
+  // 그림을 다섯으로 갈라 어디를 눌러도 어느 한 지역으로 들어가게 한다.
+  // 남는 자리가 있으면 거기를 누른 사람만 아무 반응을 못 받는다.
+  const areas = Object.values(WORLD_REGION_DEFS).map((region) => {
+    assert.ok(region.mapArea, `${region.name}에 mapArea가 없다`);
+    return { id: region.id, ...region.mapArea };
+  });
+
+  for (const a of areas) {
+    assert.ok(a.x2 > a.x1 && a.y2 > a.y1, `${a.id} 구획이 뒤집혔다`);
+    assert.ok(a.x1 >= 0 && a.y1 >= 0 && a.x2 <= 100 && a.y2 <= 100, `${a.id}가 지도 밖으로 나갔다`);
+  }
+
+  // 격자로 훑어 빈 곳과 겹친 곳을 찾는다.
+  const holes = [];
+  const overlaps = [];
+  for (let x = 1; x < 100; x += 2) {
+    for (let y = 1; y < 100; y += 2) {
+      const hit = areas.filter((a) => x >= a.x1 && x < a.x2 && y >= a.y1 && y < a.y2);
+      if (!hit.length) holes.push(`${x},${y}`);
+      if (hit.length > 1) overlaps.push(`${x},${y}:${hit.map((h) => h.id).join("+")}`);
+    }
+  }
+  assert.equal(holes.length, 0, `빈 구획 ${holes.length}곳: ${holes.slice(0, 3).join(" ")}`);
+  assert.equal(overlaps.length, 0, `겹친 구획 ${overlaps.length}곳: ${overlaps.slice(0, 3).join(" ")}`);
+
+  // 각 지역의 노드 카드가 자기 구획 안에 있어야 그림과 라벨이 따로 놀지 않는다.
+  for (const region of Object.values(WORLD_REGION_DEFS)) {
+    const a = region.mapArea;
+    assert.ok(region.mapX >= a.x1 && region.mapX <= a.x2 && region.mapY >= a.y1 && region.mapY <= a.y2,
+      `${region.name} 카드(${region.mapX},${region.mapY})가 제 구획 밖에 있다`);
+  }
+});
+
 test("지역 대응 소모품이 실제로 대응 수치를 올린다", () => {
   // 반지가 유일한 길이면 장신구 세 칸 중 하나가 늘 묶인다. 소모품은 칸을 안 먹는
   // 대신 매번 다시 만들어야 하는 축이다.

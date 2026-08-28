@@ -832,6 +832,18 @@ function squadPreview(state, compact = false) {
   `;
 }
 
+// 지도 그림에서 그 지역이 차지하는 구획. 노드 카드 뒤에 깔려서(z-index 2)
+// 카드 클릭은 그대로 살고, 그림 아무 데나 눌러도 같은 곳으로 들어간다.
+function worldRegionArea(state, region) {
+  const area = region.mapArea;
+  if (!area) return "";
+  const unlocked = !region.locked && state.adventure?.unlockedRegionIds.includes(region.id);
+  return `<button class="continent-region-area"`
+    + ` style="--area-x:${area.x1}%;--area-y:${area.y1}%;--area-w:${area.x2 - area.x1}%;--area-h:${area.y2 - area.y1}%;--region-color:${region.accent}"`
+    + ` data-action="open-frontier" data-region-id="${region.id}"${unlocked ? "" : " disabled"}`
+    + ` aria-label="${escapeHtml(region.name)}"></button>`;
+}
+
 function worldRegionNode(state, region) {
   const selected = state.adventure?.selectedRegionId === region.id;
   const unlocked = !region.locked && state.adventure?.unlockedRegionIds.includes(region.id);
@@ -874,6 +886,7 @@ function worldScreen(state) {
         <div class="continent-map-title"><p class="eyebrow">원정 성문 밖의 세계</p><h1>다섯 개척권</h1><span>역사 재현이 아닌 10~12세기풍 판타지 세계</span></div>
         <div class="continent-route route-one"></div><div class="continent-route route-two"></div><div class="continent-route route-three"></div><div class="continent-route route-four"></div>
         <button class="continent-estate-node" data-action="close-world"><span>⌂</span><strong>내 영지</strong><small>교역로의 개척 거점</small></button>
+        ${Object.values(WORLD_REGION_DEFS).map((region) => worldRegionArea(state, region)).join("")}
         ${Object.values(WORLD_REGION_DEFS).map((region) => worldRegionNode(state, region)).join("")}
         <div class="continent-compass" aria-hidden="true">N<br>✦</div>
         ${mapZoomControls("world")}

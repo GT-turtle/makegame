@@ -2350,6 +2350,38 @@ button:disabled {
 }
 
 .continent-region-node { left: var(--region-x); top: var(--region-y); }
+
+/* 지도 그림을 눌러 들어가는 구획. 카드(z-index 4) 아래에 깔려서 카드도 그대로 눌린다.
+   평소엔 보이지 않고, 손이 닿으면 그 땅만 옅게 밝아진다. */
+.continent-region-area {
+  position: absolute;
+  z-index: 2;
+  left: var(--area-x);
+  top: var(--area-y);
+  width: var(--area-w);
+  height: var(--area-h);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: background 140ms ease, box-shadow 140ms ease;
+}
+.continent-region-area:disabled { cursor: default; }
+/* 선택 상태로는 칠하지 않는다. 항상 켜져 있으면 지도에 직사각형이 하나 박혀
+   있는 꼴이라 그림이 잘려 보인다 — 선택은 카드 쪽에서 이미 보여준다.
+   손이 닿을 때만, 그것도 가장자리 없이 옅게. */
+.continent-region-area:not(:disabled):hover {
+  background: radial-gradient(ellipse at center,
+    color-mix(in srgb, var(--region-color) 20%, transparent) 0%,
+    transparent 72%);
+}
+.continent-region-area:not(:disabled):active {
+  background: radial-gradient(ellipse at center,
+    color-mix(in srgb, var(--region-color) 34%, transparent) 0%,
+    transparent 78%);
+}
 .continent-estate-node { left: 13%; top: 78%; --region-color: #d8b76b; }
 .continent-region-node > span,
 .continent-estate-node > span { color: var(--region-color); font-size: 20px; line-height: 1; }
