@@ -252,6 +252,8 @@ export function createInitialState() {
       absorbedCores: [],
       // 영지 귀환 부적 보유량.
       recallCharms: 0,
+      // 첫 로그인에 직업을 한 번 고르면 잠긴다. 이후 바꿀 수 없다.
+      classChosen: false,
       blueprints: ["frontierMantle"],
       // 선언된 재료는 **전부** 0으로 깔고 시작 보유분만 덮어쓴다.
       // 예전엔 손으로 적은 43개만 있어서 보스 부산물 30종이 통째로 빠져 있었다
@@ -1621,6 +1623,11 @@ export function migrateState(rawState) {
     state.meta.regionTonics ||= {};
     state.meta.absorbedCores ||= [];
     state.meta.recallCharms ||= 0;
+    // 예전 저장은 이미 플레이 중이니 직업을 고른 것으로 본다 —
+    // 생성 화면을 새로 띄우면 진행 중인 판을 가로막는다.
+    // ??= 는 안 먹는다 — 기본값 병합이 먼저라 false가 이미 박혀 있다.
+    // 27 미만에서 올라온 저장은 전부 이미 플레이 중이던 판이다.
+    state.meta.classChosen = true;
     // 동료 스킬이 생겼다. 기존 저장의 동료에게 레벨 1을 깔아 준다.
     for (const progress of Object.values(state.adventure.unitProgress || {})) {
       progress.skillLevel ||= 1;

@@ -1845,10 +1845,31 @@ export class GameEngine {
     return masteryLevel(this.state.meta.skillMastery[skillId]);
   }
 
+  // 첫 로그인에 직업을 정한다. 한 번 정하면 못 바꾼다 —
+  // 고르는 순간에 무게가 실려야 출신·특성 조합을 진지하게 보게 된다.
+  confirmStartingClass(kitId) {
+    if (this.state.meta.classChosen) return false;
+    if (!PLAYER_KIT_DEFS[kitId]) return false;
+    const adventure = this.state.adventure;
+    if (!adventure) return false;
+    adventure.commander.combatKitId = kitId;
+    adventure.commander.skillLoadouts ||= {};
+    adventure.commander.skillLoadouts[kitId] ||= [...PLAYER_KIT_DEFS[kitId].defaultLoadout];
+    this.state.meta.classChosen = true;
+    const name = PLAYER_KIT_DEFS[kitId].shortName;
+    const jong = (name.charCodeAt(name.length - 1) - 0xac00) % 28;
+    const particle = jong === 0 || jong === 8 ? "로" : "으로";
+    this.addLog(`${name}${particle} 시작한다. 이 선택은 되돌릴 수 없다.`, "good");
+    this.emit();
+    return true;
+  }
+
   selectCommanderKit(kitId) {
     const adventure = this.state.adventure;
     const kit = PLAYER_KIT_DEFS[kitId];
     if (!adventure || adventure.run || this.state.expedition || this.state.estateDefense?.campaign || !kit) return false;
+    // 첫 선택이 끝났으면 잠긴다. 영주관에서도 못 바꾼다.
+    if (this.state.meta.classChosen) return false;
     const commander = adventure.commander;
     commander.combatKitId = kit.id;
     commander.skillLoadouts ||= {};

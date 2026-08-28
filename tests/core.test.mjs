@@ -245,6 +245,46 @@ test("장신구 세트 효과가 전투까지 닿는다", () => {
   assert.equal(fromSet[0].type, set.tiers[3].effect.type);
 });
 
+test("직업은 첫 로그인에 한 번만 고르고 이후 잠긴다", () => {
+  const storage = new MemoryStorage();
+  const engine = new GameEngine(storage);
+  assert.equal(engine.state.meta.classChosen, false, "새 판은 아직 안 골랐다");
+
+  // 없는 직업은 확정되지 않는다.
+  assert.equal(engine.confirmStartingClass("nope"), false);
+  assert.equal(engine.state.meta.classChosen, false);
+
+  assert.equal(engine.confirmStartingClass("maehwa"), true);
+  assert.equal(engine.state.adventure.commander.combatKitId, "maehwa");
+  assert.ok(engine.state.adventure.commander.skillLoadouts.maehwa?.length, "시작 로드아웃이 깔린다");
+
+  // 두 번은 안 된다.
+  assert.equal(engine.confirmStartingClass("barbarian"), false);
+  // 영주관에서도 못 바꾼다.
+  assert.equal(engine.selectCommanderKit("barbarian"), false);
+  assert.equal(engine.state.adventure.commander.combatKitId, "maehwa", "바뀌지 않는다");
+
+  // 저장 후에도 잠긴 채로 남는다.
+  const restored = new GameEngine(storage);
+  assert.equal(restored.state.meta.classChosen, true);
+  assert.equal(restored.state.adventure.commander.combatKitId, "maehwa");
+  assert.equal(restored.selectCommanderKit("barbarian"), false);
+});
+
+test("예전 저장은 생성 화면으로 돌아가지 않는다", () => {
+  // 이미 플레이 중인 판에 생성 화면을 띄우면 진행을 가로막는다.
+  const storage = new MemoryStorage();
+  const seed = new GameEngine(storage);
+  seed.save();
+  const raw = JSON.parse(storage.getItem(SAVE_KEY));
+  delete raw.meta.classChosen;
+  raw.version = 26;
+  storage.setItem(SAVE_KEY, JSON.stringify(raw));
+
+  const migrated = new GameEngine(storage);
+  assert.equal(migrated.state.meta.classChosen, true, "고른 것으로 본다");
+});
+
 test("특수 동료 다섯을 전부 구할 수 있다", () => {
   // 하나만 고르게 했더니 마탑·주술룬·특수단조·부활·골렘 다섯 중 넷이 통째로
   // 잠겼다. 역할이 서로 달라 하나로 묶으면 회차마다 되는 것이 통째로 갈린다.

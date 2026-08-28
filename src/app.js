@@ -80,6 +80,8 @@ const view = {
   defenseMapOpen: false,
   zoneMapOpen: false,
   rosterOpen: false,
+  // 생성 화면에서 눌러둔 직업. 확정 전까지는 화면 상태일 뿐이다.
+  creationPick: null,
   classOpen: false,
   mapOpen: false,
   retreatConfirm: false,
@@ -430,7 +432,7 @@ function facilityOverlay(state) {
     <article class="card class-summary" style="--class-color:${combatKit.color}">
       <div class="class-glyph">${combatKit.glyph}</div>
       <div class="class-copy"><p class="eyebrow">${escapeHtml(combatBaseClass.name)} · ${escapeHtml(traitDef.name)} · 장착 기술 ${combatLoadout.length}/3</p><h3>${escapeHtml(combatKit.shortName)}</h3><p>${combatBaseClass.passive.glyph} ${escapeHtml(combatBaseClass.passive.name)} · ${escapeHtml(combatKit.description)}</p></div>
-      <button class="secondary" data-action="open-class" ${ongoing ? "disabled" : ""}>${ongoing ? "원정 중 고정" : "직업·특성"}</button>
+      <button class="secondary" data-action="open-class" ${ongoing || state.meta.classChosen ? "disabled" : ""}>${state.meta.classChosen ? "직업 확정됨" : ongoing ? "원정 중 고정" : "직업·특성"}</button>
     </article>
     <article class="party-management-card">
       <div><span>동행 동료</span><strong>${state.adventure.party.length}/${PARTY_LIMIT}명 편성 · 보유 ${state.adventure.roster.length}/15명</strong><small>플레이어는 직접 조작하고 두 동료는 각자 판단해 싸운다.</small></div>
@@ -2699,6 +2701,65 @@ function worldMapOverlay(state) {
   `;
 }
 
+// 첫 로그인 직업 선택 화면.
+//
+// 여섯 기본 직업만 고르게 한다 — 전승 열한 개까지 한 번에 보여주면 처음
+// 보는 사람이 고를 수가 없다. 전승은 나중에 영주관에서 얹는 층이다.
+//
+// 한 번 고르면 못 바꾸므로 무엇이 잠기는지 화면에서 분명히 말한다.
+// 받침이 있으면 "으로", 없으면 "로". "바바리안로 시작"처럼 읽히면 어색하다.
+function withRo(word) {
+  const last = String(word || "").trim().slice(-1);
+  const code = last.charCodeAt(0);
+  if (Number.isNaN(code) || code < 0xac00 || code > 0xd7a3) return `${word}로`;
+  const jong = (code - 0xac00) % 28;
+  return jong === 0 || jong === 8 ? `${word}로` : `${word}으로`;
+}
+
+function classCreationScreen(state) {
+  const picked = view.creationPick;
+  const kit = picked ? PLAYER_KIT_DEFS[picked] : null;
+  const baseClasses = Object.values(PLAYER_KIT_DEFS)
+    .filter((entry) => entry.id === entry.baseClassId);
+
+  const cards = baseClasses.map((entry) => {
+    const base = playerBaseClassDefinition(entry.baseClassId);
+    const stats = entry.stats;
+    return `<article class="card class-summary${picked === entry.id ? " selected" : ""}"`
+      + ` style="--class-color:${entry.color}" data-action="pick-starting-class" data-kit-id="${entry.id}">`
+      + `<div class="class-glyph">${entry.glyph}</div>`
+      + `<div class="class-copy">`
+      + `<p class="eyebrow">${escapeHtml(base.passive.name)}</p>`
+      + `<h3>${escapeHtml(entry.shortName)}</h3>`
+      + `<p>${escapeHtml(entry.description)}</p>`
+      + `<small>체력 ${stats.maxHp} · 공격 ${stats.damage} · 사거리 ${stats.range} · 방어 ${Math.round(stats.armor * 100)}%</small>`
+      + `</div></article>`;
+  }).join("");
+
+  const detail = kit
+    ? `<div class="section-heading"><h2>${escapeHtml(kit.shortName)}</h2>`
+      + `<span>${escapeHtml(playerBaseClassDefinition(kit.baseClassId).passive.name)}</span></div>`
+      + `<p class="facility-note">${escapeHtml(playerBaseClassDefinition(kit.baseClassId).passive.description || kit.description)}</p>`
+      + `<div class="technique-row"><span>시작 기술</span><b>`
+      + kit.defaultLoadout.map((skillId) => escapeHtml(playerSkillDefinition(kit.id, skillId)?.name || skillId)).join(" · ")
+      + `</b></div>`
+    : `<p class="facility-note">직업을 고르면 여기에 패시브와 시작 기술이 나온다.</p>`;
+
+  return `
+    <main class="panel creation-panel">
+      <div class="section-heading"><h2>개척자를 정한다</h2><span>한 번 고르면 바꿀 수 없다</span></div>
+      <p class="facility-note">여섯 기본 직업 중 하나로 시작한다. 전승은 나중에 영주관에서 얹는다 —
+        지금 고르는 건 그 뿌리다. <b>이 선택은 되돌릴 수 없다.</b></p>
+      <section class="cards">${cards}</section>
+      ${detail}
+      <nav class="adventure-actions">
+        <button class="primary" data-action="confirm-starting-class"${picked ? "" : " disabled"}>
+          ${picked ? `${escapeHtml(withRo(kit.shortName))} 시작` : "직업을 고르세요"}</button>
+      </nav>
+    </main>
+  `;
+}
+
 function render() {
   const state = engine.state;
   const adventureRun = state.adventure?.run;
@@ -2707,7 +2768,7 @@ function render() {
   document.body.classList.toggle("adventure-active", Boolean(adventureRun && !adventureRun.battle && !view.hubOpen));
   document.body.classList.toggle("map-active", Boolean((view.worldOpen || view.frontierOpen) && !battleActive));
   if (!battleActive) view.battleCameraBattle = null;
-  const body = view.frontierOpen ? frontierScreen(state)
+  const body = !state.meta.classChosen ? classCreationScreen(state)    : view.frontierOpen ? frontierScreen(state)
     : view.worldOpen ? worldScreen(state)
     : state.estateDefense?.campaign && !view.hubOpen && (view.defenseMapOpen || !state.estateDefense.battle) ? defenseCampaignScreen(state)
     : state.estateDefense?.battle && !view.hubOpen ? battleScreen(state, true)
@@ -3587,6 +3648,15 @@ app.addEventListener("click", (event) => {
   }
   if (action === "load-tower-spell") {
     if (!engine.loadMageTowerSpell(button.dataset.spellId || null)) showToast("마탑을 먼저 세워야 해.");
+  }
+  if (action === "pick-starting-class") {
+    view.creationPick = button.dataset.kitId;
+    render();
+    return;
+  }
+  if (action === "confirm-starting-class") {
+    if (!engine.confirmStartingClass(view.creationPick)) showToast("직업을 먼저 고르세요.");
+    view.creationPick = null;
   }
   if (action === "craft-recall-charm") {
     if (!engine.craftRecallCharm()) showToast("재료가 부족하거나 이미 세 개 다 엮었어.");
