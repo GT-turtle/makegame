@@ -397,6 +397,11 @@ export class GameEngine {
       {
         subregionId: zoneId,
         purpose,
+        // 개척 경로도 광역 필드로 통일한다. 예전에는 칸을 밟으면 조우가 "발생"했는데
+        // 그건 이벤트지 전투가 아니다 — 필드에 흩어진 무리가 가까이 가면 깨어나
+        // 달려드는 쪽이라야 보고 판단할 자리가 생긴다(FIELD_AGGRO_RADIUS).
+        fieldBattle: true,
+        groupCount: fieldStageGroups(1),
         roster: adventure.roster,
         bossEncounterId: definition.bossEncounterId,
         ambushInterval: { safe: [8, 13], watch: [6, 10], danger: [4, 8] }[definition.tier],

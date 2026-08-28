@@ -3545,8 +3545,13 @@ app.addEventListener("click", (event) => {
   }
   if (action === "start-frontier-adventure") {
     if (engine.startFrontierAdventure(button.dataset.zoneId, button.dataset.purpose)) {
+      // 지도 관련 상태를 한 번에 닫는다. 하나라도 남으면 원정이 시작돼도
+      // 지도가 계속 덮고 있거나 map-active가 남아 화면이 망가진다.
       view.frontierOpen = false;
       view.worldOpen = false;
+      view.frontierZoneOpen = null;
+      view.frontierMenuOpen = null;
+      view.zoneMapOpen = false;
       view.hubOpen = false;
       clearAdventureTravel(false);
       render();
