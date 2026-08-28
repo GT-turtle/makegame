@@ -2766,7 +2766,10 @@ function render() {
   const battleActive = Boolean((state.estateDefense?.battle || adventureRun?.battle) && !view.hubOpen);
   document.body.classList.toggle("battle-active", battleActive);
   document.body.classList.toggle("adventure-active", Boolean(adventureRun && !adventureRun.battle && !view.hubOpen));
-  document.body.classList.toggle("map-active", Boolean((view.worldOpen || view.frontierOpen) && !battleActive));
+  // 원정에 들어가면 지도 상태가 남아 있어도 map-active를 걸지 않는다.
+  // 걸리면 topbar가 사라지고 overflow:hidden이라 화면 아래 내용에 못 닿는다.
+  const mapActive = Boolean((view.worldOpen || view.frontierOpen) && !battleActive && !adventureRun);
+  document.body.classList.toggle("map-active", mapActive);
   if (!battleActive) view.battleCameraBattle = null;
   const body = !state.meta.classChosen ? classCreationScreen(state)    : view.frontierOpen ? frontierScreen(state)
     : view.worldOpen ? worldScreen(state)
@@ -3543,6 +3546,7 @@ app.addEventListener("click", (event) => {
   if (action === "start-frontier-adventure") {
     if (engine.startFrontierAdventure(button.dataset.zoneId, button.dataset.purpose)) {
       view.frontierOpen = false;
+      view.worldOpen = false;
       view.hubOpen = false;
       clearAdventureTravel(false);
       render();

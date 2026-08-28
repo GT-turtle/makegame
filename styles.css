@@ -3648,8 +3648,10 @@ body.battle-active .modal-wrap { z-index: 3200; }
 .map-zoom-controls small { display: block; }
 .map-zoom-controls b { color: #eee3c4; font-size: 8px; }
 .map-zoom-controls small { margin-top: 1px; color: #9eaa9f; font-size: 6px; }
-.frontier-regional-map .regional-map-hint,
-.frontier-local-map .local-map-hint { bottom: 68px; }
+/* 지역 지도는 원래 자리(가운데 아래)를 지킨다 — 거기엔 확대 컨트롤만 있다. */
+.frontier-regional-map .regional-map-hint { bottom: 68px; }
+/* 하위 필드는 가운데 아래를 출정 노드(top:78%)가 이미 쓴다. 문구만 올린다. */
+.frontier-local-map .local-map-hint { top: 8px; bottom: auto; left: 10px; transform: none; }
 .frontier-local-map .map-zoom-controls { z-index: 20; }
 
 @media (max-height: 430px) and (orientation: landscape) {
@@ -3657,8 +3659,8 @@ body.battle-active .modal-wrap { z-index: 3200; }
   .movement-touch-zone > span { font-size: 7px; }
   .map-zoom-controls { bottom: 7px; }
   .map-zoom-controls span { min-width: 96px; }
-  .frontier-regional-map .regional-map-hint,
-  .frontier-local-map .local-map-hint { bottom: 55px; }
+  .frontier-regional-map .regional-map-hint { bottom: 55px; }
+  .frontier-local-map .local-map-hint { top: 6px; bottom: auto; left: 8px; transform: none; }
 }
 
 /* 직업 선택 원화와 준비 중 전승 도감 */
