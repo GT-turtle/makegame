@@ -32,7 +32,7 @@ import {
 import { ITEM_DEFS, MATERIAL_DEFS , ORE_SMELTING_DEFS } from "../src/data.js";
 import { ENEMY_COMBATANTS, FIELD_STAGE_COUNT, RECALL_CHARM, REGION_TONIC_DEFS, REGION_CORE_ABSORPTION, TONIC_CARRY_LIMIT, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport , DISCOVERY_SITE_DEFS } from "../src/frontier.js";
-import { ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
+import { ACCESSORY_SET_DEFS, accessorySetBonus, accessorySetEffect, equippedUniqueEffects, createEquipmentInstance,    ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
 import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, ARMOR_SET_DEFS, armorSetBonus, armorSetEffect } from "../src/classes.js";
 import { GameEngine, SAVE_KEY } from "../src/game.js";
 
@@ -120,6 +120,83 @@ test("터치 이동 경로는 벽·적·미확인 칸을 우회한다", () => {
   const knownCorridor = new Set([keyOf(1, 1), keyOf(2, 1), keyOf(3, 1)]);
   assert.equal(findPath(tiles, start, target, new Set(), knownCorridor).length, 3);
   assert.deepEqual(findPath(tiles, start, target, new Set(), new Set([keyOf(1, 1), keyOf(3, 1)])), []);
+});
+
+test("장신구 세트는 2셋·3셋에서만 열리고 세 세트가 비슷한 값을 낸다", () => {
+  // 장신구는 세 칸(반지 2 + 목걸이 1)뿐이라 5셋이 없다.
+  const ringSlots = ["ring1", "ring2"];
+  const wear = (ids) => {
+    const commander = createDefaultCommander();
+    commander.combatKitId = "crusader";
+    commander.equipmentOwned = [];
+    let ring = 0;
+    ids.forEach((defId, index) => {
+      const uid = `a${index}`;
+      commander.equipmentOwned.push(createEquipmentInstance(uid, defId, "legendary", []));
+      const slot = EQUIPMENT_DEFS[defId].slot === "necklace" ? "necklace" : ringSlots[ring++];
+      commander.equipped[slot] = uid;
+    });
+    return commander;
+  };
+  // 세트 정의를 잠시 비워 아이템 자체 값을 빼고 **세트 몫만** 잰다.
+  const setOnly = (pieces) => {
+    const on = combatPowerScore(playerCombatStats(wear(pieces), "crusader"));
+    const saved = {};
+    for (const [key, set] of Object.entries(ACCESSORY_SET_DEFS)) { saved[key] = set.tiers; set.tiers = {}; }
+    const off = combatPowerScore(playerCombatStats(wear(pieces), "crusader"));
+    for (const [key, set] of Object.entries(ACCESSORY_SET_DEFS)) set.tiers = saved[key];
+    return on - off;
+  };
+
+  for (const set of Object.values(ACCESSORY_SET_DEFS)) {
+    assert.equal(set.pieces.length, 3, `${set.name}은 세 조각이다`);
+    assert.deepEqual(accessorySetBonus(set, 1), {}, "한 조각으론 아무것도 없다");
+    assert.ok(accessorySetEffect(set, 2), `${set.name} 2셋 효과가 있다`);
+    assert.ok(accessorySetEffect(set, 3), `${set.name} 3셋 효과가 있다`);
+    assert.notEqual(accessorySetEffect(set, 2).type, accessorySetEffect(set, 3).type,
+      "문턱마다 다른 효과여야 한다");
+
+    // 문턱은 누적되지 않는다 — 가장 높은 것 하나만.
+    assert.deepEqual(accessorySetBonus(set, 3), set.tiers[3].bonus);
+
+    const two = setOnly(set.pieces.slice(0, 2));
+    const three = setOnly(set.pieces);
+    assert.ok(three > two, `${set.name}: 3셋이 2셋보다 커야 한다 (${two} -> ${three})`);
+    assert.ok(two >= 12 && two <= 30, `${set.name} 2셋이 대역을 벗어났다 (${two})`);
+    assert.ok(three >= 32 && three <= 60, `${set.name} 3셋이 대역을 벗어났다 (${three})`);
+  }
+
+  // 조각이 겹치지 않는다 — 한 아이템이 두 세트에 들면 조합이 무너진다.
+  const seen = new Set();
+  for (const set of Object.values(ACCESSORY_SET_DEFS)) {
+    for (const piece of set.pieces) {
+      assert.ok(!seen.has(piece), `${piece}가 두 세트에 들어 있다`);
+      assert.ok(EQUIPMENT_DEFS[piece], `${piece}는 없는 장비다`);
+      seen.add(piece);
+    }
+  }
+
+  // 세트 밖에도 쓸 만한 장신구가 남아 있어야 "세트를 안 맞춘다"가 선택지가 된다.
+  assert.ok(!seen.has("resonanceRing"), "주술 공명반지는 일부러 무소속이다");
+});
+
+test("장신구 세트 효과가 전투까지 닿는다", () => {
+  // 정의만 해두고 배선을 빠뜨리면 조용히 아무 일도 안 일어난다.
+  const set = ACCESSORY_SET_DEFS.oathbound;
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [];
+  const ringSlots = ["ring1", "ring2"];
+  let ring = 0;
+  set.pieces.forEach((defId, index) => {
+    const uid = `s${index}`;
+    commander.equipmentOwned.push(createEquipmentInstance(uid, defId, "legendary", []));
+    commander.equipped[EQUIPMENT_DEFS[defId].slot === "necklace" ? "necklace" : ringSlots[ring++]] = uid;
+  });
+
+  const effects = equippedUniqueEffects(commander);
+  const fromSet = effects.filter((effect) => effect.sourceId === set.id);
+  assert.equal(fromSet.length, 1, "3셋이면 세트 효과 하나가 붙는다");
+  assert.equal(fromSet[0].type, set.tiers[3].effect.type);
 });
 
 test("특수 동료 다섯을 전부 구할 수 있다", () => {

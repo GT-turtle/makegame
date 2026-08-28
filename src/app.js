@@ -1,7 +1,7 @@
 import { AFFIX_DEFS, AREA_DEFS, BAG_COLS, CLASS_DEFS, CRAFT_RECIPES, ENEMY_DEFS, ITEM_CATEGORY_DEFS, ITEM_DEFS, MATERIAL_DEFS, PRODUCTION_COMPANION_DEFS, RESEARCH_DEFS, TAG_LABELS, TRAIT_DEFS, VIEW_SIZE, WORKER_DEFS } from "./data.js";
 import { adjustedWorkerMaterialCosts, environmentMitigation, findPath, itemCells, keyOf, masteryLevel, workerProficiency , warehouseCap, WAREHOUSE_MAX_LEVEL, WAREHOUSE_UPGRADE_COST } from "./core.js";
 import { GameEngine } from "./game.js";
-import { ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, ENHANCE_MAX, enhanceCost, enhanceOdds, repairCost, combatPowerScore, companionEquippableSlots, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition , MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, canSpecialForge, MYTHIC_GEAR_DEFS, findEquipmentInstance, EQUIPMENT_SLOTS, armorSetBonus, ARMOR_SET_THRESHOLDS } from "./classes.js";
+import { ACCESSORY_SET_DEFS, accessorySetBonus, ACCESSORY_SET_THRESHOLDS, ARMOR_SET_DEFS, BASIC_DISCIPLINE_DEFS, EQUIPMENT_SLOT_CATEGORY_LABELS, PLAYER_KIT_DEFS, RUNE_DEFS, ENHANCE_MAX, enhanceCost, enhanceOdds, repairCost, combatPowerScore, companionEquippableSlots, equipmentDefinition, equipmentForSlot, equipmentGradeDefinition, equipmentSlotsByCategory, instanceBonuses, legendaryCollection, normalizedPlayerLoadout, playerBaseClassDefinition, playerCombatStats, playerKitDefinition, playerSkillDefinition, playerUltimateDefinition , MASTERY_BRANCH_DEFS, MASTERY_MAX, MASTERY_STEPS, masteryBranchUnlocked, masterySlots, masteryXpNeeded, newUnitProgress, canSpecialForge, MYTHIC_GEAR_DEFS, findEquipmentInstance, EQUIPMENT_SLOTS, armorSetBonus, ARMOR_SET_THRESHOLDS } from "./classes.js";
 import {
   DUNGEON_VIEW_SIZE,
   FIELD_VIEW_SIZE,
@@ -2193,6 +2193,19 @@ function companionSkillSection(state) {
     + ` 레벨이 올라도 수치만 커질 뿐 새 효과는 붙지 않는다 — 그러면 숙련과 역할이 겹친다.</p>`;
 }
 
+// 장신구는 setId를 안 달고 세트 쪽에서 조각 목록을 갖는다 — 아이템에서 역으로 찾는다.
+// 방어구/장신구 어느 쪽 세트든 같은 자리에서 보너스와 문턱을 읽는다.
+function setBonusOf(set, worn) {
+  return ACCESSORY_SET_DEFS[set.id] ? accessorySetBonus(set, worn) : armorSetBonus(set, worn);
+}
+function setThresholdsOf(set) {
+  return ACCESSORY_SET_DEFS[set.id] ? ACCESSORY_SET_THRESHOLDS : ARMOR_SET_THRESHOLDS;
+}
+
+function accessorySetOf(defId) {
+  return Object.values(ACCESSORY_SET_DEFS).find((set) => set.pieces.includes(defId)) || null;
+}
+
 function specialFacilitySection(state) {
   const roster = state.adventure?.roster || [];
   const blocks = [mageTowerBlock(state, roster), golemBlock(state, roster)].filter(Boolean);
@@ -2436,7 +2449,7 @@ function commanderEquipmentSection(state, selectedKit) {
         .filter(([id, amount]) => (materials[id] || 0) < amount);
       const cost = Object.entries(entry.materials || {})
         .map(([id, amount]) => `${MATERIAL_DEFS[id]?.name || id} ${amount}`).join(" · ");
-      const set = entry.setId ? ARMOR_SET_DEFS[entry.setId] : null;
+      const set = entry.setId ? (ARMOR_SET_DEFS[entry.setId] || ACCESSORY_SET_DEFS[entry.setId]) : accessorySetOf(entry.id);
 
       return `
         <button class="equipment-card craft${entry.legendary ? " legendary" : ""}"
@@ -2444,7 +2457,7 @@ function commanderEquipmentSection(state, selectedKit) {
           <strong>${escapeHtml(entry.name)}</strong>
           ${entry.legendary ? '<em class="equipment-tag">전설</em>' : ""}
           <small>기본 ${escapeHtml(bonusText(entry.bonus))}</small>
-          ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">신화 · 세트 없음, 깡스탯</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} ${armorSetWorn(commander, set)}/${set.pieces.length}${Object.keys(armorSetBonus(set, armorSetWorn(commander, set))).length ? ` · ${escapeHtml(bonusText(armorSetBonus(set, armorSetWorn(commander, set))))}` : ` · ${ARMOR_SET_THRESHOLDS[0]}부위부터`}</small>` : ""}
+          ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">신화 · 세트 없음, 깡스탯</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} ${armorSetWorn(commander, set)}/${set.pieces.length}${Object.keys(setBonusOf(set, armorSetWorn(commander, set))).length ? ` · ${escapeHtml(bonusText(setBonusOf(set, armorSetWorn(commander, set))))}` : ` · ${setThresholdsOf(set)[0]}부위부터`}</small>` : ""}
           ${entry.lore ? `<small class="equipment-lore">${escapeHtml(entry.lore)}</small>` : ""}
           <i>${lacking.length ? `재료 부족 · ${escapeHtml(cost)}` : `제작 · ${escapeHtml(cost)}`}</i>
         </button>`;
@@ -2462,7 +2475,7 @@ function commanderEquipmentSection(state, selectedKit) {
         const entry = equipmentDefinition(instance.defId);
         const grade = equipmentGradeDefinition(instance.grade);
         const isEquipped = equipped[slot] === instance.uid;
-        const set = entry.setId ? ARMOR_SET_DEFS[entry.setId] : null;
+        const set = entry.setId ? (ARMOR_SET_DEFS[entry.setId] || ACCESSORY_SET_DEFS[entry.setId]) : accessorySetOf(entry.id);
 
         // 카드와 강화 줄을 한 칸에 묶는다 — 따로 두면 어느 장비의 줄인지 알 수 없다.
         return `
@@ -2476,7 +2489,7 @@ function commanderEquipmentSection(state, selectedKit) {
             ${instance.options?.length
               ? `<small class="equipment-rolled">랜덤 ${escapeHtml(bonusText(Object.fromEntries(instance.options.map((o) => [o.key, o.value]))))}</small>`
               : ""}
-            ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">신화 · 세트 없음, 깡스탯</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} ${armorSetWorn(commander, set)}/${set.pieces.length}${Object.keys(armorSetBonus(set, armorSetWorn(commander, set))).length ? ` · ${escapeHtml(bonusText(armorSetBonus(set, armorSetWorn(commander, set))))}` : ` · ${ARMOR_SET_THRESHOLDS[0]}부위부터`}</small>` : ""}
+            ${MYTHIC_GEAR_DEFS[entry.id] ? `<small class="equipment-set mythic-set">신화 · 세트 없음, 깡스탯</small>` : set ? `<small class="equipment-set">${escapeHtml(set.name)} ${armorSetWorn(commander, set)}/${set.pieces.length}${Object.keys(setBonusOf(set, armorSetWorn(commander, set))).length ? ` · ${escapeHtml(bonusText(setBonusOf(set, armorSetWorn(commander, set))))}` : ` · ${setThresholdsOf(set)[0]}부위부터`}</small>` : ""}
             <i>${isEquipped ? "장착 중 · 눌러서 해제" : "장착하기"}</i>
             <u class="equipment-discard" data-action="discard-equipment" data-equipment-id="${instance.uid}" title="폐기">✕</u>
           </button>

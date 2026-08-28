@@ -1056,6 +1056,9 @@ export function equippedUniqueEffects(commander = {}, baseClassId = null) {
     if (def?.mythicSetEffect) effects.push({ ...def.mythicSetEffect, sourceId: def.id, sourceName: def.name });
   }
   effects.push(...activeArmorSetEffects(commander));
+  // 장신구 세트도 같은 통로로. 여기 안 넣으면 세트를 맞춰도 전투에서
+  // 아무 일이 일어나지 않는다.
+  effects.push(...activeAccessorySetEffects(commander));
   return effects;
 }
 
@@ -1157,6 +1160,88 @@ export const EQUIPMENT_DEFS = {
 // 세 계열이 각자 다른 방향으로 간다. 총량은 비슷하되 무엇이 오르는지가 다르다 —
 // 한 계열이 정답이 되면 나머지 둘은 존재할 이유가 없다.
 export const ARMOR_SET_THRESHOLDS = [2, 3, 5];
+
+// ── 장신구 세트 ──────────────────────────────────────────────────────────────
+//
+// 장신구는 세 칸(반지 2 + 목걸이 1)뿐이라 문턱을 2·3에서 끊는다. 5셋은 없다.
+//
+// 방어구 세트와 같은 구조를 쓰되 축을 겹치지 않게 잡았다 — 방어구가
+// 버티기/굴리기/마력이라면 장신구는 **상태이상 / 파쇄 / 버팀**이다.
+// 방어구 2셋+2셋에 장신구 3셋을 얹는 식으로 조합이 겹쳐 쌓이게 하려는 배분이다.
+//
+// 효과 타입은 전부 이미 전투에 배선된 것만 쓴다. 새 핸들러를 만들지 않으면
+// "정의만 하고 아무 일도 안 일어나는" 함정에 빠질 일이 없다.
+//
+// **주술 공명반지는 일부러 어느 세트에도 안 넣었다.** 전부 세트로 묶으면
+// "세트를 안 맞춘다"가 선택지에서 사라진다. 세트 밖에도 쓸 만한 게 있어야
+// 두 칸을 세트로 채우고 한 칸은 자유롭게 두는 판단이 생긴다.
+export const ACCESSORY_SET_DEFS = {
+  plague: {
+    id: "plague", name: "역병 세트",
+    pieces: ["abyssInkRing", "venomFangRing", "foxCoreAmulet"],
+    tiers: {
+      2: { bonus: { statusPowerBonus: 0.16, criticalDamage: 0.3, maxHpBonus: 0.05 }, effect: { type: "onHitStatus", id: "poison", stacks: 1, everyHits: 3 } },
+      3: { bonus: { statusPowerBonus: 0.3, criticalDamage: 0.55, maxHpBonus: 0.1, criticalChance: 0.04 }, effect: { type: "statusExecute", threshold: 0.4, bonus: 0.5 } }
+    },
+    description: "거는 방향. 때릴수록 갉히고, 갉힌 적을 끝낸다."
+  },
+  breaker: {
+    id: "breaker", name: "파쇄 세트",
+    pieces: ["oniBreakerRing", "solomonSeal", "titanOathAmulet"],
+    tiers: {
+      2: { bonus: { damageFlat: 1, attackSpeedBonus: 0.08 }, effect: { type: "armorPierce", amount: 0.12 } },
+      3: { bonus: { damageFlat: 2, attackSpeedBonus: 0.12, criticalChance: 0.05 }, effect: { type: "chargedBurst", hits: 4, bonus: 0.55 } }
+    },
+    description: "뚫는 방향. 방비를 무시하고, 몇 대마다 주변까지 터진다."
+  },
+  oathbound: {
+    id: "oathbound", name: "서약 세트",
+    pieces: ["frostWardRing", "dragonWardRing", "fallenRelicAmulet"],
+    tiers: {
+      2: { bonus: { maxHpBonus: 0.12, statusResistBonus: 0.1 }, effect: { type: "lastStand", threshold: 0.4, armorFlat: 30 } },
+      3: { bonus: { maxHpBonus: 0.18, statusResistBonus: 0.16, armorFlat: 14 }, effect: { type: "recoveryShield", ratio: 0.3, cooldownMs: 13000 } }
+    },
+    description: "버티는 방향. 몰릴수록 단단해지고, 한 번은 통째로 막아낸다."
+  }
+};
+
+export const ACCESSORY_SET_THRESHOLDS = [2, 3];
+
+function accessorySetTier(set, pieceCount) {
+  let best = null;
+  for (const threshold of ACCESSORY_SET_THRESHOLDS) {
+    if (pieceCount >= threshold && set.tiers[threshold]) best = set.tiers[threshold];
+  }
+  return best;
+}
+
+export function accessorySetBonus(set, pieceCount) {
+  const tier = accessorySetTier(set, pieceCount);
+  return tier?.bonus ? { ...tier.bonus } : {};
+}
+
+export function accessorySetEffect(set, pieceCount) {
+  const tier = accessorySetTier(set, pieceCount);
+  return tier?.effect ? { ...tier.effect } : null;
+}
+
+export function activeAccessorySetEffects(commander = {}) {
+  const worn = new Set(EQUIPMENT_SLOTS
+    .map((slotId) => findEquipmentInstance(commander, commander?.equipped?.[slotId])?.defId)
+    .filter(Boolean));
+  const effects = [];
+  for (const set of Object.values(ACCESSORY_SET_DEFS)) {
+    const count = set.pieces.filter((pieceId) => worn.has(pieceId)).length;
+    const effect = accessorySetEffect(set, count);
+    if (effect) effects.push({ ...effect, sourceId: set.id, sourceName: set.name });
+  }
+  return effects;
+}
+
+export function accessorySetDefinition(setId) {
+  return ACCESSORY_SET_DEFS[setId] || null;
+}
+
 
 export const ARMOR_SET_DEFS = {
   ironbound: {
@@ -1796,6 +1881,15 @@ export function equippedBonuses(commander = {}, baseClassId = null) {
   for (const set of Object.values(ARMOR_SET_DEFS)) {
     const worn = set.pieces.filter((pieceId) => equippedDefIds.has(pieceId)).length;
     for (const [key, value] of Object.entries(armorSetBonus(set, worn))) {
+      if (totals[key] === undefined) continue;
+      totals[key] += Number(value) || 0;
+    }
+  }
+
+  // 장신구 세트도 같은 방식. 칸이 셋뿐이라 문턱은 2·3에서 끊는다.
+  for (const set of Object.values(ACCESSORY_SET_DEFS)) {
+    const worn = set.pieces.filter((pieceId) => equippedDefIds.has(pieceId)).length;
+    for (const [key, value] of Object.entries(accessorySetBonus(set, worn))) {
       if (totals[key] === undefined) continue;
       totals[key] += Number(value) || 0;
     }
