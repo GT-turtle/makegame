@@ -30,7 +30,7 @@ import {
   warehouseCap
 } from "../src/core.js";
 import { ITEM_DEFS, MATERIAL_DEFS , ORE_SMELTING_DEFS } from "../src/data.js";
-import { ENEMY_COMBATANTS, FIELD_STAGE_COUNT, RECALL_CHARM, REGION_TONIC_DEFS, REGION_CORE_ABSORPTION, TONIC_CARRY_LIMIT, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
+import { ENEMY_COMBATANTS, FIELD_STAGE_COUNT, RECALL_CHARM, REGION_TONIC_DEFS, REGION_CORE_ABSORPTION, TONIC_CARRY_LIMIT, GOLEM_MAX_COUNT, GOLEM_UNIT_ID, MEMORY_YIELD_RATIO, REGION_ENTRY_POWER, SECONDARY_DEFS, STARTING_PARTY, UNIT_DEFS, WORLD_REGION_DEFS, createAutoBattle, selectPlayerTarget, applyCombatStatus, golemCount, issuePlayerAction, partyPowerScore, regionEntryCheck, tickAutoBattle  , materialRarity, MATERIAL_RARITY_ORDER } from "../src/adventure.js";
 import { FAVOR_GIFTS, favorGainPerCycle, mageTowerCharges, mageTowerSupport , DISCOVERY_SITE_DEFS } from "../src/frontier.js";
 import { ACCESSORY_SET_DEFS, accessorySetBonus, accessorySetEffect, equippedUniqueEffects, createEquipmentInstance,    ENHANCE_MAX, ENHANCE_SAFE_LEVEL, RUNE_DEFS, enhanceCost, enhanceOdds, masterySlots, newUnitProgress, repairCost } from "../src/classes.js";
 import { companionBonuses, companionEquippableSlots, createDefaultCommander, EQUIPMENT_DEFS, EQUIPMENT_GRADES, equippedBonuses, slotsAcceptingItem, EQUIPMENT_GRADE_DEFS, EQUIPMENT_OPTION_POOLS, EQUIPMENT_SLOTS, EQUIPMENT_SLOT_DEFS, createEmptyEquipped, equipmentSlotsByCategory, instanceBonuses, playerCombatStats, rollCraftGrade, rollEquipmentOptions, equipmentOptionPool, combatPowerScore, LEGENDARY_DEFS, MYTHIC_GEAR_DEFS, ARMOR_SET_DEFS, armorSetBonus, armorSetEffect } from "../src/classes.js";
@@ -153,8 +153,13 @@ test("장신구 세트는 2셋·3셋에서만 열리고 세 세트가 비슷한 
     assert.deepEqual(accessorySetBonus(set, 1), {}, "한 조각으론 아무것도 없다");
     assert.ok(accessorySetEffect(set, 2), `${set.name} 2셋 효과가 있다`);
     assert.ok(accessorySetEffect(set, 3), `${set.name} 3셋 효과가 있다`);
-    assert.notEqual(accessorySetEffect(set, 2).type, accessorySetEffect(set, 3).type,
-      "문턱마다 다른 효과여야 한다");
+    // 문턱마다 효과가 바뀌거나, 같은 효과가 더 세지거나 둘 중 하나여야 한다.
+    // 파쇄는 2셋·3셋 다 관통이고 수치만 오른다(사용자 결정).
+    const effect2 = accessorySetEffect(set, 2);
+    const effect3 = accessorySetEffect(set, 3);
+    if (effect2.type === effect3.type) {
+      assert.notDeepEqual(effect2, effect3, `${set.name}: 같은 효과면 수치라도 달라야 한다`);
+    }
 
     // 문턱은 누적되지 않는다 — 가장 높은 것 하나만.
     assert.deepEqual(accessorySetBonus(set, 3), set.tiers[3].bonus);
@@ -178,6 +183,47 @@ test("장신구 세트는 2셋·3셋에서만 열리고 세 세트가 비슷한 
 
   // 세트 밖에도 쓸 만한 장신구가 남아 있어야 "세트를 안 맞춘다"가 선택지가 된다.
   assert.ok(!seen.has("resonanceRing"), "주술 공명반지는 일부러 무소속이다");
+});
+
+test("역병 3셋은 독 걸린 적을 때리면 옆으로 터진다", () => {
+  // 처형은 조건만 맞으면 그냥 더 아프기만 해서 "독을 깔고 터뜨린다"는
+  // 운용이 안 생겼다. 터지는 쪽은 적을 모아야 값을 한다.
+  const set = ACCESSORY_SET_DEFS.plague;
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [];
+  const ringSlots = ["ring1", "ring2"];
+  let ring = 0;
+  set.pieces.forEach((defId, index) => {
+    const uid = `p${index}`;
+    commander.equipmentOwned.push(createEquipmentInstance(uid, defId, "legendary", []));
+    commander.equipped[EQUIPMENT_DEFS[defId].slot === "necklace" ? "necklace" : ringSlots[ring++]] = uid;
+  });
+
+  const battle = createAutoBattle("duneRaiders", "x", "field", ["snow_guard"], {}, { rollSeed: 9, commander });
+  assert.ok(battle.legendary?.plagueBurst, "효과가 전투까지 닿는다");
+
+  const player = battle.units.find((unit) => unit.controlled);
+  battle.enemies.forEach((enemy, index) => {
+    enemy.x = battle.enemies[0].x + index * 6;
+    enemy.y = battle.enemies[0].y;
+    enemy.hp = enemy.maxHp = 500;
+  });
+  player.x = battle.enemies[0].x - 4;
+  player.y = battle.enemies[0].y;
+
+  // 독이 없으면 안 터진다.
+  const untouched = battle.enemies[1].hp;
+  selectPlayerTarget(battle, battle.enemies[0].id);
+  issuePlayerAction(battle, "attack");
+  assert.equal(battle.enemies[1].hp, untouched, "독이 없으면 옆 적은 안 맞는다");
+
+  // 독을 걸고 때리면 옆까지 번진다.
+  applyCombatStatus(battle, battle.enemies[0], "poison", player);
+  battle.playerReadyAt.attack = 0;
+  const before = battle.enemies.map((enemy) => enemy.hp);
+  issuePlayerAction(battle, "attack");
+  assert.ok(battle.enemies[1].hp < before[1], "옆 적도 맞는다");
+  assert.ok(battle.enemies[1].statuses?.poison, "번진 자리에도 독이 남는다");
 });
 
 test("장신구 세트 효과가 전투까지 닿는다", () => {

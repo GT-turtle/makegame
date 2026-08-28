@@ -977,6 +977,30 @@ function applyChargedBurst(battle, player, target) {
     : "거신의 맹세: 벼른 힘이 허공에서 터졌다");
 }
 
+// 역병 3셋: 독에 걸린 적을 때리면 그 자리에서 독이 터져 주변까지 번진다.
+//
+// 처형(statusExecute)은 너무 셌다 — 조건만 맞으면 그냥 더 아프기만 해서
+// "독을 깔고 터뜨린다"는 운용이 안 생긴다. 터지는 쪽은 적을 모아야
+// 값을 하므로 배치가 판단거리가 된다.
+function applyPlagueBurst(battle, player, target) {
+  const burst = battle.legendary?.plagueBurst;
+  if (!burst || target.hp <= 0) return;
+  if (!target.statuses?.[burst.statusId || "poison"]) return;
+
+  const state = battle.legendaryState;
+  if ((state.plagueBurstReadyAt || 0) > battle.elapsed) return;
+  state.plagueBurstReadyAt = battle.elapsed + (burst.cooldownMs || 3000);
+
+  const result = damageArea(battle, player, target, burst.radius, burst.damageMultiplier);
+  // 번진 자리에도 독을 남긴다 — 터뜨린 값이 다음 폭발로 이어지게.
+  for (const hit of result.targets || []) {
+    if (hit.hp > 0) applyCombatStatus(battle, hit, burst.statusId || "poison", player);
+  }
+  pushBattleLog(battle, result.targets.length
+    ? `역병: 쌓인 독이 터져 적 ${result.targets.length}명에게 ${result.totalDamage} 피해`
+    : "역병: 독이 터졌지만 번질 곳이 없었다");
+}
+
 // 적중 시 붙는 것들(상태이상 부여·회복 감소).
 function applyLegendaryOnHit(battle, player, target) {
   if (target.hp <= 0) return;
@@ -984,6 +1008,7 @@ function applyLegendaryOnHit(battle, player, target) {
   if (execute?.applyDecay && target.statuses?.[execute.statusId]) {
     applyCombatStatus(battle, target, "decay", player);
   }
+  applyPlagueBurst(battle, player, target);
   for (const effect of battle.legendaryOnHit || []) {
     if (battleRoll(battle) < effect.chance) applyCombatStatus(battle, target, effect.statusId, player);
   }

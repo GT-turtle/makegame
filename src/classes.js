@@ -1181,18 +1181,18 @@ export const ACCESSORY_SET_DEFS = {
     pieces: ["abyssInkRing", "venomFangRing", "foxCoreAmulet"],
     tiers: {
       2: { bonus: { statusPowerBonus: 0.16, criticalDamage: 0.3, maxHpBonus: 0.05 }, effect: { type: "onHitStatus", id: "poison", stacks: 1, everyHits: 3 } },
-      3: { bonus: { statusPowerBonus: 0.3, criticalDamage: 0.55, maxHpBonus: 0.1, criticalChance: 0.04 }, effect: { type: "statusExecute", threshold: 0.4, bonus: 0.5 } }
+      3: { bonus: { statusPowerBonus: 0.3, criticalDamage: 0.55, maxHpBonus: 0.1, criticalChance: 0.04 }, effect: { type: "plagueBurst", statusId: "poison", radius: 20, damageMultiplier: 1.1, cooldownMs: 3000 } }
     },
-    description: "거는 방향. 때릴수록 갉히고, 갉힌 적을 끝낸다."
+    description: "거는 방향. 때릴수록 갉히고, 쌓인 독이 터져 옆으로 번진다."
   },
   breaker: {
     id: "breaker", name: "파쇄 세트",
     pieces: ["oniBreakerRing", "solomonSeal", "titanOathAmulet"],
     tiers: {
       2: { bonus: { damageFlat: 1, attackSpeedBonus: 0.08 }, effect: { type: "armorPierce", amount: 0.12 } },
-      3: { bonus: { damageFlat: 2, attackSpeedBonus: 0.12, criticalChance: 0.05 }, effect: { type: "chargedBurst", hits: 4, bonus: 0.55 } }
+      3: { bonus: { damageFlat: 2, attackSpeedBonus: 0.12, criticalChance: 0.05 }, effect: { type: "armorPierce", amount: 0.24 } }
     },
-    description: "뚫는 방향. 방비를 무시하고, 몇 대마다 주변까지 터진다."
+    description: "뚫는 방향. 맞춰 입을수록 방비를 더 깊이 무시한다."
   },
   oathbound: {
     id: "oathbound", name: "서약 세트",
