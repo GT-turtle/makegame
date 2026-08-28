@@ -57,13 +57,12 @@ import {
   FIELD_STAGE_COUNT,
   fieldStageGroups,
   RECALL_CHARM,
-  createRescueBattle,
+  pendingRescueUnitId,
   createMemoryBattle,
   memoryRewards,
   REGION_TONIC_DEFS,
   REGION_CORE_ABSORPTION,
   TONIC_CARRY_LIMIT,
-  specialCompanionTaken,
   companionSkillDefinition,
   grantCompanionSkillXp,
   companionHazardMitigation,
@@ -1128,6 +1127,11 @@ export class GameEngine {
     if (!enterRunDungeon(run)) return false;
     const region = WORLD_REGION_DEFS[run.regionId];
     this.addLog(`${region.dungeonName} 진입. 좁은 통로에서 부대 간 교전이 벌어진다.`, "item");
+    // 아직 못 구한 특수 동료가 있으면 기척만 흘린다. 누구인지는 말하지 않는다 —
+    // 안쪽에서 누가 싸우고 있다는 것만 알고 들어가는 게 발견의 몫이다.
+    if (pendingRescueUnitId(run.regionId, run.roster)) {
+      this.addLog("앞에서 싸우는 소리가 들린다.", "item");
+    }
     this.emit();
     return true;
   }
@@ -1205,25 +1209,6 @@ export class GameEngine {
           return "fieldAdvance";
         }
       }
-      // 동굴에 들어가면 필드 전투를 잠시 치워 두고 구조 전투를 연다.
-      // 던전과 달리 화면(run.location)은 필드 그대로다 — 잠깐 들어갔다 나오는 곳이라.
-      if (trigger?.type === "rescueCave") {
-        const rescue = createRescueBattle(run.regionId, run.party, run.unitProgress, {
-          seed: (run.seed || 1) + run.fieldSteps,
-          commander: run.commander,
-          roster: run.roster,
-          hazardMitigation: run.hazardMitigation,
-          hazardAbsorbed: run.hazardAbsorbed
-        });
-        if (rescue) {
-          run.fieldBattleStash = run.battle;
-          run.rescueCaveRegionId = trigger.regionId;
-          run.battle = rescue;
-          this.addLog(`${trigger.name}에 들어섰다. 안쪽에서 사람 소리가 난다.`, "item");
-          this.emit();
-          return "rescueCave";
-        }
-      }
       if (trigger?.type === "dungeonEntrance") {
         run.pendingEntrance = true;
         run.battle = null;
@@ -1231,22 +1216,6 @@ export class GameEngine {
         this.emit();
         return "dungeonEntrance";
       }
-    }
-    // 구조 전투 결말. 이기면 영입, 지면 동굴은 닫히지 않고 남는다.
-    if (run.rescueCaveRegionId && before === "active" && status !== "active") {
-      const regionId = run.rescueCaveRegionId;
-      run.rescueCaveRegionId = null;
-      if (status === "victory") {
-        const rescued = this.rescueSpecialCompanion(regionId);
-        if (rescued) run.roster = [...this.state.adventure.roster];
-      } else {
-        this.addLog("동굴에서 물러났다. 안쪽은 그대로다.", "bad");
-      }
-      // 필드로 돌아간다. 동굴 트리거는 이미 fired라 다시 안 걸린다.
-      run.battle = run.fieldBattleStash || null;
-      run.fieldBattleStash = null;
-      this.emit(true);
-      return status;
     }
     if (before === "active" && status !== "active") {
       const result = completeBattle(run);
@@ -2474,23 +2443,12 @@ export class GameEngine {
   // 예전에는 "그 지역 일반 동료 셋을 다 모으면 조용히 명부에 들어온다"였다.
   // 발견했다는 맛이 없어서 걷어냈다 — 이제 직접 들어가서 꺼내와야 한다.
   //
-  // 다섯 중 **하나만** 구할 수 있다. 이미 다른 지역에서 구했다면 여기는 늦었고,
-  // 시체 한 구가 있을 뿐이다.
+  // 다섯을 다 구할 수 있다. 특수 시설 다섯은 역할이 서로 달라서 하나로 묶으면
+  // 회차마다 되는 것과 안 되는 것이 통째로 갈린다.
   rescueSpecialCompanion(regionId, seed = 0) {
     const adventure = this.state.adventure;
     const special = Object.values(SPECIAL_UNIT_DEFS).find((unit) => unit.regionId === regionId);
     if (!special || adventure.roster.includes(special.id)) return null;
-
-    if (specialCompanionTaken(adventure.roster)) {
-      const meta = this.state.meta;
-      meta.foundCorpses ||= [];
-      if (!meta.foundCorpses.includes(regionId)) {
-        meta.foundCorpses.push(regionId);
-        // 누구인지, 무엇을 할 수 있었는지 말하지 않는다.
-        this.addLog("안쪽에 시체 한 구가 있다. 오래된 것은 아니다.", "bad");
-      }
-      return null;
-    }
 
     adventure.roster.push(special.id);
     adventure.unitProgress[special.id] = newUnitProgress();

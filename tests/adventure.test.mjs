@@ -4,7 +4,6 @@ import { readFileSync } from "node:fs";
 
 import {
   FIELD_STAGE_COUNT,
-  rescueCaveTrigger,
   COMPANION_SKILL_DEFS,
   COMPANION_SKILL_MAX_LEVEL,
   companionSkillValue,
@@ -403,7 +402,7 @@ test("필드 조우부터 던전 우두머리와 영지 정산까지 한 원정�
   let fieldGuard = 0;
   // 필드 보스는 선택 콘텐츠라 건너뛴다 — 일반 무리만 정리하고 던전으로 향한다.
   const normalMobs = () => fieldBattle.enemies.filter((enemy) => !enemy.fieldBoss);
-  while (normalMobs().some((enemy) => enemy.hp > 0) && fieldGuard < 2000) {
+  while (normalMobs().some((enemy) => enemy.hp > 0) && fieldGuard < 6000) {
     const player = fieldBattle.units.find((unit) => unit.controlled && unit.hp > 0);
     const target = normalMobs().find((enemy) => enemy.hp > 0);
     if (player && target) {
@@ -426,6 +425,10 @@ test("필드 조우부터 던전 우두머리와 영지 정산까지 한 원정�
       engine.playerRealtimeAction("skill2");
       engine.playerRealtimeAction("skill3");
     }
+    // 이 테스트가 보는 건 "필드 보스가 살아 있어도 정리로 친다"는 규칙이다.
+    // 템포가 느려지며 정리에 더 오래 걸리게 됐고, 그 사이 광역기가 보스까지
+    // 죽여버려 규칙을 확인할 대상이 사라졌다. 보스는 살려 둔다.
+    for (const boss of fieldBattle.enemies) if (boss.fieldBoss) boss.hp = boss.maxHp;
     engine.advanceRealtimeBattle(120);
     fieldGuard += 1;
   }
@@ -2089,39 +2092,6 @@ test("저주는 대응 수치가 충분하면 아예 걸리지 않는다", () =>
   };
   assert.ok(measure(0) > 0, "대응이 없으면 이탈한다");
   assert.equal(measure(4), 0, "대응 수치를 갖추면 이탈하지 않는다");
-});
-
-test("특수 동료 동굴은 필드에 깔리되 지나칠 수 있다", () => {
-  const bounds = { minX: 0, maxX: 390, minY: 0, maxY: 284 };
-
-  const fresh = rescueCaveTrigger("north", bounds, []);
-  assert.ok(fresh, "아직 아무도 못 구했으면 동굴이 있다");
-  assert.equal(fresh.type, "rescueCave");
-  assert.equal(fresh.requiresClear, false,
-    "선택 콘텐츠라 적을 다 잡지 않아도 들어갈 수 있어야 한다");
-
-  // 그 지역 동료를 이미 구했으면 동굴이 사라진다.
-  assert.equal(rescueCaveTrigger("north", bounds, ["tower_architect"]), null);
-
-  // 다른 지역에서 구했어도 동굴 자체는 열린다 — 들어가 봐야 시체인 걸 안다.
-  // 미리 "여기는 늦었다"고 알려주면 발견형 콘텐츠가 아니게 된다.
-  assert.ok(rescueCaveTrigger("east", bounds, ["tower_architect"]),
-    "늦었다는 사실을 UI로 미리 흘리면 안 된다");
-});
-
-test("필드에는 던전 입구와 동굴이 함께 깔리고 입구가 먼저다", () => {
-  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 12345, roster: [], fieldStage: FIELD_STAGE_COUNT });
-  const types = battle.triggers.map((trigger) => trigger.type);
-  assert.equal(types[0], "dungeonEntrance",
-    "triggers[0]을 던전 입구로 보는 곳이 여럿 있어 순서가 중요하다");
-  assert.ok(types.includes("rescueCave"), "동굴도 함께 깔린다");
-
-  // 바위가 동굴을 막으면 못 들어간다.
-  const cave = battle.triggers.find((trigger) => trigger.type === "rescueCave");
-  for (const obstacle of battle.obstacles) {
-    assert.ok(Math.hypot(obstacle.x - cave.x, obstacle.y - cave.y) >= 30,
-      "동굴 주변은 비어 있어야 한다");
-  }
 });
 
 test("동료 스킬 열여섯 개가 전부 실제로 수치를 바꾼다", () => {

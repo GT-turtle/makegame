@@ -250,8 +250,6 @@ export function createInitialState() {
       // 지역 대응 소모품 보유량과, 흡수해 둔 지역 핵.
       regionTonics: {},
       absorbedCores: [],
-      // 늦어서 못 구한 특수 동료의 자리. 시체를 본 지역만 들어간다.
-      foundCorpses: [],
       // 영지 귀환 부적 보유량.
       recallCharms: 0,
       blueprints: ["frontierMantle"],
@@ -1622,7 +1620,6 @@ export function migrateState(rawState) {
     // 지역 패널티를 장비 밖에서도 막을 수 있게 됐다 — 대응 소모품과 핵 흡수.
     state.meta.regionTonics ||= {};
     state.meta.absorbedCores ||= [];
-    state.meta.foundCorpses ||= [];
     state.meta.recallCharms ||= 0;
     // 동료 스킬이 생겼다. 기존 저장의 동료에게 레벨 1을 깔아 준다.
     for (const progress of Object.values(state.adventure.unitProgress || {})) {

@@ -813,26 +813,6 @@ export function grantCompanionSkillXp(progress = {}, amount = 0) {
   return { progress: next, levels };
 }
 
-// 동굴 안의 구조 전투. 그 지역 몬스터가 갇힌 사람을 둘러싸고 있다.
-//
-// 일반 조우보다 적이 많다(enemyCopies 3) — 구하러 들어간 자리라 그래야 한다.
-// 전멸시키면 구조, 물러나면 동굴은 다시 닫히지 않고 남아 재도전할 수 있다.
-export function createRescueBattle(regionId, partyIds, unitProgress = {}, options = {}) {
-  const region = WORLD_REGION_DEFS[regionId];
-  if (!region) return null;
-  const encounterId = region.enemyPool[region.enemyPool.length - 1] || region.enemyPool[0];
-  const battle = createAutoBattle(encounterId, null, "cave", partyIds, unitProgress, {
-    ...options,
-    regionId,
-    enemyCopies: 3,
-    rollSeed: (options.seed || 1) + 51203
-  });
-  if (!battle) return null;
-  battle.rescueMode = true;
-  battle.log.unshift("안쪽에서 사람 소리가 난다. 둘러싸여 있다.");
-  return battle;
-}
-
 // 재현 전투의 보상. 부산물만, 그것도 절반만 나온다.
 export function memoryRewards(battle) {
   const materials = {};
@@ -1280,38 +1260,6 @@ export function golemCount(roster = []) {
   return roster.filter((id) => id.startsWith(GOLEM_UNIT_ID)).length;
 }
 
-// 특수 동료는 다섯 중 **하나만** 얻는다. 먼저 닿은 쪽을 구하면 나머지 넷은
-// 시체로 발견된다(COMPANION_EVENT_DESIGN.md §6 상호배타 원칙).
-//
-// 게임은 "놓친 동료가 있다"고 알려주지 않는다 — 이름도 직업도 밝히지 않고
-// 그냥 시체 한 구가 있을 뿐이다. 다른 회차에 다른 순서로 가면 그 사람이
-// 살아 있는 모습으로 나온다. 그 차이를 게임이 설명하지 않는 게 핵심이다.
-// 특수 동료가 갇혀 있는 동굴. 필드 안쪽 어딘가에 있고, 들어가면 구조 전투가
-// 벌어진다. **던전 입구와 달리 지나칠 수 있다** — 선택 콘텐츠이므로
-// requiresClear를 걸지 않는다.
-//
-// 이미 다섯 중 하나를 구했으면 동굴은 열리되 안에 시체만 있다.
-// 게임은 그 사실을 미리 알려주지 않는다 — 들어가 봐야 안다.
-export function rescueCaveTrigger(regionId, bounds, roster = []) {
-  const special = Object.values(SPECIAL_UNIT_DEFS).find((unit) => unit.regionId === regionId);
-  if (!special || roster.includes(special.id)) return null;
-  return {
-    id: `${regionId}-rescue-cave`,
-    type: "rescueCave",
-    name: "무너진 동굴",
-    regionId,
-    // 던전 입구(오른쪽 끝)와 겹치지 않게 위쪽으로 치워 둔다.
-    x: bounds.minX + (bounds.maxX - bounds.minX) * 0.55,
-    y: bounds.minY + (bounds.maxY - bounds.minY) * 0.22,
-    radius: 9,
-    requiresClear: false
-  };
-}
-
-export function specialCompanionTaken(roster = []) {
-  return Object.values(SPECIAL_UNIT_DEFS).some((unit) => roster.includes(unit.id));
-}
-
 // ── 동료 스킬 ────────────────────────────────────────────────────────────────
 //
 // 동료는 액티브를 쓰지 않는다. 자동 AI가 스킬을 굴리면 플레이어가 볼 것도
@@ -1394,6 +1342,17 @@ export function companionHazardMitigation(partyIds = [], unitProgress = {}) {
     if (definition?.kind !== "hazardMitigation") return total;
     return total + Math.round(companionSkillValue(definition, unitProgress[unitId]?.skillLevel));
   }, 0);
+}
+
+// 그 지역에서 아직 못 구한 특수 동료.
+//
+// 다섯을 다 구할 수 있다. 하나만 고르게 했더니 특수 시설 다섯 중 넷이
+// 통째로 잠겼다 — 마탑·주술룬·특수단조·부활·골렘은 역할이 서로 달라서
+// 하나로 묶으면 회차마다 되는 것과 안 되는 것이 통째로 갈린다.
+// 몇 명까지 허용할지는 밸런싱하면서 다시 본다.
+export function pendingRescueUnitId(regionId, roster = []) {
+  const special = Object.values(SPECIAL_UNIT_DEFS).find((unit) => unit.regionId === regionId);
+  return special && !roster.includes(special.id) ? special.id : null;
 }
 
 export const SPECIAL_UNIT_DEFS = {
@@ -2237,6 +2196,9 @@ export function moveRunPlayer(run, x, y) {
       commander: run.commander,
       roster: run.roster,
       forceBoss: Boolean(feature.boss),
+      // 아직 못 구한 특수 동료는 그 지역 던전 보스전에 아군으로 끼어든다.
+      // 갇혀 있다 튀어나와 같이 싸우는 그림이다 — 던전 클리어가 곧 구조다.
+      rescueAllyId: feature.boss ? pendingRescueUnitId(run.regionId, run.roster) : null,
       awaitingPlayerStart: true,
       enemyCopies: feature.boss ? 1 : 2
     });
@@ -2416,7 +2378,13 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
   const computedPlayerStats = playerCombatStats(options.commander || {}, playerKit.id);
   const playerHpGrowth = computedPlayerStats.maxHp / playerKit.stats.maxHp;
   const playerDamageGrowth = computedPlayerStats.damage / playerKit.stats.damage;
-  const companions = selectedParty.map((unitId, index) => {
+  // 구조 대상이 있으면 편성에 없어도 아군으로 세운다. 갇혀 있다 튀어나와
+  // 같이 싸우는 그림이라, 클리어하면 그대로 명부에 오른다.
+  const rescueAllyId = options.rescueAllyId && !selectedParty.includes(options.rescueAllyId)
+    && UNIT_DEFS[options.rescueAllyId] ? options.rescueAllyId : null;
+  const battleParty = rescueAllyId ? [...selectedParty, rescueAllyId] : selectedParty;
+
+  const companions = battleParty.map((unitId, index) => {
     const definition = UNIT_DEFS[unitId];
     const progress = unitProgress[unitId] || { level: 1, xp: 0 };
     const traits = unitTraits(progress);
@@ -2545,6 +2513,7 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     command: { chargeUntil: 0, guardUntil: 0, focusUntil: 0 },
     commandReadyAt: { charge: 0, guard: 0, focus: 0 },
     // 진법(진법 군관)은 동료가 하나도 안 쓰러졌을 때만 선다. 시작 인원을 기억해 둔다.
+    rescueAllyId: options.rescueAllyId || null,
     companionCount: companions.length,
     passiveState: {},
     consumedCorpseIds: [],
@@ -2595,9 +2564,7 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
       y: (bounds.minY + bounds.maxY) / 2,
       radius: 8,
       requiresClear: true
-    },
-    // 동굴은 **뒤에** 붙인다 — triggers[0]이 던전 입구라고 보는 곳이 여럿 있다.
-    ...(rescueCaveTrigger(regionId, bounds, options.roster) ? [rescueCaveTrigger(regionId, bounds, options.roster)] : [])]
+    }]
   });
   if (!battle) return null;
 

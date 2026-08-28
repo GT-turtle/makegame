@@ -122,6 +122,73 @@ test("터치 이동 경로는 벽·적·미확인 칸을 우회한다", () => {
   assert.deepEqual(findPath(tiles, start, target, new Set(), new Set([keyOf(1, 1), keyOf(3, 1)])), []);
 });
 
+test("특수 동료 다섯을 전부 구할 수 있다", () => {
+  // 하나만 고르게 했더니 마탑·주술룬·특수단조·부활·골렘 다섯 중 넷이 통째로
+  // 잠겼다. 역할이 서로 달라 하나로 묶으면 회차마다 되는 것이 통째로 갈린다.
+  const engine = new GameEngine(new MemoryStorage());
+  const rescued = [];
+  for (const regionId of ["north", "south", "east", "west", "central"]) {
+    const id = engine.rescueSpecialCompanion(regionId);
+    assert.ok(id, `${regionId} 특수 동료를 구조하지 못했다`);
+    rescued.push(id);
+  }
+  assert.equal(new Set(rescued).size, 5, "다섯이 서로 다르다");
+  for (const id of rescued) assert.ok(engine.state.adventure.roster.includes(id));
+
+  // 같은 곳에서 두 번은 안 된다.
+  assert.equal(engine.rescueSpecialCompanion("north"), null);
+});
+
+test("던전에 들어가면 기척이 들리고, 보스전에 그 동료가 아군으로 낀다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  assert.equal(engine.startRegionAdventure("north", 4242), true);
+  const run = engine.state.adventure.run;
+
+  // 필드 셋을 지나 던전으로.
+  for (let guard = 0; guard < 5; guard += 1) {
+    const exit = run.battle.triggers[0];
+    const player = run.battle.units.find((unit) => unit.id === run.battle.playerId);
+    player.x = exit.x;
+    player.y = exit.y;
+    if (exit.type === "dungeonEntrance") {
+      for (const enemy of run.battle.enemies) enemy.hp = 0;
+      engine.advanceRealtimeBattle(50);
+      break;
+    }
+    engine.advanceRealtimeBattle(50);
+  }
+  assert.equal(engine.enterAdventureDungeon(), true);
+
+  // 누구인지는 말하지 않는다 — 기척만.
+  const hint = engine.state.log.find((entry) => entry.text.includes("앞에서 싸우는 소리"));
+  assert.ok(hint, "던전에 들어가면 기척이 들린다");
+  assert.ok(!hint.text.includes("마탑"), "누구인지 밝히면 안 된다");
+
+  // 이미 구했으면 기척이 없다.
+  const after = new GameEngine(new MemoryStorage());
+  after.rescueSpecialCompanion("north");
+  after.startRegionAdventure("north", 4242);
+  const before = after.state.log.length;
+  after.state.adventure.run.location = "field";
+  assert.ok(!after.state.log.slice(0, after.state.log.length - before + 1)
+    .some((entry) => entry.text.includes("앞에서 싸우는 소리")));
+});
+
+test("구조 대상은 편성에 없어도 보스전에 아군으로 선다", () => {
+  const battle = createAutoBattle("frostColossusPack", "boss", "dungeon", ["snow_guard"], {}, {
+    rollSeed: 11, forceBoss: true, rescueAllyId: "tower_architect"
+  });
+  const ally = battle.units.find((unit) => unit.defId === "tower_architect");
+  assert.ok(ally, "구조 대상이 아군으로 선다");
+  assert.equal(ally.team, "unit");
+
+  // 이미 편성에 있으면 중복으로 세우지 않는다.
+  const dup = createAutoBattle("frostColossusPack", "boss", "dungeon", ["tower_architect"], {}, {
+    rollSeed: 11, forceBoss: true, rescueAllyId: "tower_architect"
+  });
+  assert.equal(dup.units.filter((unit) => unit.defId === "tower_architect").length, 1);
+});
+
 test("필드 끝에 닿으면 다음 필드로 넘어가고 마지막에 던전이 나온다", () => {
   const engine = new GameEngine(new MemoryStorage());
   assert.equal(engine.startRegionAdventure("north", 777), true);
@@ -192,54 +259,6 @@ test("귀환 부적은 짐을 지킨 채 영지로 돌려보낸다", () => {
   assert.equal(engine.state.meta.scrap, before + 42, "짐이 깎이지 않고 그대로 들어온다");
 
   assert.equal(engine.useRecallCharm(), false, "원정 중이 아니면 못 쓴다");
-});
-
-test("동굴에 들어가 구조 전투를 이기면 특수 동료가 합류하고 필드로 돌아온다", () => {
-  // 예전에는 그 지역 동료 셋을 다 모으면 조용히 명부에 들어왔다.
-  // 이제 직접 들어가서 꺼내와야 한다.
-  const engine = new GameEngine(new MemoryStorage());
-  assert.equal(engine.startRegionAdventure("north", 12345), true);
-  const run = engine.state.adventure.run;
-
-  const cave = run.battle.triggers.find((trigger) => trigger.type === "rescueCave");
-  assert.ok(cave, "필드에 동굴이 있어야 한다");
-  assert.ok(!engine.state.adventure.roster.includes("tower_architect"));
-
-  // 동굴로 걸어 들어간다.
-  const player = run.battle.units.find((unit) => unit.id === run.battle.playerId);
-  player.x = cave.x;
-  player.y = cave.y;
-  assert.equal(engine.advanceRealtimeBattle(50), "rescueCave");
-  assert.ok(run.battle.rescueMode, "구조 전투로 바뀐다");
-  assert.ok(run.fieldBattleStash, "필드 전투는 치워 두고 나중에 되돌린다");
-
-  // 둘러싼 것들을 전멸시킨다.
-  for (const enemy of run.battle.enemies) enemy.hp = 0;
-  assert.equal(engine.advanceRealtimeBattle(50), "victory");
-
-  assert.ok(engine.state.adventure.roster.includes("tower_architect"), "영입된다");
-  assert.ok(run.battle?.fieldMode, "필드로 돌아온다");
-  assert.equal(run.fieldBattleStash, null, "치워둔 것을 비운다");
-  assert.equal(run.rescueCaveRegionId, null);
-});
-
-test("구조 전투에서 물러나면 동료는 안 오지만 필드는 그대로다", () => {
-  const engine = new GameEngine(new MemoryStorage());
-  engine.startRegionAdventure("north", 4242);
-  const run = engine.state.adventure.run;
-  const cave = run.battle.triggers.find((trigger) => trigger.type === "rescueCave");
-  const player = run.battle.units.find((unit) => unit.id === run.battle.playerId);
-  player.x = cave.x;
-  player.y = cave.y;
-  engine.advanceRealtimeBattle(50);
-
-  // 이쪽이 전멸한다.
-  for (const unit of run.battle.units) unit.hp = 0;
-  const status = engine.advanceRealtimeBattle(50);
-  assert.notEqual(status, "victory");
-
-  assert.ok(!engine.state.adventure.roster.includes("tower_architect"), "영입되지 않는다");
-  assert.ok(run.battle?.fieldMode, "필드로는 돌아온다");
 });
 
 test("기억 던전은 재료뿐 아니라 경험치와 동료 스킬 경험치도 준다", () => {
@@ -1542,34 +1561,6 @@ function rescueSpecial(engine, regionId) {
   }
   return engine.rescueSpecialCompanion(regionId);
 }
-
-test("특수 동료는 다섯 중 하나만 구할 수 있고, 나머지는 시체로 남는다", () => {
-  // 예전 규칙("그 지역 동료 셋을 다 모으면 조용히 합류")을 걷어냈다.
-  // 이제 던전을 클리어하면 구조되고, 한 명을 구하면 나머지 넷은 늦는다.
-  const engine = new GameEngine(new MemoryStorage());
-  const adventure = engine.state.adventure;
-
-  // 동료를 안 모아도 구조된다 — 직접 들어가서 꺼내오는 것이므로.
-  assert.equal(engine.rescueSpecialCompanion("north"), "tower_architect");
-  assert.ok(adventure.roster.includes("tower_architect"));
-
-  // 같은 곳에서 두 번은 안 된다.
-  assert.equal(engine.rescueSpecialCompanion("north"), null);
-
-  // 다른 지역은 늦었다. 명부에 안 오르고 시체만 남는다.
-  assert.equal(engine.rescueSpecialCompanion("east"), null);
-  assert.ok(!adventure.roster.includes("hunted_smith"), "둘째는 영입되지 않는다");
-  assert.ok(engine.state.meta.foundCorpses.includes("east"), "시체가 기록된다");
-
-  // 로그가 누구인지 밝히지 않는다 — 놓친 동료가 있다고 알려주지 않는 원칙.
-  const corpseLog = engine.state.log.find((entry) => entry.text.includes("시체 한 구"));
-  assert.ok(corpseLog, "시체 로그가 뜬다");
-  assert.ok(!corpseLog.text.includes("대장장이"), "이름을 밝히면 안 된다");
-
-  // 같은 곳을 다시 가도 시체가 두 번 쌓이지 않는다.
-  assert.equal(engine.rescueSpecialCompanion("east"), null);
-  assert.equal(engine.state.meta.foundCorpses.filter((id) => id === "east").length, 1);
-});
 
 test("주술 각인 룬은 주술사를 구조해야 떨어지고, 살 수는 없다", () => {
   const engine = new GameEngine(new MemoryStorage());
