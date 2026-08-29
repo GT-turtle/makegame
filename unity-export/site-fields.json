@@ -1,0 +1,131 @@
+{
+  "stageCount": 3,
+  "arenaBounds": {
+    "minX": 5,
+    "maxX": 815,
+    "minY": 8,
+    "maxY": 520
+  },
+  "fields": [
+    {
+      "stage": 1,
+      "id": "approach",
+      "name": "야영지 어귀",
+      "description": "울타리 안에 불이 살아 있다. 여기서부터 길이 갈린다.",
+      "mapY1": 62,
+      "mapY2": 100,
+      "landmarks": [
+        {
+          "id": "camp",
+          "name": "야영지",
+          "kind": "camp",
+          "mapX": 49,
+          "mapY": 76,
+          "radius": 13,
+          "footprint": 10.5,
+          "solid": false
+        },
+        {
+          "id": "herbGrove",
+          "name": "빛나는 약초밭",
+          "kind": "grove",
+          "mapX": 20,
+          "mapY": 65,
+          "radius": 12,
+          "footprint": 11,
+          "solid": false
+        },
+        {
+          "id": "southRoad",
+          "name": "갈라지는 길",
+          "kind": "road",
+          "mapX": 72,
+          "mapY": 88,
+          "radius": 7,
+          "footprint": 7,
+          "solid": false
+        }
+      ]
+    },
+    {
+      "stage": 2,
+      "id": "crossroads",
+      "name": "갈림길 채석장",
+      "description": "길이 셋으로 갈라지고, 깎다 만 돌더미가 시야를 막는다.",
+      "mapY1": 36,
+      "mapY2": 62,
+      "landmarks": [
+        {
+          "id": "quarry",
+          "name": "채석장",
+          "kind": "quarry",
+          "mapX": 74,
+          "mapY": 54,
+          "radius": 14,
+          "footprint": 13,
+          "solid": true
+        },
+        {
+          "id": "crossroad",
+          "name": "세 갈래 길",
+          "kind": "road",
+          "mapX": 45,
+          "mapY": 47,
+          "radius": 8,
+          "footprint": 8,
+          "solid": false
+        },
+        {
+          "id": "boulders",
+          "name": "바위 무리",
+          "kind": "rock",
+          "mapX": 24,
+          "mapY": 44,
+          "radius": 9,
+          "footprint": 6,
+          "solid": true
+        }
+      ]
+    },
+    {
+      "stage": 3,
+      "id": "ridge",
+      "name": "능선 위",
+      "description": "광산과 동굴이 양옆에 입을 벌리고, 가운데 유적 문이 푸르게 탄다.",
+      "mapY1": 0,
+      "mapY2": 36,
+      "landmarks": [
+        {
+          "id": "mine",
+          "name": "폐광 입구",
+          "kind": "mine",
+          "mapX": 23,
+          "mapY": 29,
+          "radius": 11,
+          "footprint": 7,
+          "solid": true
+        },
+        {
+          "id": "ruinGate",
+          "name": "유적 문",
+          "kind": "dungeon",
+          "mapX": 48,
+          "mapY": 17,
+          "radius": 10,
+          "footprint": 5,
+          "solid": false
+        },
+        {
+          "id": "cave",
+          "name": "야생 동굴",
+          "kind": "cave",
+          "mapX": 77,
+          "mapY": 22,
+          "radius": 10,
+          "footprint": 4,
+          "solid": true
+        }
+      ]
+    }
+  ]
+}

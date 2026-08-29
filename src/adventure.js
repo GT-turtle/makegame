@@ -91,6 +91,12 @@ export const FIELD_STAGE_COUNT = 3;
 //   2필드(갈림길) y 36~62   채석장 · 세 갈래 길
 //   1필드(어귀)   y 62~100  야영지 · 약초밭
 //
+// radius와 footprint는 다른 값이다. radius는 전투장에서 몸으로 막히는 충돌
+// 반경(전투장 단위)이고, footprint는 그림에서 그 지물이 실제로 차지하는 크기
+// (가로 폭의 %)다. 야영지 울타리는 지도 가로의 21%를 먹지만 그걸 그대로
+// 막으면 필드 한가운데가 벽이 된다 — 3D 모델 크기는 footprint를 쓰고,
+// 통과 판정은 radius를 쓴다.
+//
 // landmarks의 x/y는 **그림 안 위치(%)** 다. 전투 아레나에 지물을 놓을 때도,
 // 나중에 3D 모델을 얹을 때도 같은 좌표를 쓴다 — 지도에서 본 자리와 실제로
 // 서 있는 자리가 어긋나면 같은 장소로 안 읽힌다.
@@ -100,9 +106,9 @@ export const SITE_FIELD_DEFS = [
     description: "울타리 안에 불이 살아 있다. 여기서부터 길이 갈린다.",
     mapArea: { x1: 0, y1: 62, x2: 100, y2: 100 },
     landmarks: [
-      { id: "camp", name: "야영지", kind: "camp", x: 49, y: 76, radius: 13 },
-      { id: "herbGrove", name: "빛나는 약초밭", kind: "grove", x: 20, y: 65, radius: 12 },
-      { id: "southRoad", name: "갈라지는 길", kind: "road", x: 72, y: 88, radius: 7 }
+      { id: "camp", name: "야영지", kind: "camp", x: 49, y: 76, radius: 13, footprint: 10.5 },
+      { id: "herbGrove", name: "빛나는 약초밭", kind: "grove", x: 20, y: 65, radius: 12, footprint: 11 },
+      { id: "southRoad", name: "갈라지는 길", kind: "road", x: 72, y: 88, radius: 7, footprint: 7 }
     ]
   },
   {
@@ -110,9 +116,9 @@ export const SITE_FIELD_DEFS = [
     description: "길이 셋으로 갈라지고, 깎다 만 돌더미가 시야를 막는다.",
     mapArea: { x1: 0, y1: 36, x2: 100, y2: 62 },
     landmarks: [
-      { id: "quarry", name: "채석장", kind: "quarry", x: 74, y: 54, radius: 14 },
-      { id: "crossroad", name: "세 갈래 길", kind: "road", x: 45, y: 47, radius: 8 },
-      { id: "boulders", name: "바위 무리", kind: "rock", x: 24, y: 44, radius: 9 }
+      { id: "quarry", name: "채석장", kind: "quarry", x: 74, y: 54, radius: 14, footprint: 13 },
+      { id: "crossroad", name: "세 갈래 길", kind: "road", x: 45, y: 47, radius: 8, footprint: 8 },
+      { id: "boulders", name: "바위 무리", kind: "rock", x: 24, y: 44, radius: 9, footprint: 6 }
     ]
   },
   {
@@ -120,9 +126,9 @@ export const SITE_FIELD_DEFS = [
     description: "광산과 동굴이 양옆에 입을 벌리고, 가운데 유적 문이 푸르게 탄다.",
     mapArea: { x1: 0, y1: 0, x2: 100, y2: 36 },
     landmarks: [
-      { id: "mine", name: "폐광 입구", kind: "mine", x: 23, y: 29, radius: 11 },
-      { id: "ruinGate", name: "유적 문", kind: "dungeon", x: 48, y: 17, radius: 10 },
-      { id: "cave", name: "야생 동굴", kind: "cave", x: 77, y: 22, radius: 10 }
+      { id: "mine", name: "폐광 입구", kind: "mine", x: 23, y: 29, radius: 11, footprint: 7 },
+      { id: "ruinGate", name: "유적 문", kind: "dungeon", x: 48, y: 17, radius: 10, footprint: 5 },
+      { id: "cave", name: "야생 동굴", kind: "cave", x: 77, y: 22, radius: 10, footprint: 4 }
     ]
   }
 ];
