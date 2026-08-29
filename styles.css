@@ -3554,6 +3554,60 @@ body.map-active .region-inspector .squad-preview { display: none; }
 
 .frontier-local-stage { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0,1fr) clamp(260px,28vw,350px); gap: 10px; padding: 84px 72px 10px; background: #07100d; }
 .frontier-local-map { position: relative; min-width: 0; overflow: hidden; border: 1px solid #776640; border-radius: 17px; background: linear-gradient(rgba(4,8,6,.05),rgba(2,5,3,.18)),url("./assets/frontier-site-map-v1.png") center/cover no-repeat,#26342a; box-shadow: inset 0 0 70px rgba(0,0,0,.45); }
+/* 그림을 세 필드로 가른 띠. 노드(z-index 5 이상) 아래에 깔려 현장 카드 클릭은
+   그대로 살고, 그림 아무 데나 눌러도 그 구간이 잡힌다. */
+.local-field-band {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: var(--band-y);
+  width: 100%;
+  height: var(--band-h);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-top: 1px dashed rgba(226,205,148,.26);
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  transition: background 140ms ease, box-shadow 140ms ease;
+}
+.local-field-band:first-of-type { border-top: 0; }
+.local-field-band b {
+  position: absolute;
+  /* 왼쪽은 지도 안내 문구와 현장 카드가 이미 쓰고 있다 — 오른쪽 끝에 붙인다. */
+  right: 8px;
+  top: 6px;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border: 1px solid rgba(226,205,148,.4);
+  border-radius: 50%;
+  background: rgba(4,8,6,.7);
+  color: #e3d3a2;
+  font-size: 9px;
+}
+.local-field-band span {
+  position: absolute;
+  right: 30px;
+  top: 8px;
+  color: #cdbf94;
+  font-size: 9px;
+  text-shadow: 0 1px 3px rgba(0,0,0,.8);
+}
+.local-field-band:hover { background: rgba(226,205,148,.07); }
+.local-field-band.selected {
+  background: rgba(226,205,148,.11);
+  box-shadow: inset 0 0 0 1px rgba(226,205,148,.36);
+}
+.local-field-band.selected b { background: rgba(226,205,148,.9); color: #16190f; }
+
+/* 띠를 눌렀을 때 뜨는 카드의 지물 목록 */
+.field-landmark-list { display: grid; gap: 4px; margin: 8px 0; padding: 0; list-style: none; }
+.field-landmark-list li { display: flex; gap: 7px; align-items: center; color: #cabf9c; font-size: 11px; }
+.field-landmark-list li i { font-style: normal; opacity: .85; }
+
 .local-map-vignette { position: absolute; z-index: 1; inset: 0; background: radial-gradient(circle at 50% 46%,transparent 35%,rgba(2,5,3,.3) 100%); pointer-events: none; }
 .frontier-operation-node,
 .frontier-local-node { position: absolute; z-index: 10; display: flex; align-items: center; gap: 6px; min-height: 46px; padding: 5px 8px; border: 1px solid #b89d61; border-radius: 12px; background: rgba(8,14,10,.91); color: #e8e2cf; box-shadow: 0 8px 18px rgba(0,0,0,.45); transform: translate(-50%,-50%); backdrop-filter: blur(3px); }
@@ -4061,6 +4115,75 @@ body.battle-active .modal-wrap { z-index: 3200; }
 
 /* 광역 필드 전투: 원형 장애물(바위·잔해)과 던전 입구 같은 지점 트리거.
    전투 유닛과 같은 투영을 쓰므로 left/top/z-index는 인라인으로 들어온다. */
+/* 지도 그림에서 옮겨온 지물. 회색 바위와 달리 종류가 눈에 띄어야 하고,
+   이름표가 붙어야 지도의 그 자리와 맞춰볼 수 있다. */
+.battle-landmark {
+  position: absolute;
+  aspect-ratio: 1 / .55;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 42% 28%, color-mix(in srgb, var(--landmark-color) 62%, #d9d2bd), color-mix(in srgb, var(--landmark-color) 88%, #171a15) 72%);
+  border: 1px solid rgba(20,24,18,.72);
+  box-shadow: 0 7px 16px rgba(0,0,0,.48), inset 0 -5px 12px rgba(0,0,0,.38);
+  pointer-events: none;
+  --landmark-color: #6d6a5f;
+}
+.battle-landmark i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -62%);
+  font-style: normal;
+  font-size: 15px;
+  line-height: 1;
+  text-shadow: 0 2px 4px rgba(0,0,0,.7);
+}
+.battle-landmark span {
+  position: absolute;
+  left: 50%;
+  bottom: -16px;
+  transform: translateX(-50%);
+  padding: 1px 6px;
+  border-radius: 99px;
+  background: rgba(4,8,6,.66);
+  color: #ddd0a8;
+  font-size: 9px;
+  white-space: nowrap;
+}
+/* 길·야영지·약초밭·유적 문은 지나다니거나 들어가는 곳이다. 채워서 그리면
+   막힐 것처럼 보여 플레이어가 돌아가므로, 바닥에 눕힌 윤곽선만 남긴다.
+   (3D로 옮길 때 이 자리에 모델이 올라간다 — 지금은 그 자리 표시다.) */
+.battle-landmark.kind-road, .battle-landmark.kind-camp,
+.battle-landmark.kind-grove, .battle-landmark.kind-dungeon {
+  box-shadow: none;
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--landmark-color) 70%, #e7dcbb);
+  background: radial-gradient(ellipse at 50% 50%, color-mix(in srgb, var(--landmark-color) 26%, transparent), transparent 72%);
+  opacity: .8;
+}
+.battle-landmark.kind-road { --landmark-color: #7b6f4e; }
+.battle-landmark.kind-camp { --landmark-color: #8a5a30; }
+.battle-landmark.kind-grove { --landmark-color: #4f7c52; }
+.battle-landmark.kind-quarry { --landmark-color: #7d7668; }
+.battle-landmark.kind-rock { --landmark-color: #63605a; }
+.battle-landmark.kind-mine { --landmark-color: #4a4741; }
+.battle-landmark.kind-cave { --landmark-color: #38353a; }
+.battle-landmark.kind-dungeon { --landmark-color: #6fd0da; filter: drop-shadow(0 0 12px rgba(122,206,214,.45)); }
+
+/* 머리말의 구간 표시. 세 필드가 다 같은 초원으로 보이면 전진 감각이 없다. */
+.battle-field-tag {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: 1px solid rgba(220,194,126,.34);
+  border-radius: 99px;
+  background: rgba(4,8,6,.5);
+  color: #d6c89c;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
 .battle-obstacle {
   position: absolute;
   aspect-ratio: 1 / .55;

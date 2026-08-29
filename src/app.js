@@ -25,7 +25,7 @@ import {
   WORLD_REGION_DEFS,
   currentZone,
   explorationPath
-, SPECIAL_UNIT_DEFS, MONSTER_ATLAS_SPECIES, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , materialRarity, MATERIAL_RARITY_LABELS } from "./adventure.js";
+, SPECIAL_UNIT_DEFS, MONSTER_ATLAS_SPECIES, GOLEM_MATERIALS, GOLEM_MAX_COUNT, golemUnlocked, golemCount , materialRarity, MATERIAL_RARITY_LABELS, SITE_FIELD_DEFS, siteFieldDefinition, FIELD_STAGE_COUNT } from "./adventure.js";
 import {
   DISCOVERY_SITE_DEFS,
   FRONTIER_FACTION_DEFS,
@@ -1101,8 +1101,45 @@ function frontierOperationCard(state, definition) {
   `;
 }
 
+// 하위 지도를 세 필드로 가른 띠. 그림 그대로 잘랐으므로(SITE_FIELD_DEFS.mapArea)
+// 지도에서 야영지가 아래에 있으면 1필드도 아래 띠다 — 어디부터 들어가는지가
+// 그림만 보고도 읽힌다.
+function frontierFieldBands() {
+  return SITE_FIELD_DEFS.map((field) => {
+    const area = field.mapArea;
+    const selected = view.frontierSelectedSiteId === `field:${field.stage}`;
+    return `<button class="local-field-band${selected ? " selected" : ""}"`
+      + ` style="--band-y:${area.y1}%;--band-h:${area.y2 - area.y1}%"`
+      + ` data-action="select-frontier-site" data-site-id="field:${field.stage}"`
+      + ` aria-label="${escapeHtml(field.name)} 구간">`
+      + `<b>${field.stage}</b><span>${escapeHtml(field.name)}</span></button>`;
+  }).join("");
+}
+
+// 띠를 눌렀을 때 뜨는 카드. 그 구간에 무엇이 있는지 지물 이름 그대로 보여준다.
+function frontierFieldCard(state, definition, stage) {
+  const field = siteFieldDefinition(stage);
+  const occupied = occupiedZone(state.frontier, definition.id);
+  const entryStage = stage === 1;
+  return `
+    <article class="frontier-operation-card field-band-card">
+      <header><span>${field.stage}</span><div><p class="eyebrow">하위 필드 ${field.stage}/${FIELD_STAGE_COUNT}</p><h2>${escapeHtml(field.name)}</h2></div></header>
+      <p>${escapeHtml(field.description)}</p>
+      <ul class="field-landmark-list">${field.landmarks.map((landmark) =>
+        `<li><i>${LANDMARK_GLYPHS[landmark.kind] || "◆"}</i>${escapeHtml(landmark.name)}</li>`).join("")}</ul>
+      <p class="facility-note">${entryStage
+        ? "여기서 진입한다. 끝까지 밀어내면 다음 구간으로 이어진다."
+        : `앞 구간을 지나야 닿는다. 안쪽일수록 무리가 두껍다.`}</p>
+      ${entryStage ? `<button class="primary" data-action="start-frontier-adventure" data-zone-id="${definition.id}" data-purpose="${occupied ? "suppression" : "conquest"}">${occupied ? "토벌 진입" : "1구간부터 진입"}</button>` : ""}
+    </article>
+  `;
+}
+
 function frontierSiteInspector(state, definition, entries) {
   if (view.frontierSelectedSiteId === "operation") return frontierOperationCard(state, definition);
+  if (String(view.frontierSelectedSiteId || "").startsWith("field:")) {
+    return frontierFieldCard(state, definition, Number(view.frontierSelectedSiteId.slice(6)) || 1);
+  }
   const entry = entries.find((candidate) => candidate.id === view.frontierSelectedSiteId) || entries[0];
   if (!entry) return frontierOperationCard(state, definition);
   const siteDefinition = DISCOVERY_SITE_DEFS[entry.typeId];
@@ -1127,16 +1164,19 @@ function frontierSiteInspector(state, definition, entries) {
 function frontierLocalMap(state, definition) {
   const zone = state.frontier.zones[definition.id];
   const entries = frontierLocalEntries(definition, zone);
-  const selectedExists = view.frontierSelectedSiteId === "operation" || entries.some((entry) => entry.id === view.frontierSelectedSiteId);
+  const selectedExists = view.frontierSelectedSiteId === "operation"
+    || String(view.frontierSelectedSiteId || "").startsWith("field:")
+    || entries.some((entry) => entry.id === view.frontierSelectedSiteId);
   if (!selectedExists) view.frontierSelectedSiteId = "operation";
   return `
     <section class="frontier-local-stage">
       <div class="frontier-local-map" data-map-layer="local" aria-label="${escapeHtml(definition.name)} 하위 탐사 지도">
         <div class="local-map-vignette"></div>
+        ${frontierFieldBands()}
         <button class="frontier-operation-node ${view.frontierSelectedSiteId === "operation" ? "selected" : ""}" data-action="select-frontier-site" data-site-id="operation"><i>⚑</i><span><strong>${definition.name}</strong><small>진입·토벌 선택</small></span></button>
         ${entries.map(frontierLocalNode).join("")}
         <div class="local-map-route route-a"></div><div class="local-map-route route-b"></div><div class="local-map-route route-c"></div>
-        <p class="local-map-hint">광산·동굴·던전을 눌러 현장 정보와 출정 명령을 확인</p>
+        <p class="local-map-hint">구간 띠나 현장을 눌러 정보와 출정 명령을 확인</p>
         ${mapZoomControls("local")}
       </div>
       <aside class="frontier-site-inspector">${frontierSiteInspector(state, definition, entries)}</aside>
@@ -1517,9 +1557,30 @@ function battleGroundEffects(battle) {
   }).join("");
 }
 
+// 지도 그림에서 옮겨온 지물. 종류마다 모양이 달라야 "저기가 채석장"이 눈으로
+// 읽힌다 — 회색 덩어리로 다 똑같이 그리면 지도와 맞춰볼 수가 없다.
+const LANDMARK_GLYPHS = {
+  // ︎는 텍스트 표현 선택자다 — 없으면 크롬이 ⛺·⛏·⛩을 컬러 이모지로
+  // 그려서 나머지 UI와 톤이 어긋난다.
+  camp: "⛺︎", grove: "❀", road: "⋯", quarry: "⛏︎",
+  rock: "▲", mine: "⛏︎", cave: "◗", dungeon: "⛩︎"
+};
+
+function battleLandmarks(battle) {
+  if (!battle.landmarks?.length) return "";
+  return battle.landmarks.map((landmark) => {
+    const projection = battleProjection(landmark, battle);
+    if (!projection.visible) return "";
+    const width = landmark.radius * 2 * 0.72 * (projection.scale / 0.9);
+    return `<div class="battle-landmark kind-${landmark.kind}" style="left:${projection.x.toFixed(2)}%;top:${projection.y.toFixed(2)}%;width:${width.toFixed(2)}%;z-index:${projection.z - 2}">`
+      + `<i>${LANDMARK_GLYPHS[landmark.kind] || "◆"}</i><span>${escapeHtml(landmark.name)}</span></div>`;
+  }).join("");
+}
+
 function battleObstacles(battle) {
   if (!battle.obstacles?.length) return "";
-  return battle.obstacles.map((obstacle) => {
+  // 지물에서 온 장애물은 battleLandmarks가 제 모양으로 그리므로 여기선 건너뛴다.
+  return battle.obstacles.filter((obstacle) => !obstacle.landmarkId).map((obstacle) => {
     const projection = battleProjection(obstacle, battle);
     if (!projection.visible) return "";
     // battleProjection의 lateral 계수(0.72)와 같은 비율로 폭을 잡아야
@@ -1664,11 +1725,17 @@ function battleScreen(state, defenseMode = false) {
   const defenseControlNote = defenseCampaign?.phase === "inner"
     ? "개척자는 직접 조작하고 동료 2명은 자동으로 싸운다. 성문 돌파 뒤에는 고정 수비대가 각 문과 주민 대피로를 지킨다."
     : "기동 동료 2명은 함께 이동하며, 현재 성문의 고정 수비대가 추가로 자동 전투한다.";
+  // 지금 서 있는 곳이 지도의 어느 띠인지 머리말에 붙인다 — 세 필드가 다 같은
+  // 초원으로 보이면 전진하고 있다는 감각이 없다.
+  const siteField = battle.fieldMode ? siteFieldDefinition(battle.fieldStage || 1) : null;
+  const fieldLabel = siteField
+    ? ` <em class="battle-field-tag">${siteField.stage}/${FIELD_STAGE_COUNT} ${escapeHtml(siteField.name)}</em>`
+    : "";
   const waitingForResult = !defenseMode && battle.status !== "active" && Boolean(run?.result)
     && Number(battle.resultRevealAt || 0) > Date.now();
   return `
     <main class="screen battle-screen" style="--region-color:${region.accent}">
-      <header class="battle-heading"><div><p class="eyebrow">${defenseMode ? "다중 성문 수성전" : "직접 조작 + 동료 자동전투"} · ${elapsed}초</p><h1>${battle.boss ? "☠" : "⚔"} ${defenseMode ? defenseTitle : battle.encounterName}</h1><small>${defenseMode ? `${defenseDetail} · 방어 시설 ${state.estateDefense.fortification}/5` : `${region.hazard.glyph} ${region.hazard.name} 대응 ${run.hazardMitigation}`} · 고정 아이소메트릭 액션 전장</small></div>${defenseMode && defenseCampaign?.phase === "gates" ? '<button class="defense-map-toggle" data-action="open-defense-map">네 성문 전황</button>' : '<span class="live-indicator">● LIVE</span>'}</header>
+      <header class="battle-heading"><div><p class="eyebrow">${defenseMode ? "다중 성문 수성전" : "직접 조작 + 동료 자동전투"} · ${elapsed}초</p><h1>${battle.boss ? "☠" : "⚔"} ${defenseMode ? defenseTitle : battle.encounterName}${fieldLabel}</h1><small>${defenseMode ? `${defenseDetail} · 방어 시설 ${state.estateDefense.fortification}/5` : `${region.hazard.glyph} ${region.hazard.name} 대응 ${run.hazardMitigation}`} · 고정 아이소메트릭 액션 전장</small></div>${defenseMode && defenseCampaign?.phase === "gates" ? '<button class="defense-map-toggle" data-action="open-defense-map">네 성문 전황</button>' : '<span class="live-indicator">● LIVE</span>'}</header>
       <section class="battle-score"><div><span>${defenseMode ? defenseUnitLabel : adventureUnitLabel}</span><b>${Math.ceil(unitHp)}/${unitMax}</b><i style="--score:${(unitHp / unitMax) * 100}%"></i></div><em>VS</em><div><span>${defenseMode && defenseCampaign?.phase === "inner" ? "성내 침입군" : "몬스터 무리"}</span><b>${Math.ceil(enemyHp)}/${enemyMax}</b><i style="--score:${(enemyHp / enemyMax) * 100}%"></i></div></section>
       <section class="battle-arena third-person-arena region-${region.id}" style="--bg-pan-x:${bgPan.x.toFixed(2)}%;--bg-pan-y:${bgPan.y.toFixed(2)}%" aria-label="고정된 아이소메트릭 시점의 실시간 전투장, 배경이 개척자 위치를 따라 이동">
         <div class="battle-horizon"></div>
@@ -1677,6 +1744,7 @@ function battleScreen(state, defenseMode = false) {
         <div class="battle-reticle"><i></i></div>
         ${battlePartyRail(battle)}
         ${battleRadar(battle)}
+        ${battleLandmarks(battle)}
         ${battleObstacles(battle)}
         ${battleGroundEffects(battle)}
         ${battleZones(battle)}

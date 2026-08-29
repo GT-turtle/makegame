@@ -81,6 +81,77 @@ export const FIELD_BOUNDS = { minX: 5, maxX: 815, minY: 8, maxY: 520 };
 // 필드 끝에 닿으면 다음 필드로 넘어가고, 마지막 필드 끝에 던전 입구가 있다.
 export const FIELD_STAGE_COUNT = 3;
 
+// ── 하위 필드 지도의 세 구획 ────────────────────────────────────────────────
+//
+// assets/frontier-site-map-v1.png 의 지형을 그대로 따라 가로 띠 셋으로 갈랐다.
+// 아이소메트릭 그림이라 **위로 갈수록 깊이 들어간 곳**이고, 야영지가 아래에
+// 있어서 "아래에서 시작해 위로 밀고 올라간다"가 그림과 그대로 맞물린다.
+//
+//   3필드(능선)   y 0~36    광산 · 유적 문 · 동굴
+//   2필드(갈림길) y 36~62   채석장 · 세 갈래 길
+//   1필드(어귀)   y 62~100  야영지 · 약초밭
+//
+// landmarks의 x/y는 **그림 안 위치(%)** 다. 전투 아레나에 지물을 놓을 때도,
+// 나중에 3D 모델을 얹을 때도 같은 좌표를 쓴다 — 지도에서 본 자리와 실제로
+// 서 있는 자리가 어긋나면 같은 장소로 안 읽힌다.
+export const SITE_FIELD_DEFS = [
+  {
+    stage: 1, id: "approach", name: "야영지 어귀",
+    description: "울타리 안에 불이 살아 있다. 여기서부터 길이 갈린다.",
+    mapArea: { x1: 0, y1: 62, x2: 100, y2: 100 },
+    landmarks: [
+      { id: "camp", name: "야영지", kind: "camp", x: 49, y: 76, radius: 13 },
+      { id: "herbGrove", name: "빛나는 약초밭", kind: "grove", x: 20, y: 65, radius: 12 },
+      { id: "southRoad", name: "갈라지는 길", kind: "road", x: 72, y: 88, radius: 7 }
+    ]
+  },
+  {
+    stage: 2, id: "crossroads", name: "갈림길 채석장",
+    description: "길이 셋으로 갈라지고, 깎다 만 돌더미가 시야를 막는다.",
+    mapArea: { x1: 0, y1: 36, x2: 100, y2: 62 },
+    landmarks: [
+      { id: "quarry", name: "채석장", kind: "quarry", x: 74, y: 54, radius: 14 },
+      { id: "crossroad", name: "세 갈래 길", kind: "road", x: 45, y: 47, radius: 8 },
+      { id: "boulders", name: "바위 무리", kind: "rock", x: 24, y: 44, radius: 9 }
+    ]
+  },
+  {
+    stage: 3, id: "ridge", name: "능선 위",
+    description: "광산과 동굴이 양옆에 입을 벌리고, 가운데 유적 문이 푸르게 탄다.",
+    mapArea: { x1: 0, y1: 0, x2: 100, y2: 36 },
+    landmarks: [
+      { id: "mine", name: "폐광 입구", kind: "mine", x: 23, y: 29, radius: 11 },
+      { id: "ruinGate", name: "유적 문", kind: "dungeon", x: 48, y: 17, radius: 10 },
+      { id: "cave", name: "야생 동굴", kind: "cave", x: 77, y: 22, radius: 10 }
+    ]
+  }
+];
+
+export function siteFieldDefinition(stage = 1) {
+  return SITE_FIELD_DEFS.find((entry) => entry.stage === stage) || SITE_FIELD_DEFS[0];
+}
+
+// 그림 좌표(%)를 전투 아레나 좌표로 옮긴다. 띠 안에서의 상대 위치를 쓰므로
+// 지도에서 왼쪽 위에 있던 것은 아레나에서도 왼쪽 위다.
+export function landmarkToArena(landmark, field, bounds) {
+  const area = field.mapArea;
+  const rx = (landmark.x - area.x1) / Math.max(1, area.x2 - area.x1);
+  const ry = (landmark.y - area.y1) / Math.max(1, area.y2 - area.y1);
+  return {
+    x: bounds.minX + rx * (bounds.maxX - bounds.minX),
+    y: bounds.minY + ry * (bounds.maxY - bounds.minY)
+  };
+}
+
+// 던전 입구가 설 자리. 그림에 유적 문이 그려진 필드에서는 그 좌표를 그대로 쓴다.
+export function dungeonEntrancePoint(stage, bounds) {
+  const field = siteFieldDefinition(stage);
+  const gate = field.landmarks.find((entry) => entry.kind === "dungeon");
+  if (!gate) return { x: bounds.maxX - 30, y: (bounds.minY + bounds.maxY) / 2 };
+  return landmarkToArena(gate, field, bounds);
+}
+
+
 // 단계가 오를수록 무리를 더 깔고 적도 더 붙인다.
 export function fieldStageGroups(stage = 1) {
   return 3 + Math.max(0, Math.min(FIELD_STAGE_COUNT, stage) - 1);
@@ -2555,6 +2626,9 @@ export function createAutoBattle(encounterId, sourceFeatureId, sourceZone, party
     rewardScrap: encounter.scrap,
     boss: Boolean(encounter.boss || options.forceBoss),
     fieldMode: Boolean(options.fieldMode),
+    // 몇 번째 구간인지. 머리말이 "2/3 갈림길 채석장"을 띄우려면 전투가 이걸
+    // 들고 있어야 한다(run.fieldStage만 있으면 전투 화면에서 못 읽는다).
+    fieldStage: options.fieldStage || 1,
     // 원형 장애물. 좁은 조우 아레나는 비워두고 넓은 필드에서만 채운다.
     obstacles: (options.obstacles || []).map((obstacle) => ({ ...obstacle })),
     triggers: (options.triggers || []).map((trigger) => ({ ...trigger, fired: false })),
@@ -2592,10 +2666,10 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
       id: `${regionId}-dungeon-entrance`,
       type: "dungeonEntrance",
       name: region.dungeonName,
-      // 필드 오른쪽 끝 근처 — 무리들을 지나 안쪽까지 들어가야 닿는다.
-      x: bounds.maxX - 30,
-      y: (bounds.minY + bounds.maxY) / 2,
-      radius: 8,
+      // 그림의 유적 문 자리에 세운다 — 지도에서 본 그 문으로 들어가는 것이어야
+      // 같은 장소로 읽힌다.
+      ...dungeonEntrancePoint(options.fieldStage || 1, bounds),
+      radius: 10,
       requiresClear: true
     }]
   });
@@ -2608,8 +2682,24 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
   // 장애물(바위·잔해)을 먼저 깔고, 그 다음 유닛·적을 배치한다 — 순서를
   // 뒤집으면 바위 안에 갇힌 채로 시작하는 개체가 생긴다.
   // 시작 지점과 던전 입구 주변은 비워둬서 스폰 즉시 끼거나 입구가 막히지 않게 한다.
+  // 그림의 지물을 먼저 아레나로 옮긴다. 무작위 바위보다 이것들이 먼저다 —
+  // 지도에서 채석장을 본 자리에 실제로 돌더미가 있어야 같은 곳으로 읽힌다.
+  const siteField = siteFieldDefinition(options.fieldStage || 1);
+  const landmarkProps = siteField.landmarks.map((landmark) => ({
+    ...landmarkToArena(landmark, siteField, bounds),
+    radius: landmark.radius || 10,
+    landmarkId: landmark.id,
+    name: landmark.name,
+    kind: landmark.kind
+  }));
+
   const obstacleCount = Math.max(0, Number(options.obstacleCount ?? 14));
-  const obstacles = [];
+  // 길·야영지·약초밭은 지나다니는 곳이고, 유적 문은 들어가는 곳이라 막지 않는다.
+  // 광산·동굴·채석장·바위는 실제로 몸으로 막힌다.
+  const solidKinds = new Set(["mine", "cave", "quarry", "rock"]);
+  const obstacles = landmarkProps
+    .filter((prop) => solidKinds.has(prop.kind))
+    .map((prop) => ({ x: prop.x, y: prop.y, radius: prop.radius, landmarkId: prop.landmarkId }));
   for (let attempt = 0; attempt < obstacleCount * 12 && obstacles.length < obstacleCount; attempt += 1) {
     const radius = 6 + rng() * 9;
     const x = bounds.minX + 40 + rng() * (bounds.maxX - bounds.minX - 60);
@@ -2621,6 +2711,9 @@ export function createFieldBattle(regionId, partyIds = STARTING_PARTY, unitProgr
     obstacles.push({ x, y, radius });
   }
   battle.obstacles = obstacles;
+  // 렌더러가 여기에 모델을 얹는다. 막지 않는 지물(길·야영지·유적 문)도 보여야
+  // 하므로 obstacles와 따로 싣는다.
+  battle.landmarks = landmarkProps;
 
   // 플레이어·동료는 왼쪽 입구 쪽에서 시작.
   for (const unit of battle.units) {

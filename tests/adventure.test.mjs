@@ -52,6 +52,8 @@ import {
   consumeFieldTrigger,
   resolveObstacles,
   createFieldBattle,
+  SITE_FIELD_DEFS,
+  siteFieldDefinition,
   REGION_ARMOR_SET
 , SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES , MONSTER_SPECIES_PENDING_ART , spawnBossZone , MATERIAL_RARITY_ORDER, MATERIAL_RARITY_LABELS, materialRarity } from "../src/adventure.js";
 import { MATERIAL_DEFS, ORE_SMELTING_DEFS } from "../src/data.js";
@@ -3416,5 +3418,86 @@ test("특수 발견지 산출물은 최소 고급이다", () => {
       assert.ok(order.indexOf(materialRarity(id)) >= order.indexOf("fine"),
         `${site.id}의 ${id}가 노멀이다 (위험 ${site.risk})`);
     }
+  }
+});
+
+test("하위 지도는 세 필드로 빈틈 없이 갈라지고 각 지물은 제 구간 안에 있다", () => {
+  assert.equal(SITE_FIELD_DEFS.length, FIELD_STAGE_COUNT);
+
+  // 위에서 아래로 정렬한 뒤 맞물림을 본다. 남는 띠가 있으면 지도에서 그 부분을
+  // 누른 사람만 아무 구간도 못 잡는다.
+  const bands = [...SITE_FIELD_DEFS].sort((a, b) => a.mapArea.y1 - b.mapArea.y1);
+  assert.equal(bands[0].mapArea.y1, 0, "맨 위 띠는 지도 꼭대기부터 시작한다");
+  assert.equal(bands[bands.length - 1].mapArea.y2, 100, "맨 아래 띠는 지도 바닥까지 닿는다");
+  for (let i = 1; i < bands.length; i += 1) {
+    assert.equal(bands[i].mapArea.y1, bands[i - 1].mapArea.y2,
+      `${bands[i].name}과 ${bands[i - 1].name} 사이에 빈틈이 있다`);
+  }
+
+  // 단계 번호는 아래(야영지)에서 위(능선)로 올라간다 — 그림의 아이소메트릭 깊이와 같다.
+  const byStage = [...SITE_FIELD_DEFS].sort((a, b) => a.stage - b.stage);
+  for (let i = 1; i < byStage.length; i += 1) {
+    assert.ok(byStage[i].mapArea.y1 < byStage[i - 1].mapArea.y1,
+      `${byStage[i].stage}필드가 앞 필드보다 안쪽(위쪽)이어야 한다`);
+  }
+
+  for (const field of SITE_FIELD_DEFS) {
+    assert.ok(field.landmarks.length, `${field.name}에 지물이 없다`);
+    for (const landmark of field.landmarks) {
+      assert.ok(landmark.y >= field.mapArea.y1 && landmark.y <= field.mapArea.y2,
+        `${landmark.name}(y ${landmark.y})이 ${field.name} 띠(${field.mapArea.y1}~${field.mapArea.y2}) 밖이다`);
+      assert.ok(landmark.x >= 0 && landmark.x <= 100, `${landmark.name}의 x가 지도 밖이다`);
+    }
+  }
+});
+
+test("필드 전투에는 그림의 지물이 실려오고, 막는 것만 장애물이 된다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 7, fieldStage: 3, groupCount: 2 });
+  const field = siteFieldDefinition(3);
+  assert.equal(battle.landmarks.length, field.landmarks.length);
+
+  // 지물이 아레나 안에 들어와야 화면에 보인다.
+  for (const landmark of battle.landmarks) {
+    assert.ok(landmark.x >= FIELD_BOUNDS.minX && landmark.x <= FIELD_BOUNDS.maxX, `${landmark.name} x 범위 밖`);
+    assert.ok(landmark.y >= FIELD_BOUNDS.minY && landmark.y <= FIELD_BOUNDS.maxY, `${landmark.name} y 범위 밖`);
+  }
+
+  // 광산·동굴은 몸으로 막고, 유적 문은 들어가는 곳이라 안 막는다.
+  const solidIds = battle.obstacles.filter((obstacle) => obstacle.landmarkId).map((obstacle) => obstacle.landmarkId);
+  assert.ok(solidIds.includes("mine") && solidIds.includes("cave"), "광산·동굴은 장애물이어야 한다");
+  assert.ok(!solidIds.includes("ruinGate"), "유적 문을 막으면 던전에 못 들어간다");
+
+  // 지도의 왼쪽 지물은 아레나에서도 왼쪽이어야 지도와 맞춰볼 수 있다.
+  const mine = battle.landmarks.find((entry) => entry.landmarkId === "mine");
+  const cave = battle.landmarks.find((entry) => entry.landmarkId === "cave");
+  assert.ok(mine.x < cave.x, "그림에서 광산이 동굴보다 왼쪽이었다");
+
+  // 시작 지점이 지물에 막혀 있으면 스폰하자마자 낀다.
+  const spawned = battle.units.every((unit) =>
+    battle.obstacles.every((obstacle) => Math.hypot(unit.x - obstacle.x, unit.y - obstacle.y) >= obstacle.radius));
+  assert.ok(spawned, "지물 안에 낀 채로 시작하는 유닛이 있다");
+});
+
+test("던전 입구는 그림의 유적 문 자리에 선다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 21, fieldStage: FIELD_STAGE_COUNT, groupCount: 2 });
+  const trigger = battle.triggers.find((entry) => entry.type === "dungeonEntrance");
+  const gate = battle.landmarks.find((entry) => entry.landmarkId === "ruinGate");
+  assert.ok(trigger && gate);
+  assert.ok(Math.hypot(trigger.x - gate.x, trigger.y - gate.y) < 1,
+    `입구(${Math.round(trigger.x)},${Math.round(trigger.y)})가 유적 문(${Math.round(gate.x)},${Math.round(gate.y)})과 다른 자리다`);
+
+  // 앞 구간에는 유적 문이 없으므로 던전 입구도 없고, 대신 다음 필드로 나가는 출구가 선다.
+  const early = createFieldBattle("north", STARTING_PARTY, {}, { seed: 21, fieldStage: 1, groupCount: 2 });
+  assert.equal(early.triggers[0].type, "fieldExit");
+  assert.ok(!early.landmarks.some((entry) => entry.kind === "dungeon"));
+});
+
+test("필드 전투는 몇 번째 구간인지 스스로 들고 있다", () => {
+  // 전투 화면 머리말이 "2/3 갈림길 채석장"을 띄우려면 run이 아니라 battle이
+  // 이 값을 들고 있어야 한다 — 전투 화면은 run을 안 보고 battle만 본다.
+  for (const stage of [1, 2, 3]) {
+    const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 3, fieldStage: stage, groupCount: 2 });
+    assert.equal(battle.fieldStage, stage);
+    assert.equal(siteFieldDefinition(battle.fieldStage).stage, stage);
   }
 });
