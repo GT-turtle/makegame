@@ -17,6 +17,18 @@ buildscript {
 
 apply from: "variables.gradle"
 
+// OneDrive can briefly lock Gradle's incremental ZIP cache on Windows. The
+// release script points this at a disposable local directory so packaging is
+// isolated from sync/indexing processes while Android Studio keeps its normal
+// build directory when this environment variable is absent.
+def externalBuildRoot = System.getenv("PACKFORGE_GRADLE_BUILD_ROOT")
+if (externalBuildRoot) {
+    rootProject.buildDir = file("${externalBuildRoot}/root")
+    subprojects {
+        project.buildDir = file("${externalBuildRoot}/${project.name}")
+    }
+}
+
 allprojects {
     repositories {
         google()

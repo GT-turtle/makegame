@@ -1,0 +1,550 @@
+export const ZONE_TIER_DEFS = {
+  safe: { id: "safe", name: "안전", glyph: "●", color: "#78b58a", baseRisk: 12, discoveryGain: 34, suppressionInterval: 4 },
+  watch: { id: "watch", name: "주의", glyph: "◆", color: "#d0aa63", baseRisk: 28, discoveryGain: 27, suppressionInterval: 3 },
+  danger: { id: "danger", name: "위험", glyph: "▲", color: "#d16e63", baseRisk: 46, discoveryGain: 21, suppressionInterval: 2 }
+};
+
+export const FRONTIER_ZONE_DEFS = {
+  north_fir: {
+    id: "north_fir", regionId: "north", name: "침엽수 구릉", tier: "safe", factionId: "frost_march",
+    hex: { col: 2, row: 1 },
+    description: "내 영지에서 북부로 이어지는 첫 산길. 모피와 목재를 노리는 작은 무리가 배회한다.",
+    requirements: [], neighbors: ["north_river", "north_pass"], sitePool: ["lumber", "herb", "cave", "ruin"], bossEncounterId: "frostWolves"
+  },
+  north_river: {
+    id: "north_river", regionId: "north", name: "얼어붙은 강변", tier: "safe", factionId: "frost_march",
+    hex: { col: 1, row: 2 },
+    description: "얕은 얼음 아래 수원과 약초 군락이 남아 있다.",
+    requirements: ["north_fir"], neighbors: ["north_fir", "north_gorge"], sitePool: ["herb", "lumber", "dungeon"], bossEncounterId: "iceRaiders"
+  },
+  north_pass: {
+    id: "north_pass", regionId: "north", name: "백풍 고개", tier: "watch", factionId: "frost_march",
+    hex: { col: 3, row: 2 },
+    description: "북부 광산 영주의 순찰대와 빙철 약탈자가 같은 길을 두고 충돌한다.",
+    requirements: ["north_fir"], neighbors: ["north_fir", "north_gorge", "north_mine"], sitePool: ["mine", "ruin", "dungeon"], bossEncounterId: "iceRaiders"
+  },
+  north_gorge: {
+    id: "north_gorge", regionId: "north", name: "눈사태 협곡", tier: "watch", factionId: "frost_march",
+    hex: { col: 2, row: 3 },
+    description: "길은 짧지만 눈사태와 바위 마수 때문에 수송대가 자주 끊긴다.",
+    requirements: ["north_river", "north_pass"], requireAny: true, neighbors: ["north_river", "north_pass", "north_mine"], sitePool: ["mine", "herb", "ruin"], bossEncounterId: "snowGolems"
+  },
+  north_mine: {
+    id: "north_mine", regionId: "north", name: "빙결 심층광산", tier: "danger", factionId: "frost_march",
+    hex: { col: 2, row: 4 },
+    description: "설철 광맥과 빙맥 거상이 잠든 북부의 핵심 개척지.",
+    requirements: ["north_pass", "north_gorge"], neighbors: ["north_pass", "north_gorge"], sitePool: ["deepMine", "dungeon", "ruin"], bossEncounterId: "frostColossusPack"
+  },
+
+  south_river: { id: "south_river", regionId: "south", name: "녹수 강변", tier: "safe", factionId: "canopy_council", hex: { col: 2, row: 1 }, description: "수운과 약초 채집이 가능한 남부의 진입로.", requirements: [], neighbors: ["south_spore"], sitePool: ["herb", "lumber", "cave", "ruin"], bossEncounterId: "venomStalkers" },
+  south_spore: { id: "south_spore", regionId: "south", name: "포자 분지", tier: "watch", factionId: "canopy_council", hex: { col: 1, row: 2 }, description: "약제 연맹과 독비늘 무리가 희귀 독초를 두고 충돌한다.", requirements: ["south_river"], neighbors: ["south_river", "south_canopy"], sitePool: ["herb", "dungeon", "ruin"], bossEncounterId: "vineBrood" },
+  south_canopy: { id: "south_canopy", regionId: "south", name: "거대 수관 심부", tier: "danger", factionId: "canopy_council", hex: { col: 2, row: 3 }, description: "수관의 어미가 둥지를 튼 남부 최고 위험 지대.", requirements: ["south_spore"], neighbors: ["south_spore"], sitePool: ["rareHerb", "dungeon", "ruin"], bossEncounterId: "canopyMatriarchPack" },
+
+  east_outskirts: { id: "east_outskirts", regionId: "east", name: "단조성 외곽", tier: "safe", factionId: "forge_compact", hex: { col: 2, row: 1 }, description: "공방 도시와 산성 사이의 완충 지대.", requirements: [], neighbors: ["east_pass"], sitePool: ["mine", "lumber", "cave", "ruin"], bossEncounterId: "mountainBandits" },
+  east_pass: { id: "east_pass", regionId: "east", name: "운철 고개", tier: "watch", factionId: "forge_compact", hex: { col: 3, row: 2 }, description: "철갑 수문병과 문파의 순찰대가 교차하는 산길.", requirements: ["east_outskirts"], neighbors: ["east_outskirts", "east_forge"], sitePool: ["mine", "runeCircle", "dungeon", "ruin"], bossEncounterId: "ironGuard" },
+  east_forge: { id: "east_forge", regionId: "east", name: "봉인 단조성", tier: "danger", factionId: "forge_compact", hex: { col: 2, row: 3 }, description: "산철과 고대 단조 설계가 남은 요새 도시.", requirements: ["east_pass"], neighbors: ["east_pass"], sitePool: ["deepMine", "dungeon", "ruin"], bossEncounterId: "forgeGuardianPack" },
+
+  west_march: { id: "west_march", regionId: "west", name: "서부 변경 초지", tier: "safe", factionId: "oath_march", hex: { col: 2, row: 1 }, description: "변경백의 농장과 오래된 순례로가 이어진다.", requirements: [], neighbors: ["west_wood"], sitePool: ["lumber", "herb", "cave", "ruin"], bossEncounterId: "thornBeasts" },
+  west_wood: { id: "west_wood", regionId: "west", name: "서약림", tier: "watch", factionId: "oath_march", hex: { col: 1, row: 2 }, description: "기사단과 정령 자치령의 경계가 겹친 숲.", requirements: ["west_march"], neighbors: ["west_march", "west_ruins"], sitePool: ["herb", "runeCircle", "dungeon", "ruin"], bossEncounterId: "oathbreakers" },
+  west_ruins: { id: "west_ruins", regionId: "west", name: "마나 폐허권", tier: "danger", factionId: "oath_march", hex: { col: 2, row: 3 }, description: "마나 잔영과 폐서약당 수호자가 남은 금지 구역.", requirements: ["west_wood"], neighbors: ["west_wood"], sitePool: ["manaWell", "dungeon", "ruin"], bossEncounterId: "ruinWardenPack" },
+
+  central_oasis: { id: "central_oasis", regionId: "central", name: "오아시스 가도", tier: "safe", factionId: "oasis_league", hex: { col: 2, row: 1 }, description: "내 영지와 대상단 도시를 잇는 첫 교역로.", requirements: [], neighbors: ["central_gorge"], sitePool: ["herb", "caravan", "cave", "ruin"], bossEncounterId: "sandHunters" },
+  central_gorge: { id: "central_gorge", regionId: "central", name: "유리 협곡", tier: "watch", factionId: "oasis_league", hex: { col: 3, row: 2 }, description: "유리사 광맥과 약탈대가 함께 모이는 협곡.", requirements: ["central_oasis"], neighbors: ["central_oasis", "central_palace"], sitePool: ["mine", "caravan", "dungeon"], bossEncounterId: "duneRaiders" },
+  central_palace: { id: "central_palace", regionId: "central", name: "매몰 지하궁", tier: "danger", factionId: "oasis_league", hex: { col: 2, row: 3 }, description: "사구 폭군과 고대 대상로의 유산이 묻힌 중심지.", requirements: ["central_gorge"], neighbors: ["central_gorge"], sitePool: ["glassPit", "dungeon", "ruin"], bossEncounterId: "duneTyrantPack" }
+};
+
+export const FRONTIER_FACTION_DEFS = {
+  frost_march: { id: "frost_march", regionId: "north", name: "설벽 변경령", ruler: "변경공 라도미르", description: "광산과 겨울 항로를 지키는 북부 영주권.", exportMaterial: "frostIron", wantsMaterial: "wood", encounterId: "iceRaiders" },
+  canopy_council: { id: "canopy_council", regionId: "south", name: "수관 평의회", ruler: "강의 대변자 아마라", description: "강변 도시와 약초 부족이 느슨하게 맺은 연합.", exportMaterial: "venomSac", wantsMaterial: "ore", encounterId: "vineBrood" },
+  forge_compact: { id: "forge_compact", regionId: "east", name: "운철 공방도시", ruler: "성주 겸 장인 유건", description: "단조 조합과 산성 수비대가 공동 통치한다.", exportMaterial: "mountainIron", wantsMaterial: "wood", encounterId: "ironGuard" },
+  oath_march: { id: "oath_march", regionId: "west", name: "회색서약 변경백령", ruler: "변경백 엘로이스", description: "기사단·농장·정령림 사이의 계약으로 유지되는 영지.", exportMaterial: "manaStone", wantsMaterial: "ore", encounterId: "oathbreakers" },
+  oasis_league: { id: "oasis_league", regionId: "central", name: "오아시스 대상연맹", ruler: "대상주 나딤", description: "수원과 유리사 교역권을 나누어 가진 도시 연맹.", exportMaterial: "glassSand", wantsMaterial: "wood", encounterId: "duneRaiders" }
+};
+
+// 생활권은 점령지와 별개다. 주민은 이곳에 거주하고, 광산·벌목지에는 작업 인력만 파견된다.
+// 중앙의 내 영지만 행정 거점이며 다른 생활권은 인구를 공급하는 작은 촌락으로 취급한다.
+export const LIVING_AREA_DEFS = {
+  home_estate: {
+    id: "home_estate", regionId: "central", name: "내 영지 생활권", glyph: "⌂", kind: "estate",
+    description: "성벽 안팎의 주거지와 농가. 모든 행정과 장거리 물류가 돌아오는 유일한 중심지.",
+    unlockZoneId: null, capacity: 20, foundingResidents: 12, build: {}
+  },
+  north_hamlet: {
+    id: "north_hamlet", regionId: "north", name: "북부 산기슭 생활권", glyph: "▤", kind: "hamlet",
+    description: "눈사태 길을 피한 하곡의 작은 촌락. 광부는 여기에서 광산으로 오간다.",
+    unlockZoneId: "north_fir", capacity: 10, foundingResidents: 3, build: { wood: 4, food: 2 }
+  },
+  south_hamlet: {
+    id: "south_hamlet", regionId: "south", name: "남부 강둑 생활권", glyph: "▤", kind: "hamlet",
+    description: "범람선보다 높은 강둑의 촌락. 채집꾼은 여기에서 약초밭과 벌목지로 향한다.",
+    unlockZoneId: "south_river", capacity: 10, foundingResidents: 3, build: { wood: 4, food: 2 }
+  },
+  east_hamlet: {
+    id: "east_hamlet", regionId: "east", name: "동부 산성 아래 생활권", glyph: "▤", kind: "hamlet",
+    description: "산성과 공방로 사이에 자리 잡은 촌락. 장인과 운반꾼이 작업지에 상주하지 않도록 잇는다.",
+    unlockZoneId: "east_outskirts", capacity: 10, foundingResidents: 3, build: { wood: 4, food: 2 }
+  },
+  west_hamlet: {
+    id: "west_hamlet", regionId: "west", name: "서부 변경촌 생활권", glyph: "▤", kind: "hamlet",
+    description: "농지와 순례로가 만나는 방어 촌락. 숲과 폐허의 작업대가 이곳을 거쳐 움직인다.",
+    unlockZoneId: "west_march", capacity: 10, foundingResidents: 3, build: { wood: 4, food: 2 }
+  }
+};
+
+export const DISCOVERY_SITE_DEFS = {
+  mine: {
+    id: "mine", name: "지역 금속 광산", glyph: "◆", materialId: "ore",
+    materialByRegion: { north: "ore", south: "bauxite", east: "cassiterite", west: "sphalerite", central: "malachite" },
+    output: 2, workers: 2, build: { wood: 2, ore: 1 }, risk: 8
+  },
+  deepMine: {
+    id: "deepMine", name: "특수 금속 심층광산", glyph: "❄", materialId: "frostIron",
+    materialByRegion: { north: "frostIron", east: "mountainIron" },
+    output: 1, workers: 3, build: { wood: 3, ore: 2 }, risk: 18
+  },
+  herb: {
+    id: "herb", name: "야생 약초밭", glyph: "♣", materialId: "herb",
+    materialByRegion: { north: "rhodiola", south: "cinchonaBark", east: "cordyceps", west: "chamomile", central: "aloeVera" },
+    output: 2, workers: 1, build: { wood: 1 }, risk: 5
+  },
+  rareHerb: { id: "rareHerb", name: "독성 약초원", glyph: "♢", materialId: "venomSac", output: 1, workers: 2, build: { wood: 2 }, risk: 14 },
+  lumber: { id: "lumber", name: "고목 벌목지", glyph: "♠", materialId: "wood", output: 2, workers: 2, build: { ore: 1 }, risk: 7 },
+  manaWell: { id: "manaWell", name: "마나 용출지", glyph: "✦", materialId: "manaStone", output: 1, workers: 2, build: { wood: 2, ore: 1 }, risk: 16 },
+
+  // 환상종 광맥·군락 — 현실에 없는 재료가 나오는 유일한 통로다.
+  //
+  // 심층광산(deepMine)보다 위험을 높게 잡았다. 산출이 1이고 일꾼도 많이 먹는데
+  // 위험까지 낮으면 다른 발견지를 지을 이유가 없어진다 — 환상종은 "가기 어려운
+  // 곳에서 조금 나오는" 자리여야 한다.
+  //
+  // 지역마다 다른 것이 나온다. 한 지역만 돌아도 다 모이면 다섯 지역을 열 이유가 준다.
+  fantasyVein: {
+    id: "fantasyVein", name: "환상 광맥", glyph: "◇", materialId: "orichalcum",
+    materialByRegion: { north: "orichalcum", east: "mithril", west: "adamantite" },
+    output: 1, workers: 3, build: { wood: 4, ingot: 2 }, risk: 24
+  },
+  fantasyGrove: {
+    id: "fantasyGrove", name: "환상 군락", glyph: "✿", materialId: "moonpetal",
+    materialByRegion: { south: "moonpetal", central: "emberroot" },
+    output: 1, workers: 2, build: { wood: 3, herb: 2 }, risk: 20
+  },
+  runeCircle: { id: "runeCircle", name: "폐허 룬 각인소", glyph: "ᚱ", materialId: "runeFragment", output: 1, workers: 2, build: { wood: 1, ore: 1 }, risk: 13 },
+  glassPit: { id: "glassPit", name: "유리사 채굴지", glyph: "◇", materialId: "glassSand", output: 1, workers: 2, build: { wood: 2, ore: 1 }, risk: 15 },
+  caravan: { id: "caravan", name: "대상단 중계소", glyph: "◎", materialId: "food", output: 2, workers: 2, build: { wood: 2, ore: 1 }, risk: 6 },
+  ruin: { id: "ruin", name: "매몰된 작업장", glyph: "⌘", materialId: "scrap", output: 2, workers: 2, build: { wood: 2 }, risk: 10 },
+  cave: { id: "cave", name: "야생 동굴", glyph: "◒", materialId: null, output: 0, workers: 0, build: {}, risk: 18, dungeon: true },
+  dungeon: { id: "dungeon", name: "숨겨진 던전", glyph: "☠", materialId: null, output: 0, workers: 0, build: {}, risk: 24, dungeon: true }
+};
+
+export function siteMaterialId(siteDefinition, regionId) {
+  return siteDefinition?.materialByRegion?.[regionId] || siteDefinition?.materialId || null;
+}
+
+export function createInitialFrontierState() {
+  return {
+    selectedZoneId: "central_oasis",
+    cycle: 0,
+    population: { total: 12 },
+    livingAreas: Object.fromEntries(Object.values(LIVING_AREA_DEFS).map((area) => [area.id, {
+      status: area.id === "home_estate" ? "inhabited" : "locked",
+      discovered: area.id === "home_estate",
+      residents: area.id === "home_estate" ? area.foundingResidents : 0,
+      safety: area.id === "home_estate" ? 72 : 0,
+      foundedAtCycle: area.id === "home_estate" ? 0 : null,
+      lastEvent: area.id === "home_estate" ? "내 영지 주민이 생활하고 있다." : "아직 생활권이 조성되지 않았다."
+    }])),
+    estateSatisfaction: { overall: 68, living: 66, safety: 62, fairness: 70, culture: 72, prospect: 70 },
+    zones: Object.fromEntries(Object.values(FRONTIER_ZONE_DEFS).map((zone) => [zone.id, {
+      status: zone.requirements.length ? "locked" : "available",
+      exploration: 0,
+      stability: 0,
+      threat: ZONE_TIER_DEFS[zone.tier].baseRisk,
+      routeLevel: 0,
+      sites: [],
+      stolenCargo: {},
+      conquests: 0,
+      suppressions: 0,
+      suppressionClock: 0,
+      neglect: 0,
+      lastEvent: ""
+    }])),
+    squads: [
+      {
+        id: "vanguard", name: "제1원정대", unlocked: true, memberIds: ["snow_guard", "venom_tracker", "formation_officer", "oath_knight", "desert_lancer"], mission: null,
+        troops: { infantry: 0, archer: 0, cavalry: 0 }, woundedTroops: { infantry: 0, archer: 0, cavalry: 0, recoverAt: null }
+      },
+      {
+        id: "wardens", name: "제2원정대", unlocked: false, memberIds: [], mission: null,
+        troops: { infantry: 0, archer: 0, cavalry: 0 }, woundedTroops: { infantry: 0, archer: 0, cavalry: 0, recoverAt: null }
+      },
+      {
+        id: "rangers", name: "제3원정대", unlocked: false, memberIds: [], mission: null,
+        troops: { infantry: 0, archer: 0, cavalry: 0 }, woundedTroops: { infantry: 0, archer: 0, cavalry: 0, recoverAt: null }
+      }
+    ],
+    // 세부 점령지 개발이 진행 중이 아니어도 병력을 보충받는 "본대" 분대. vanguard는 대상에서 제외된다.
+    homeSquadId: "wardens",
+    // 대장 없는 익명 병력이 원정·토벌에 실패했을 때 중상(회복 대기)당하는 동료를 추적한다: { [unitId]: 회복되는 개척 주기 }
+    woundedUnits: {},
+    populationGrowth: { remainder: 0 },
+    factions: Object.fromEntries(Object.values(FRONTIER_FACTION_DEFS).map((faction) => [faction.id, {
+      met: false,
+      trust: 0,
+      vigilance: 18,
+      interests: 0,
+      satisfaction: 64,
+      unrest: 8,
+      intel: 0,
+      tradeCount: 0,
+      lastEvent: ""
+    }])),
+    eventLog: ["개척 지도에 아직 확인하지 못한 길과 문명이 표시되기 시작했다."]
+  };
+}
+
+export function zoneRequirementsMet(frontier, zoneId) {
+  const definition = FRONTIER_ZONE_DEFS[zoneId];
+  if (!definition) return false;
+  if (!definition.requirements.length) return true;
+  const owned = (requiredId) => ["occupied", "stabilized", "developed"].includes(frontier.zones[requiredId]?.status);
+  return definition.requireAny
+    ? definition.requirements.some(owned)
+    : definition.requirements.every(owned);
+}
+
+export function refreshFrontierUnlocks(frontier) {
+  for (const zone of Object.values(FRONTIER_ZONE_DEFS)) {
+    const state = frontier.zones[zone.id];
+    if (state.status === "locked" && zoneRequirementsMet(frontier, zone.id)) state.status = "available";
+  }
+}
+
+export function occupiedZone(frontier, zoneId) {
+  return ["occupied", "stabilized", "developed"].includes(frontier.zones[zoneId]?.status);
+}
+
+export function livingAreaDefinitionForRegion(regionId) {
+  return Object.values(LIVING_AREA_DEFS).find((area) => area.regionId === regionId) || null;
+}
+
+export function inhabitedLivingAreaForRegion(frontier, regionId) {
+  const definition = livingAreaDefinitionForRegion(regionId);
+  if (!definition || frontier.livingAreas?.[definition.id]?.status !== "inhabited") return null;
+  return { definition, state: frontier.livingAreas[definition.id] };
+}
+
+export function livingAreaRequirementsMet(frontier, livingAreaId) {
+  const definition = LIVING_AREA_DEFS[livingAreaId];
+  if (!definition) return false;
+  const livingArea = frontier.livingAreas?.[livingAreaId];
+  return Boolean(livingArea?.discovered) && (!definition.unlockZoneId || occupiedZone(frontier, definition.unlockZoneId));
+}
+
+export function suppressionCyclesRemaining(frontier, zoneId) {
+  const definition = FRONTIER_ZONE_DEFS[zoneId];
+  const zone = frontier.zones?.[zoneId];
+  if (!definition || !zone || !occupiedZone(frontier, zoneId)) return null;
+  const interval = ZONE_TIER_DEFS[definition.tier].suppressionInterval;
+  return Math.max(0, interval - (zone.suppressionClock || 0));
+}
+
+export function livingAreaWorkersUsed(frontier, livingAreaId) {
+  return Object.values(frontier.zones).flatMap((zone) => zone.sites || [])
+    .reduce((sum, site) => sum + (
+      site.status === "developed" && site.livingAreaId === livingAreaId ? site.workers || 0 : 0
+    ), 0);
+}
+
+export function availableLivingAreaPopulation(frontier, livingAreaId) {
+  const livingArea = frontier.livingAreas?.[livingAreaId];
+  if (!livingArea || livingArea.status !== "inhabited") return 0;
+  return Math.max(0, livingArea.residents - livingAreaWorkersUsed(frontier, livingAreaId));
+}
+
+export function totalFrontierPopulation(frontier) {
+  if (!frontier.livingAreas) return frontier.population?.total || 0;
+  return Object.values(frontier.livingAreas).reduce((sum, area) => sum + (area.residents || 0), 0);
+}
+
+export function frontierPopulationUsed(frontier) {
+  return Object.values(frontier.zones).flatMap((zone) => zone.sites || [])
+    .reduce((sum, site) => sum + (site.status === "developed" ? site.workers || 0 : 0), 0);
+}
+
+export function availableFrontierPopulation(frontier) {
+  return Math.max(0, totalFrontierPopulation(frontier) - frontierPopulationUsed(frontier));
+}
+
+export function deterministicFrontierRoll(frontier, salt = "") {
+  const text = `${frontier.cycle}|${salt}`;
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4294967296;
+}
+
+export function routeRisk(frontier, zoneId, site, escortPower = 0) {
+  const definition = FRONTIER_ZONE_DEFS[zoneId];
+  const zone = frontier.zones[zoneId];
+  if (!definition || !zone) return 100;
+  const tier = ZONE_TIER_DEFS[definition.tier];
+  return Math.max(2, Math.min(95,
+    tier.baseRisk
+    + Math.round(zone.threat * 0.45)
+    + (DISCOVERY_SITE_DEFS[site.typeId]?.risk || 0)
+    - zone.routeLevel * 9
+    - Math.round(zone.stability * 0.18)
+    + (zone.neglect || 0) * 9
+    - escortPower
+  ));
+}
+
+export function riskLabel(value) {
+  if (value <= 15) return "안전";
+  if (value <= 35) return "주의";
+  if (value <= 60) return "위험";
+  return "극위험";
+}
+
+// ==========================
+// 분대 병력 시스템 (직업 컨셉.txt "분대 병력 시스템")
+// ==========================
+export const TROOP_TYPE_DEFS = {
+  infantry: { id: "infantry", name: "보병", glyph: "▦", basePower: 3 },
+  archer: { id: "archer", name: "궁병", glyph: "➹", basePower: 3 },
+  cavalry: { id: "cavalry", name: "기병", glyph: "♞", basePower: 3 }
+};
+
+export const TROOP_RECOVERY_CYCLES = 3;
+export const LEADER_RECOVERY_CYCLES = 2;
+
+// 병력 상한: 대장(동료)의 "로지스틱 전용 레벨"(고철 훈련으로 성장, 실전투에는 영향 없음)에 비례해서 커진다.
+// 공식: 10 + 레벨 x 4 — 레벨 1이면 14명, 레벨 5면 30명, 레벨 10이면 50명까지 완만하게 늘어난다.
+export function troopCapForLeaderLevel(level = 1) {
+  return 10 + Math.max(1, Math.floor(level)) * 4;
+}
+
+// 부상병까지 포함한 분대의 전체 병력 수 (모병 상한 판정에 사용).
+export function squadTroopTotal(squad) {
+  const troops = squad?.troops || {};
+  const wounded = squad?.woundedTroops || {};
+  return Object.keys(TROOP_TYPE_DEFS).reduce((sum, type) => sum + (troops[type] || 0) + (wounded[type] || 0), 0);
+}
+
+export function troopRecruitCost(troopType, count = 1) {
+  const perUnit = {
+    infantry: { population: 1, scrap: 2 },
+    archer: { population: 1, scrap: 3 },
+    cavalry: { population: 1, scrap: 4 }
+  }[troopType] || { population: 1, scrap: 2 };
+  const amount = Math.max(0, Math.floor(count));
+  return { population: perUnit.population * amount, scrap: perUnit.scrap * amount };
+}
+
+// 병종 대 몬스터 종족 상성표 (몬스터 컨셉.txt 기본 몬스터 종 구성 + adventure.js ENEMY_COMBATANTS의 species를 그대로 사용).
+// 기병은 느리고 육중한 종(곰·오크)에 강하고, 궁병은 원거리·기민한 종(고블린·늑대)에 강하다. 보병은 전 종족에 무난하다.
+export const TROOP_SPECIES_MATCHUP = {
+  goblin: { infantry: 1, archer: 1.25, cavalry: 0.85 },
+  orc: { infantry: 1, archer: 0.85, cavalry: 1.2 },
+  wolf: { infantry: 1, archer: 1.2, cavalry: 0.85 },
+  bear: { infantry: 1, archer: 0.8, cavalry: 1.3 }
+};
+
+// ==========================
+// 행상인 (직업 컨셉.txt "행상인")
+// ==========================
+export const MERCHANT_ROTATION_INTERVAL = 5;
+export const MERCHANT_STOCK_SIZE = 4;
+export const MERCHANT_PRICE_BOUNDS = { min: 2, max: 9 };
+
+const MERCHANT_REGIONAL_SITE_IDS = ["mine", "deepMine", "herb", "rareHerb", "manaWell", "runeCircle", "glassPit"];
+const ALL_FRONTIER_REGION_IDS = [...new Set(Object.values(FRONTIER_ZONE_DEFS).map((zone) => zone.regionId))];
+
+export function regionMaterialCatalog(regionId) {
+  const ids = new Set();
+  for (const siteId of MERCHANT_REGIONAL_SITE_IDS) {
+    const materialId = siteMaterialId(DISCOVERY_SITE_DEFS[siteId], regionId);
+    if (materialId) ids.add(materialId);
+  }
+  return [...ids];
+}
+
+export function controlledRegionIds(frontier) {
+  const regions = new Set();
+  for (const zoneId of Object.keys(frontier.zones)) {
+    if (occupiedZone(frontier, zoneId)) regions.add(FRONTIER_ZONE_DEFS[zoneId].regionId);
+  }
+  return regions;
+}
+
+// 행상인은 플레이어가 아직 정복하지 않은 지역의 재료를 취급한다 (정복 없이도 지역 자원 격차를 메꿀 수 있도록).
+// 모든 지역을 이미 점령했다면 전 지역 재료를 취급한다.
+export function merchantCandidateMaterials(frontier) {
+  const controlled = controlledRegionIds(frontier);
+  const uncontrolled = ALL_FRONTIER_REGION_IDS.filter((regionId) => !controlled.has(regionId));
+  const pool = uncontrolled.length ? uncontrolled : ALL_FRONTIER_REGION_IDS;
+  const materials = new Set();
+  for (const regionId of pool) for (const materialId of regionMaterialCatalog(regionId)) materials.add(materialId);
+  return [...materials];
+}
+
+export function rollMerchantStock(frontier) {
+  const candidates = merchantCandidateMaterials(frontier);
+  if (!candidates.length) return [];
+  const ranked = [...candidates].sort((a, b) => (
+    deterministicFrontierRoll(frontier, `merchant|stock|${a}`) - deterministicFrontierRoll(frontier, `merchant|stock|${b}`)
+  ));
+  return ranked.slice(0, MERCHANT_STOCK_SIZE);
+}
+
+export function basePriceForMaterial(materialId) {
+  let hash = 0;
+  for (let index = 0; index < materialId.length; index += 1) hash = (hash * 31 + materialId.charCodeAt(index)) >>> 0;
+  return MERCHANT_PRICE_BOUNDS.min + (hash % (MERCHANT_PRICE_BOUNDS.max - MERCHANT_PRICE_BOUNDS.min - 1));
+}
+
+export function createInitialMerchantState(frontier) {
+  const stock = rollMerchantStock(frontier);
+  return {
+    stock,
+    prices: Object.fromEntries(stock.map((materialId) => [materialId, basePriceForMaterial(materialId)])),
+    cycleRotation: 0
+  };
+}
+
+// 매 개척 주기마다 호출: 재고를 주기적으로 교체하고 가격을 좁은 범위 안에서 랜덤워크시킨다.
+export function stepMerchantCycle(frontier, merchant) {
+  merchant.cycleRotation = (merchant.cycleRotation || 0) + 1;
+  if (merchant.cycleRotation >= MERCHANT_ROTATION_INTERVAL) {
+    merchant.cycleRotation = 0;
+    merchant.stock = rollMerchantStock(frontier);
+  }
+  for (const materialId of merchant.stock) {
+    if (!(materialId in merchant.prices)) merchant.prices[materialId] = basePriceForMaterial(materialId);
+    const roll = deterministicFrontierRoll(frontier, `merchant|price|${materialId}`);
+    const delta = Math.round((roll - 0.5) * 3);
+    merchant.prices[materialId] = Math.max(MERCHANT_PRICE_BOUNDS.min, Math.min(MERCHANT_PRICE_BOUNDS.max, merchant.prices[materialId] + delta));
+  }
+  return merchant;
+}
+
+// ==========================
+// ==========================
+// 영지 명성과 외교 우호도
+// ==========================
+//
+// 명성은 영지가 이룬 일의 총합이다(보스 격파·던전 개방·지역 정복).
+// 명성이 높을수록 주변 왕국·영지가 우리를 알아보고 우호도가 오르며,
+// 우호도가 임계를 넘으면 **선물이나 장인 파견으로 설계도를 보내온다.**
+//
+// 이 경로를 둔 이유: 설계도를 보스 드랍에만 묶어두면 수직 파밍만 남는다.
+// 명성은 "여러 지역을 두루 손대야" 오르므로, 자연히 수평 컨텐츠를 채우게 된다.
+//
+// 부락 친목도(아래)와는 다른 축이다 — 친목도는 교역으로 오르고 가방 아이템
+// 레시피를 주지만, 우호도는 명성으로 오르고 장비 설계도를 준다.
+// ── 마탑 (북부 · 마탑 설계자) ──────────────────────────────────────────
+//
+// 원정의 중간 과정은 화면에 그리지 않고 수치로 정산한다. 그래서 마탑의 개입도
+// "전장에 장판을 깐다"가 아니라 **성공률을 올린다**로 들어간다.
+//
+// 핵심은 횟수를 아깝게 두는 것이다. 주기당 1~3회뿐이라 "어느 임무에 쓰느냐"가
+// 진짜 결정이 된다. 열 번 쓸 수 있으면 그냥 상시 보너스가 되고, 그건 마탑이
+// 아니라 스탯 하나 더 준 것과 같다.
+//
+// 마법 종류는 상황을 가린다 — 아무 임무에나 최선인 마법은 두지 않는다.
+export const MAGE_TOWER_SPELL_DEFS = {
+  blizzard: {
+    id: "blizzard", name: "블리자드", glyph: "❄",
+    // 넓게 퍼진 무리를 얼려 잡는다. 잡졸이 많은 토벌에 강하다.
+    bonus: { suppress: 0.22, recon: 0.06 },
+    description: "넓은 범위를 얼린다. 순환 토벌 성공률이 크게 오른다."
+  },
+  meteor: {
+    id: "meteor", name: "메테오", glyph: "☄",
+    // 무작위 낙하라 넓은 구역을 훑는 데 좋다. 탐사 쪽 보정이 크다.
+    bonus: { suppress: 0.1, recon: 0.2 },
+    description: "구역 전체에 화염구가 떨어진다. 탐사 성공률이 크게 오른다."
+  },
+  thunderbolt: {
+    id: "thunderbolt", name: "낙뢰", glyph: "⚡",
+    // 단발 고화력. 어느 쪽이든 고르게 밀어준다 — 대신 최고점은 없다.
+    bonus: { suppress: 0.15, recon: 0.15 },
+    description: "단발 낙뢰로 핵심을 끊는다. 두 임무에 고르게 작용한다."
+  }
+};
+
+export const MAGE_TOWER_UNIT_ID = "tower_architect";
+export const MAGE_TOWER_MAX_LEVEL = 3;
+export const MAGE_TOWER_BUILD_COST = { scrap: 30 };
+
+export function mageTowerUnlocked(roster = []) {
+  return roster.includes(MAGE_TOWER_UNIT_ID);
+}
+
+// 주기당 쓸 수 있는 강령 횟수. 1층 1회, 3층 3회.
+export function mageTowerCharges(level) {
+  return Math.max(0, Math.min(MAGE_TOWER_MAX_LEVEL, level || 0));
+}
+
+// 이번 임무에 강령을 실을 수 있는가.
+export function mageTowerReady(tower) {
+  if (!tower || !tower.level || !tower.loadedSpellId) return false;
+  return (tower.chargesUsed || 0) < mageTowerCharges(tower.level);
+}
+
+// 임무 종류에 맞는 성공률 보정. 장전한 마법이 상황과 안 맞으면 적게 붙는다.
+export function mageTowerSupport(tower, missionType) {
+  if (!mageTowerReady(tower)) return 0;
+  const spell = MAGE_TOWER_SPELL_DEFS[tower.loadedSpellId];
+  return spell?.bonus?.[missionType === "suppress" ? "suppress" : "recon"] || 0;
+}
+
+export const RENOWN_SOURCES = {
+  bossDefeated: 12,      // 지역 던전 정복
+  dungeonOpened: 8,      // 반복 던전 개방
+  regionConquered: 20,   // 지역 완전 정복
+  memoryBossFirst: 4     // 기억 던전에서 처음 재현해낸 보스
+};
+
+// 우호도 임계와 그때 보내오는 설계도.
+// 지역마다 다른 것을 주므로 여러 곳과 관계를 쌓아야 다 모인다.
+export const FAVOR_MILESTONES = [25, 55, 85];
+
+export const FAVOR_GIFTS = {
+  north: { 25: "heavyPlate", 55: "guardianCharm", 85: "frostwardCharm" },
+  south: { 25: "scoutLeather", 55: "sagesBand", 85: "antivenomCharm" },
+  east: { 25: "runeSigil", 55: "wardenRobe", 85: "spiritAnchorCharm" },
+  west: { 25: "guardianCharm", 55: "heavyPlate", 85: "wardingSoulCharm" },
+  central: { 25: "wardenRobe", 55: "sagesBand", 85: "emberwardCharm" }
+};
+
+// 명성이 높을수록 우호도가 빨리 오른다. 명성 0이면 아무도 관심이 없다.
+export function favorGainPerCycle(renown) {
+  if (renown <= 0) return 0;
+  return Math.min(3, 0.5 + renown / 40);
+}
+
+// 지역 부락 친목도 (직업 컨셉.txt "지역 부락 친목도")
+// ==========================
+export const VILLAGE_MILESTONE_THRESHOLDS = [30, 60, 90];
+export const VILLAGE_TRADE_PRICE = 2;
+export const VILLAGE_FRIENDSHIP_GAIN = 4;
+
+const VILLAGE_TIER1_SITE_IDS = ["mine", "herb"];
+const VILLAGE_TIER2_SITE_IDS = ["deepMine", "rareHerb", "manaWell", "runeCircle", "glassPit", "caravan"];
+const VILLAGE_TIER3_SITE_IDS = ["ruin"];
+
+// 친목도가 오를수록 그 지역 부락에서 취급하는 재료 종류가 늘어난다.
+export function villageTradeableMaterials(regionId, friendship = 0) {
+  const list = new Set(["wood", "food"]);
+  const add = (siteId) => {
+    const materialId = siteMaterialId(DISCOVERY_SITE_DEFS[siteId], regionId);
+    if (materialId) list.add(materialId);
+  };
+  if (friendship >= 30) VILLAGE_TIER1_SITE_IDS.forEach(add);
+  if (friendship >= 60) VILLAGE_TIER2_SITE_IDS.forEach(add);
+  if (friendship >= 90) VILLAGE_TIER3_SITE_IDS.forEach(add);
+  return [...list];
+}

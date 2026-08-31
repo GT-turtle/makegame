@@ -1,0 +1,2212 @@
+{
+  "materials": [
+    {
+      "id": "wood",
+      "name": "목재",
+      "glyph": "▤",
+      "category": "other",
+      "symbol": "",
+      "common": true,
+      "refined": false,
+      "description": "건설과 제련 연료에 쓰는 일반 목재"
+    },
+    {
+      "id": "food",
+      "name": "보급 식량",
+      "glyph": "◉",
+      "category": "other",
+      "symbol": "",
+      "common": true,
+      "refined": false,
+      "description": "원정대와 영지민을 위한 보급품"
+    },
+    {
+      "id": "ore",
+      "name": "철광석 (적철석)",
+      "glyph": "◆",
+      "category": "ore",
+      "symbol": "Fe",
+      "common": true,
+      "refined": false,
+      "description": "북부 순상지에서 나는 무기·방어구 제작의 기본 광석"
+    },
+    {
+      "id": "ingot",
+      "name": "철괴",
+      "glyph": "▰",
+      "category": "ore",
+      "symbol": "Fe",
+      "common": true,
+      "refined": true,
+      "description": "철광석을 영지 대장간에서 제련한 금속괴"
+    },
+    {
+      "id": "magnetiteJacobsite",
+      "name": "망간자철석",
+      "glyph": "◆",
+      "category": "ore",
+      "symbol": "Fe·Mn",
+      "common": false,
+      "refined": false,
+      "description": "북부 순상지에서 철과 함께 나는 망간 함유 자철석"
+    },
+    {
+      "id": "bauxite",
+      "name": "보크사이트",
+      "glyph": "◇",
+      "category": "ore",
+      "symbol": "Al",
+      "common": true,
+      "refined": false,
+      "description": "남부 라테라이트 지대에서 나는 알루미늄 원광"
+    },
+    {
+      "id": "pyrolusite",
+      "name": "연망간석",
+      "glyph": "◇",
+      "category": "ore",
+      "symbol": "Mn",
+      "common": false,
+      "refined": false,
+      "description": "남부 라테라이트 지대에서 보크사이트와 함께 나는 망간 원광"
+    },
+    {
+      "id": "cassiterite",
+      "name": "주석석",
+      "glyph": "⬡",
+      "category": "ore",
+      "symbol": "Sn",
+      "common": true,
+      "refined": false,
+      "description": "동부 조산대 맥상 광상에서 나는 주석 원광"
+    },
+    {
+      "id": "stannite",
+      "name": "황석석",
+      "glyph": "⬡",
+      "category": "ore",
+      "symbol": "Sn·Cu·Fe",
+      "common": false,
+      "refined": false,
+      "description": "동부 조산대에서 나는, 주석·구리·철을 함께 함유한 복합 원광"
+    },
+    {
+      "id": "rutile",
+      "name": "금홍석",
+      "glyph": "▲",
+      "category": "ore",
+      "symbol": "Ti",
+      "common": false,
+      "refined": false,
+      "description": "동부 조산대에서 나는 순도 높은 티타늄 원광"
+    },
+    {
+      "id": "ilmenite",
+      "name": "티탄철석",
+      "glyph": "▲",
+      "category": "ore",
+      "symbol": "Ti·Fe",
+      "common": false,
+      "refined": false,
+      "description": "동부 조산대에서 나는, 티타늄과 철을 함께 함유한 원광"
+    },
+    {
+      "id": "sphalerite",
+      "name": "섬아연석",
+      "glyph": "⬢",
+      "category": "ore",
+      "symbol": "Zn",
+      "common": true,
+      "refined": false,
+      "description": "서부 카르스트 지대에서 나는 아연 원광"
+    },
+    {
+      "id": "smithsonite",
+      "name": "능아연석",
+      "glyph": "⬢",
+      "category": "ore",
+      "symbol": "Zn",
+      "common": false,
+      "refined": false,
+      "description": "서부 카르스트 지대의 보조 아연 원광"
+    },
+    {
+      "id": "malachite",
+      "name": "공작석",
+      "glyph": "●",
+      "category": "ore",
+      "symbol": "Cu",
+      "common": true,
+      "refined": false,
+      "description": "중부 건조 사막에서 나는 구리 원광"
+    },
+    {
+      "id": "chalcopyrite",
+      "name": "황동석",
+      "glyph": "●",
+      "category": "ore",
+      "symbol": "Cu·Fe",
+      "common": false,
+      "refined": false,
+      "description": "중부 건조 사막에서 나는, 구리와 철을 함께 함유한 원광"
+    },
+    {
+      "id": "aluminum",
+      "name": "알루미늄",
+      "glyph": "◇",
+      "category": "ore",
+      "symbol": "Al",
+      "common": false,
+      "refined": true,
+      "description": "보크사이트를 제련한 경량 금속"
+    },
+    {
+      "id": "manganese",
+      "name": "망간",
+      "glyph": "◇",
+      "category": "ore",
+      "symbol": "Mn",
+      "common": false,
+      "refined": true,
+      "description": "제철·합금의 촉매로 쓰는 희귀 금속. 전용 원광 없이 다른 광석의 부산물로만 얻는다"
+    },
+    {
+      "id": "tin",
+      "name": "주석",
+      "glyph": "⬡",
+      "category": "ore",
+      "symbol": "Sn",
+      "common": false,
+      "refined": true,
+      "description": "주석석을 제련한 금속"
+    },
+    {
+      "id": "titanium",
+      "name": "티타늄",
+      "glyph": "▲",
+      "category": "ore",
+      "symbol": "Ti",
+      "common": false,
+      "refined": true,
+      "description": "금홍석을 제련한 고강도 경량 금속"
+    },
+    {
+      "id": "zinc",
+      "name": "아연",
+      "glyph": "⬢",
+      "category": "ore",
+      "symbol": "Zn",
+      "common": false,
+      "refined": true,
+      "description": "섬아연석을 제련한 금속"
+    },
+    {
+      "id": "copper",
+      "name": "구리",
+      "glyph": "●",
+      "category": "ore",
+      "symbol": "Cu",
+      "common": false,
+      "refined": true,
+      "description": "공작석을 제련한 전도성 금속"
+    },
+    {
+      "id": "frostIron",
+      "name": "설철",
+      "glyph": "❄",
+      "category": "ore",
+      "symbol": "Fe*",
+      "common": false,
+      "refined": false,
+      "description": "북부 심층광산의 냉기를 머금은 특수 철"
+    },
+    {
+      "id": "mountainIron",
+      "name": "산철",
+      "glyph": "山",
+      "category": "ore",
+      "symbol": "Fe*",
+      "common": false,
+      "refined": false,
+      "description": "동부 산악권의 단조에 적합한 치밀한 철"
+    },
+    {
+      "id": "blackSteel",
+      "name": "흑철 파편",
+      "glyph": "▣",
+      "category": "ore",
+      "symbol": "Fe*",
+      "common": false,
+      "refined": false,
+      "description": "강적의 장비에서 회수하는 고강도 금속"
+    },
+    {
+      "id": "glassSand",
+      "name": "유리사",
+      "glyph": "◇",
+      "category": "ore",
+      "symbol": "Si",
+      "common": false,
+      "refined": false,
+      "description": "중부 협곡에서 채굴되는 결정성 모래"
+    },
+    {
+      "id": "herb",
+      "name": "약초",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": true,
+      "refined": false,
+      "description": "회복제와 연금 재료로 사용하는 일반 약재"
+    },
+    {
+      "id": "rhodiola",
+      "name": "로디올라",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "북부 고산·한대 지역의 피로회복·고지 적응 강장 약재"
+    },
+    {
+      "id": "arnica",
+      "name": "아르니카",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "북부 고산 초원의 타박상·근육통 외용 약재"
+    },
+    {
+      "id": "cinchonaBark",
+      "name": "기나나무 껍질",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "남부 열대 우림의 말라리아 치료제 원료 약재"
+    },
+    {
+      "id": "clove",
+      "name": "정향",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "남부 열대 우림의 진통·방부 약재"
+    },
+    {
+      "id": "cordyceps",
+      "name": "동충하초",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "동부 고산 지대의 원기회복·면역강화 약재"
+    },
+    {
+      "id": "ginseng",
+      "name": "인삼",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "동부 산악 지대의 원기회복 보약 약재"
+    },
+    {
+      "id": "chamomile",
+      "name": "카모마일",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "서부 온대 지역의 수면 유도 진정 약재"
+    },
+    {
+      "id": "lavender",
+      "name": "라벤더",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "서부 온대 지역의 항불안 아로마 약재"
+    },
+    {
+      "id": "willowBark",
+      "name": "버드나무 껍질",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "서부 온대 지역의 해열진통제 원료 약재"
+    },
+    {
+      "id": "aloeVera",
+      "name": "알로에",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "중부 사막 자생의 화상·피부 재생 약재"
+    },
+    {
+      "id": "myrrh",
+      "name": "몰약",
+      "glyph": "♣",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "중부 사막 수지의 방부·소염 약재"
+    },
+    {
+      "id": "runeFragment",
+      "name": "룬 조각",
+      "glyph": "ᚱ",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "룬 각인과 공용 기술 연구에 쓰는 파편"
+    },
+    {
+      "id": "manaStone",
+      "name": "마석",
+      "glyph": "✦",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "마나와 정령력을 저장하는 광물성 특수 소재"
+    },
+    {
+      "id": "venomSac",
+      "name": "맹독낭",
+      "glyph": "♢",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "독성 생물에게서 얻는 고농축 약재"
+    },
+    {
+      "id": "sunShard",
+      "name": "태양 파편",
+      "glyph": "☀",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "강한 열과 빛을 품은 사막의 특수 소재"
+    },
+    {
+      "id": "sporeGland",
+      "name": "심층 포자샘",
+      "glyph": "●",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "남부 심층 생물의 희귀 약재"
+    },
+    {
+      "id": "watcherEye",
+      "name": "감시자의 수정안",
+      "glyph": "◈",
+      "category": "special",
+      "symbol": "",
+      "common": false,
+      "refined": false,
+      "description": "오염을 감지하는 우두머리의 특수 기관"
+    }
+  ],
+  "oreSmelting": [
+    {
+      "oreId": "ore",
+      "outputs": [
+        {
+          "materialId": "ingot",
+          "ratio": 1
+        }
+      ]
+    },
+    {
+      "oreId": "magnetiteJacobsite",
+      "outputs": [
+        {
+          "materialId": "ingot",
+          "ratio": 1
+        },
+        {
+          "materialId": "manganese",
+          "ratio": 0.3
+        }
+      ]
+    },
+    {
+      "oreId": "bauxite",
+      "outputs": [
+        {
+          "materialId": "aluminum",
+          "ratio": 1
+        }
+      ]
+    },
+    {
+      "oreId": "cassiterite",
+      "outputs": [
+        {
+          "materialId": "tin",
+          "ratio": 1
+        }
+      ]
+    },
+    {
+      "oreId": "stannite",
+      "outputs": [
+        {
+          "materialId": "tin",
+          "ratio": 1
+        },
+        {
+          "materialId": "copper",
+          "ratio": 0.5
+        },
+        {
+          "materialId": "ingot",
+          "ratio": 0.5
+        }
+      ]
+    },
+    {
+      "oreId": "rutile",
+      "outputs": [
+        {
+          "materialId": "titanium",
+          "ratio": 1
+        }
+      ]
+    },
+    {
+      "oreId": "ilmenite",
+      "outputs": [
+        {
+          "materialId": "titanium",
+          "ratio": 1
+        },
+        {
+          "materialId": "ingot",
+          "ratio": 0.5
+        }
+      ]
+    },
+    {
+      "oreId": "sphalerite",
+      "outputs": [
+        {
+          "materialId": "zinc",
+          "ratio": 1
+        }
+      ]
+    },
+    {
+      "oreId": "smithsonite",
+      "outputs": [
+        {
+          "materialId": "zinc",
+          "ratio": 1
+        }
+      ]
+    },
+    {
+      "oreId": "malachite",
+      "outputs": [
+        {
+          "materialId": "copper",
+          "ratio": 1
+        }
+      ]
+    },
+    {
+      "oreId": "chalcopyrite",
+      "outputs": [
+        {
+          "materialId": "copper",
+          "ratio": 1
+        },
+        {
+          "materialId": "ingot",
+          "ratio": 0.5
+        }
+      ]
+    }
+  ],
+  "workers": [
+    {
+      "id": "steward",
+      "name": "집사장",
+      "cost": 0,
+      "max": 1
+    },
+    {
+      "id": "lumberjack",
+      "name": "벌목꾼",
+      "cost": 3,
+      "max": 3
+    },
+    {
+      "id": "miner",
+      "name": "광부",
+      "cost": 3,
+      "max": 3
+    },
+    {
+      "id": "refiner",
+      "name": "제련공",
+      "cost": 4,
+      "max": 3
+    },
+    {
+      "id": "herbalist",
+      "name": "약초학자",
+      "cost": 4,
+      "max": 2
+    },
+    {
+      "id": "blacksmith",
+      "name": "대장장이",
+      "cost": 5,
+      "max": 2
+    }
+  ],
+  "workerProficiencyTiers": [
+    {
+      "id": "novice",
+      "name": "초심자",
+      "hours": 0,
+      "yieldBonus": 0,
+      "materialSaving": 0,
+      "speedBonus": 0
+    },
+    {
+      "id": "skilled",
+      "name": "숙련자",
+      "hours": 20,
+      "yieldBonus": 0.05,
+      "materialSaving": 0.05,
+      "speedBonus": 0.05
+    },
+    {
+      "id": "expert",
+      "name": "전문가",
+      "hours": 60,
+      "yieldBonus": 0.1,
+      "materialSaving": 0.1,
+      "speedBonus": 0.1
+    },
+    {
+      "id": "master",
+      "name": "장인",
+      "hours": 150,
+      "yieldBonus": 0.15,
+      "materialSaving": 0.15,
+      "speedBonus": 0.15
+    }
+  ],
+  "craftRecipes": [
+    {
+      "id": "frontierMantle",
+      "itemDefId": "frontierMantle",
+      "name": "변경 순찰자의 겹망토",
+      "materials": [
+        {
+          "materialId": "wood",
+          "amount": 3
+        },
+        {
+          "materialId": "ingot",
+          "amount": 1
+        }
+      ],
+      "classId": "",
+      "source": "starter",
+      "researchId": "",
+      "requiresCompanionId": "",
+      "isAlchemy": true
+    },
+    {
+      "id": "sporeMask",
+      "itemDefId": "sporeMask",
+      "name": "포자 여과면",
+      "materials": [
+        {
+          "materialId": "wood",
+          "amount": 1
+        },
+        {
+          "materialId": "ingot",
+          "amount": 1
+        },
+        {
+          "materialId": "sporeGland",
+          "amount": 1
+        }
+      ],
+      "classId": "",
+      "source": "mire",
+      "researchId": "",
+      "requiresCompanionId": "",
+      "isAlchemy": true
+    },
+    {
+      "id": "knightAegis",
+      "itemDefId": "knightAegis",
+      "name": "그레이마크 기사 대방패",
+      "materials": [
+        {
+          "materialId": "ingot",
+          "amount": 4
+        },
+        {
+          "materialId": "blackSteel",
+          "amount": 1
+        }
+      ],
+      "classId": "knight",
+      "source": "",
+      "researchId": "",
+      "requiresCompanionId": "",
+      "isAlchemy": false
+    },
+    {
+      "id": "barbarianAxe",
+      "itemDefId": "barbarianAxe",
+      "name": "붉은강철 전투도끼",
+      "materials": [
+        {
+          "materialId": "wood",
+          "amount": 2
+        },
+        {
+          "materialId": "ingot",
+          "amount": 3
+        },
+        {
+          "materialId": "blackSteel",
+          "amount": 1
+        }
+      ],
+      "classId": "barbarian",
+      "source": "",
+      "researchId": "",
+      "requiresCompanionId": "",
+      "isAlchemy": false
+    },
+    {
+      "id": "mechanicRig",
+      "itemDefId": "mechanicRig",
+      "name": "황동 환경 제어기",
+      "materials": [
+        {
+          "materialId": "ingot",
+          "amount": 3
+        },
+        {
+          "materialId": "sunShard",
+          "amount": 1
+        }
+      ],
+      "classId": "mechanic",
+      "source": "",
+      "researchId": "",
+      "requiresCompanionId": "",
+      "isAlchemy": false
+    },
+    {
+      "id": "martialWraps",
+      "itemDefId": "martialWraps",
+      "name": "청류 경맥포",
+      "materials": [
+        {
+          "materialId": "wood",
+          "amount": 2
+        },
+        {
+          "materialId": "sporeGland",
+          "amount": 1
+        }
+      ],
+      "classId": "martial",
+      "source": "",
+      "researchId": "",
+      "requiresCompanionId": "",
+      "isAlchemy": false
+    },
+    {
+      "id": "wardenLens",
+      "itemDefId": "wardenLens",
+      "name": "감시자의 룬 렌즈",
+      "materials": [
+        {
+          "materialId": "ingot",
+          "amount": 3
+        },
+        {
+          "materialId": "watcherEye",
+          "amount": 1
+        }
+      ],
+      "classId": "",
+      "source": "boss",
+      "researchId": "",
+      "requiresCompanionId": "",
+      "isAlchemy": false
+    },
+    {
+      "id": "venom",
+      "itemDefId": "venom",
+      "name": "독성 증류병",
+      "materials": [
+        {
+          "materialId": "wood",
+          "amount": 1
+        },
+        {
+          "materialId": "sporeGland",
+          "amount": 1
+        }
+      ],
+      "classId": "",
+      "source": "",
+      "researchId": "venom",
+      "requiresCompanionId": "",
+      "isAlchemy": true
+    },
+    {
+      "id": "ember",
+      "itemDefId": "ember",
+      "name": "꺼지지 않는 불씨",
+      "materials": [
+        {
+          "materialId": "ingot",
+          "amount": 1
+        },
+        {
+          "materialId": "sunShard",
+          "amount": 1
+        }
+      ],
+      "classId": "",
+      "source": "",
+      "researchId": "ember",
+      "requiresCompanionId": "",
+      "isAlchemy": false
+    },
+    {
+      "id": "lantern",
+      "itemDefId": "lantern",
+      "name": "광맥 랜턴",
+      "materials": [
+        {
+          "materialId": "ingot",
+          "amount": 2
+        },
+        {
+          "materialId": "sunShard",
+          "amount": 1
+        }
+      ],
+      "classId": "",
+      "source": "",
+      "researchId": "lantern",
+      "requiresCompanionId": "",
+      "isAlchemy": false
+    },
+    {
+      "id": "coil",
+      "itemDefId": "coil",
+      "name": "전도 코일",
+      "materials": [
+        {
+          "materialId": "ingot",
+          "amount": 3
+        },
+        {
+          "materialId": "blackSteel",
+          "amount": 1
+        }
+      ],
+      "classId": "",
+      "source": "",
+      "researchId": "coil",
+      "requiresCompanionId": "",
+      "isAlchemy": false
+    },
+    {
+      "id": "armor",
+      "itemDefId": "armor",
+      "name": "층철 갑옷",
+      "materials": [
+        {
+          "materialId": "ingot",
+          "amount": 5
+        },
+        {
+          "materialId": "blackSteel",
+          "amount": 1
+        }
+      ],
+      "classId": "",
+      "source": "",
+      "researchId": "armor",
+      "requiresCompanionId": "",
+      "isAlchemy": false
+    },
+    {
+      "id": "masterworkBlade",
+      "itemDefId": "masterworkBlade",
+      "name": "명장의 다층 강철검",
+      "materials": [
+        {
+          "materialId": "ingot",
+          "amount": 6
+        },
+        {
+          "materialId": "blackSteel",
+          "amount": 2
+        }
+      ],
+      "classId": "",
+      "source": "",
+      "researchId": "",
+      "requiresCompanionId": "masterSmith",
+      "isAlchemy": false
+    }
+  ],
+  "productionCompanions": [
+    {
+      "id": "veteranWoodcutter",
+      "workerId": "lumberjack",
+      "name": "노련한 벌목꾼",
+      "cost": 8,
+      "yieldBonus": 0.08,
+      "speedBonus": 0.06,
+      "materialSaving": 0,
+      "qualityBonus": 0,
+      "bonusAffixChance": 0,
+      "recipeIds": [],
+      "alchemyOnly": false
+    },
+    {
+      "id": "deepMiner",
+      "workerId": "miner",
+      "name": "심맥 광부",
+      "cost": 8,
+      "yieldBonus": 0.08,
+      "speedBonus": 0.06,
+      "materialSaving": 0,
+      "qualityBonus": 0,
+      "bonusAffixChance": 0,
+      "recipeIds": [],
+      "alchemyOnly": false
+    },
+    {
+      "id": "masterSmith",
+      "workerId": "blacksmith",
+      "name": "명장 대장장이",
+      "cost": 12,
+      "yieldBonus": 0.05,
+      "speedBonus": 0.05,
+      "materialSaving": 0.05,
+      "qualityBonus": 10,
+      "bonusAffixChance": 0.3,
+      "recipeIds": [
+        "masterworkBlade"
+      ],
+      "alchemyOnly": false
+    },
+    {
+      "id": "refinerCompanion",
+      "workerId": "refiner",
+      "name": "제련 명인",
+      "cost": 9,
+      "yieldBonus": 0.08,
+      "speedBonus": 0.06,
+      "materialSaving": 0.05,
+      "qualityBonus": 0,
+      "bonusAffixChance": 0,
+      "recipeIds": [],
+      "alchemyOnly": false
+    },
+    {
+      "id": "herbalistCompanion",
+      "workerId": "herbalist",
+      "name": "노련한 약초학자",
+      "cost": 8,
+      "yieldBonus": 0.1,
+      "speedBonus": 0.06,
+      "materialSaving": 0.05,
+      "qualityBonus": 0,
+      "bonusAffixChance": 0,
+      "recipeIds": [],
+      "alchemyOnly": false
+    },
+    {
+      "id": "alchemist",
+      "workerId": "blacksmith",
+      "name": "연금술사",
+      "cost": 12,
+      "yieldBonus": 0,
+      "speedBonus": 0,
+      "materialSaving": 0.05,
+      "qualityBonus": 10,
+      "bonusAffixChance": 0.3,
+      "recipeIds": [],
+      "alchemyOnly": true
+    }
+  ],
+  "researchDefs": [
+    {
+      "id": "venom",
+      "name": "독성 증류",
+      "cost": 6,
+      "itemDefId": "venom",
+      "type": ""
+    },
+    {
+      "id": "ember",
+      "name": "잔불 보존",
+      "cost": 8,
+      "itemDefId": "ember",
+      "type": ""
+    },
+    {
+      "id": "lantern",
+      "name": "광맥 측량",
+      "cost": 8,
+      "itemDefId": "lantern",
+      "type": ""
+    },
+    {
+      "id": "coil",
+      "name": "전도 장치",
+      "cost": 10,
+      "itemDefId": "coil",
+      "type": ""
+    },
+    {
+      "id": "armor",
+      "name": "층철 가공",
+      "cost": 12,
+      "itemDefId": "armor",
+      "type": ""
+    },
+    {
+      "id": "bag_row",
+      "name": "가방 밑단 확장",
+      "cost": 14,
+      "itemDefId": "",
+      "type": "bag"
+    }
+  ],
+  "affixDefs": [
+    {
+      "id": "keen",
+      "name": "예리한",
+      "attack": 1,
+      "block": 0,
+      "environmentAll": 0,
+      "masteryBonus": 0
+    },
+    {
+      "id": "bastion",
+      "name": "견고한",
+      "attack": 0,
+      "block": 1,
+      "environmentAll": 0,
+      "masteryBonus": 0
+    },
+    {
+      "id": "adaptable",
+      "name": "적응형",
+      "attack": 0,
+      "block": 0,
+      "environmentAll": 1,
+      "masteryBonus": 0
+    },
+    {
+      "id": "practiced",
+      "name": "숙련자의",
+      "attack": 0,
+      "block": 0,
+      "environmentAll": 0,
+      "masteryBonus": 0.2
+    }
+  ],
+  "zoneTierDefs": [
+    {
+      "id": "safe",
+      "baseRisk": 12,
+      "discoveryGain": 34,
+      "suppressionInterval": 4
+    },
+    {
+      "id": "watch",
+      "baseRisk": 28,
+      "discoveryGain": 27,
+      "suppressionInterval": 3
+    },
+    {
+      "id": "danger",
+      "baseRisk": 46,
+      "discoveryGain": 21,
+      "suppressionInterval": 2
+    }
+  ],
+  "frontierZones": [
+    {
+      "id": "north_fir",
+      "regionId": "north",
+      "name": "침엽수 구릉",
+      "tier": "safe",
+      "requirements": [],
+      "requireAny": false,
+      "neighbors": [
+        "north_river",
+        "north_pass"
+      ],
+      "sitePool": [
+        "lumber",
+        "herb",
+        "cave",
+        "ruin"
+      ],
+      "bossEncounterId": "frostWolves"
+    },
+    {
+      "id": "north_river",
+      "regionId": "north",
+      "name": "얼어붙은 강변",
+      "tier": "safe",
+      "requirements": [
+        "north_fir"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "north_fir",
+        "north_gorge"
+      ],
+      "sitePool": [
+        "herb",
+        "lumber",
+        "dungeon"
+      ],
+      "bossEncounterId": "iceRaiders"
+    },
+    {
+      "id": "north_pass",
+      "regionId": "north",
+      "name": "백풍 고개",
+      "tier": "watch",
+      "requirements": [
+        "north_fir"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "north_fir",
+        "north_gorge",
+        "north_mine"
+      ],
+      "sitePool": [
+        "mine",
+        "ruin",
+        "dungeon"
+      ],
+      "bossEncounterId": "iceRaiders"
+    },
+    {
+      "id": "north_gorge",
+      "regionId": "north",
+      "name": "눈사태 협곡",
+      "tier": "watch",
+      "requirements": [
+        "north_river",
+        "north_pass"
+      ],
+      "requireAny": true,
+      "neighbors": [
+        "north_river",
+        "north_pass",
+        "north_mine"
+      ],
+      "sitePool": [
+        "mine",
+        "herb",
+        "ruin"
+      ],
+      "bossEncounterId": "snowGolems"
+    },
+    {
+      "id": "north_mine",
+      "regionId": "north",
+      "name": "빙결 심층광산",
+      "tier": "danger",
+      "requirements": [
+        "north_pass",
+        "north_gorge"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "north_pass",
+        "north_gorge"
+      ],
+      "sitePool": [
+        "deepMine",
+        "dungeon",
+        "ruin"
+      ],
+      "bossEncounterId": "frostColossusPack"
+    },
+    {
+      "id": "south_river",
+      "regionId": "south",
+      "name": "녹수 강변",
+      "tier": "safe",
+      "requirements": [],
+      "requireAny": false,
+      "neighbors": [
+        "south_spore"
+      ],
+      "sitePool": [
+        "herb",
+        "lumber",
+        "cave",
+        "ruin"
+      ],
+      "bossEncounterId": "venomStalkers"
+    },
+    {
+      "id": "south_spore",
+      "regionId": "south",
+      "name": "포자 분지",
+      "tier": "watch",
+      "requirements": [
+        "south_river"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "south_river",
+        "south_canopy"
+      ],
+      "sitePool": [
+        "herb",
+        "dungeon",
+        "ruin"
+      ],
+      "bossEncounterId": "vineBrood"
+    },
+    {
+      "id": "south_canopy",
+      "regionId": "south",
+      "name": "거대 수관 심부",
+      "tier": "danger",
+      "requirements": [
+        "south_spore"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "south_spore"
+      ],
+      "sitePool": [
+        "rareHerb",
+        "dungeon",
+        "ruin"
+      ],
+      "bossEncounterId": "canopyMatriarchPack"
+    },
+    {
+      "id": "east_outskirts",
+      "regionId": "east",
+      "name": "단조성 외곽",
+      "tier": "safe",
+      "requirements": [],
+      "requireAny": false,
+      "neighbors": [
+        "east_pass"
+      ],
+      "sitePool": [
+        "mine",
+        "lumber",
+        "cave",
+        "ruin"
+      ],
+      "bossEncounterId": "mountainBandits"
+    },
+    {
+      "id": "east_pass",
+      "regionId": "east",
+      "name": "운철 고개",
+      "tier": "watch",
+      "requirements": [
+        "east_outskirts"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "east_outskirts",
+        "east_forge"
+      ],
+      "sitePool": [
+        "mine",
+        "runeCircle",
+        "dungeon",
+        "ruin"
+      ],
+      "bossEncounterId": "ironGuard"
+    },
+    {
+      "id": "east_forge",
+      "regionId": "east",
+      "name": "봉인 단조성",
+      "tier": "danger",
+      "requirements": [
+        "east_pass"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "east_pass"
+      ],
+      "sitePool": [
+        "deepMine",
+        "dungeon",
+        "ruin"
+      ],
+      "bossEncounterId": "forgeGuardianPack"
+    },
+    {
+      "id": "west_march",
+      "regionId": "west",
+      "name": "서부 변경 초지",
+      "tier": "safe",
+      "requirements": [],
+      "requireAny": false,
+      "neighbors": [
+        "west_wood"
+      ],
+      "sitePool": [
+        "lumber",
+        "herb",
+        "cave",
+        "ruin"
+      ],
+      "bossEncounterId": "thornBeasts"
+    },
+    {
+      "id": "west_wood",
+      "regionId": "west",
+      "name": "서약림",
+      "tier": "watch",
+      "requirements": [
+        "west_march"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "west_march",
+        "west_ruins"
+      ],
+      "sitePool": [
+        "herb",
+        "runeCircle",
+        "dungeon",
+        "ruin"
+      ],
+      "bossEncounterId": "oathbreakers"
+    },
+    {
+      "id": "west_ruins",
+      "regionId": "west",
+      "name": "마나 폐허권",
+      "tier": "danger",
+      "requirements": [
+        "west_wood"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "west_wood"
+      ],
+      "sitePool": [
+        "manaWell",
+        "dungeon",
+        "ruin"
+      ],
+      "bossEncounterId": "ruinWardenPack"
+    },
+    {
+      "id": "central_oasis",
+      "regionId": "central",
+      "name": "오아시스 가도",
+      "tier": "safe",
+      "requirements": [],
+      "requireAny": false,
+      "neighbors": [
+        "central_gorge"
+      ],
+      "sitePool": [
+        "herb",
+        "caravan",
+        "cave",
+        "ruin"
+      ],
+      "bossEncounterId": "sandHunters"
+    },
+    {
+      "id": "central_gorge",
+      "regionId": "central",
+      "name": "유리 협곡",
+      "tier": "watch",
+      "requirements": [
+        "central_oasis"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "central_oasis",
+        "central_palace"
+      ],
+      "sitePool": [
+        "mine",
+        "caravan",
+        "dungeon"
+      ],
+      "bossEncounterId": "duneRaiders"
+    },
+    {
+      "id": "central_palace",
+      "regionId": "central",
+      "name": "매몰 지하궁",
+      "tier": "danger",
+      "requirements": [
+        "central_gorge"
+      ],
+      "requireAny": false,
+      "neighbors": [
+        "central_gorge"
+      ],
+      "sitePool": [
+        "glassPit",
+        "dungeon",
+        "ruin"
+      ],
+      "bossEncounterId": "duneTyrantPack"
+    }
+  ],
+  "livingAreas": [
+    {
+      "id": "home_estate",
+      "regionId": "central",
+      "name": "내 영지 생활권",
+      "kind": "estate",
+      "unlockZoneId": "",
+      "capacity": 20,
+      "foundingResidents": 12,
+      "build": []
+    },
+    {
+      "id": "north_hamlet",
+      "regionId": "north",
+      "name": "북부 산기슭 생활권",
+      "kind": "hamlet",
+      "unlockZoneId": "north_fir",
+      "capacity": 10,
+      "foundingResidents": 3,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 4
+        },
+        {
+          "materialId": "food",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "south_hamlet",
+      "regionId": "south",
+      "name": "남부 강둑 생활권",
+      "kind": "hamlet",
+      "unlockZoneId": "south_river",
+      "capacity": 10,
+      "foundingResidents": 3,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 4
+        },
+        {
+          "materialId": "food",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "east_hamlet",
+      "regionId": "east",
+      "name": "동부 산성 아래 생활권",
+      "kind": "hamlet",
+      "unlockZoneId": "east_outskirts",
+      "capacity": 10,
+      "foundingResidents": 3,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 4
+        },
+        {
+          "materialId": "food",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": "west_hamlet",
+      "regionId": "west",
+      "name": "서부 변경촌 생활권",
+      "kind": "hamlet",
+      "unlockZoneId": "west_march",
+      "capacity": 10,
+      "foundingResidents": 3,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 4
+        },
+        {
+          "materialId": "food",
+          "amount": 2
+        }
+      ]
+    }
+  ],
+  "discoverySites": [
+    {
+      "id": "mine",
+      "name": "지역 금속 광산",
+      "materialId": "ore",
+      "materialByRegion": [
+        {
+          "regionId": "north",
+          "materialId": "ore"
+        },
+        {
+          "regionId": "south",
+          "materialId": "bauxite"
+        },
+        {
+          "regionId": "east",
+          "materialId": "cassiterite"
+        },
+        {
+          "regionId": "west",
+          "materialId": "sphalerite"
+        },
+        {
+          "regionId": "central",
+          "materialId": "malachite"
+        }
+      ],
+      "output": 2,
+      "workers": 2,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 2
+        },
+        {
+          "materialId": "ore",
+          "amount": 1
+        }
+      ],
+      "risk": 8,
+      "dungeon": false
+    },
+    {
+      "id": "deepMine",
+      "name": "특수 금속 심층광산",
+      "materialId": "frostIron",
+      "materialByRegion": [
+        {
+          "regionId": "north",
+          "materialId": "frostIron"
+        },
+        {
+          "regionId": "east",
+          "materialId": "mountainIron"
+        }
+      ],
+      "output": 1,
+      "workers": 3,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 3
+        },
+        {
+          "materialId": "ore",
+          "amount": 2
+        }
+      ],
+      "risk": 18,
+      "dungeon": false
+    },
+    {
+      "id": "herb",
+      "name": "야생 약초밭",
+      "materialId": "herb",
+      "materialByRegion": [
+        {
+          "regionId": "north",
+          "materialId": "rhodiola"
+        },
+        {
+          "regionId": "south",
+          "materialId": "cinchonaBark"
+        },
+        {
+          "regionId": "east",
+          "materialId": "cordyceps"
+        },
+        {
+          "regionId": "west",
+          "materialId": "chamomile"
+        },
+        {
+          "regionId": "central",
+          "materialId": "aloeVera"
+        }
+      ],
+      "output": 2,
+      "workers": 1,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 1
+        }
+      ],
+      "risk": 5,
+      "dungeon": false
+    },
+    {
+      "id": "rareHerb",
+      "name": "독성 약초원",
+      "materialId": "venomSac",
+      "materialByRegion": [],
+      "output": 1,
+      "workers": 2,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 2
+        }
+      ],
+      "risk": 14,
+      "dungeon": false
+    },
+    {
+      "id": "lumber",
+      "name": "고목 벌목지",
+      "materialId": "wood",
+      "materialByRegion": [],
+      "output": 2,
+      "workers": 2,
+      "build": [
+        {
+          "materialId": "ore",
+          "amount": 1
+        }
+      ],
+      "risk": 7,
+      "dungeon": false
+    },
+    {
+      "id": "manaWell",
+      "name": "마나 용출지",
+      "materialId": "manaStone",
+      "materialByRegion": [],
+      "output": 1,
+      "workers": 2,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 2
+        },
+        {
+          "materialId": "ore",
+          "amount": 1
+        }
+      ],
+      "risk": 16,
+      "dungeon": false
+    },
+    {
+      "id": "runeCircle",
+      "name": "폐허 룬 각인소",
+      "materialId": "runeFragment",
+      "materialByRegion": [],
+      "output": 1,
+      "workers": 2,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 1
+        },
+        {
+          "materialId": "ore",
+          "amount": 1
+        }
+      ],
+      "risk": 13,
+      "dungeon": false
+    },
+    {
+      "id": "glassPit",
+      "name": "유리사 채굴지",
+      "materialId": "glassSand",
+      "materialByRegion": [],
+      "output": 1,
+      "workers": 2,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 2
+        },
+        {
+          "materialId": "ore",
+          "amount": 1
+        }
+      ],
+      "risk": 15,
+      "dungeon": false
+    },
+    {
+      "id": "caravan",
+      "name": "대상단 중계소",
+      "materialId": "food",
+      "materialByRegion": [],
+      "output": 2,
+      "workers": 2,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 2
+        },
+        {
+          "materialId": "ore",
+          "amount": 1
+        }
+      ],
+      "risk": 6,
+      "dungeon": false
+    },
+    {
+      "id": "ruin",
+      "name": "매몰된 작업장",
+      "materialId": "scrap",
+      "materialByRegion": [],
+      "output": 2,
+      "workers": 2,
+      "build": [
+        {
+          "materialId": "wood",
+          "amount": 2
+        }
+      ],
+      "risk": 10,
+      "dungeon": false
+    },
+    {
+      "id": "cave",
+      "name": "야생 동굴",
+      "materialId": "",
+      "materialByRegion": [],
+      "output": 0,
+      "workers": 0,
+      "build": [],
+      "risk": 18,
+      "dungeon": true
+    },
+    {
+      "id": "dungeon",
+      "name": "숨겨진 던전",
+      "materialId": "",
+      "materialByRegion": [],
+      "output": 0,
+      "workers": 0,
+      "build": [],
+      "risk": 24,
+      "dungeon": true
+    }
+  ],
+  "troopTypes": [
+    {
+      "id": "infantry",
+      "name": "보병",
+      "basePower": 3
+    },
+    {
+      "id": "archer",
+      "name": "궁병",
+      "basePower": 3
+    },
+    {
+      "id": "cavalry",
+      "name": "기병",
+      "basePower": 3
+    }
+  ],
+  "troopSpeciesMatchup": [
+    {
+      "species": "goblin",
+      "infantry": 1,
+      "archer": 1.25,
+      "cavalry": 0.85
+    },
+    {
+      "species": "orc",
+      "infantry": 1,
+      "archer": 0.85,
+      "cavalry": 1.2
+    },
+    {
+      "species": "wolf",
+      "infantry": 1,
+      "archer": 1.2,
+      "cavalry": 0.85
+    },
+    {
+      "species": "bear",
+      "infantry": 1,
+      "archer": 0.8,
+      "cavalry": 1.3
+    }
+  ],
+  "companionUnits": [
+    {
+      "id": "snow_guard",
+      "name": "설벽 수호자",
+      "regionId": "north",
+      "role": "탱커",
+      "commandAura": 0,
+      "partyArmor": 0
+    },
+    {
+      "id": "winter_berserker",
+      "name": "빙원 광전사",
+      "regionId": "north",
+      "role": "딜러",
+      "commandAura": 0,
+      "partyArmor": 0
+    },
+    {
+      "id": "snow_shaman",
+      "name": "설령 주술사",
+      "regionId": "north",
+      "role": "유틸",
+      "commandAura": 0,
+      "partyArmor": 0.02
+    },
+    {
+      "id": "venom_tracker",
+      "name": "독침 추적자",
+      "regionId": "south",
+      "role": "딜러",
+      "commandAura": 0,
+      "partyArmor": 0
+    },
+    {
+      "id": "vine_keeper",
+      "name": "덩굴 수호자",
+      "regionId": "south",
+      "role": "탱·유틸",
+      "commandAura": 0,
+      "partyArmor": 0.04
+    },
+    {
+      "id": "sap_healer",
+      "name": "수액 약제사",
+      "regionId": "south",
+      "role": "유틸",
+      "commandAura": 0,
+      "partyArmor": 0
+    },
+    {
+      "id": "formation_officer",
+      "name": "진법 군관",
+      "regionId": "east",
+      "role": "유틸",
+      "commandAura": 0,
+      "partyArmor": 0.03
+    },
+    {
+      "id": "duel_swordsman",
+      "name": "결전검객",
+      "regionId": "east",
+      "role": "폭딜러",
+      "commandAura": 0,
+      "partyArmor": 0
+    },
+    {
+      "id": "meridian_fighter",
+      "name": "기맥 권사",
+      "regionId": "east",
+      "role": "딜·탱",
+      "commandAura": 0,
+      "partyArmor": 0
+    },
+    {
+      "id": "oath_knight",
+      "name": "서약 중검기사",
+      "regionId": "west",
+      "role": "탱커",
+      "commandAura": 0,
+      "partyArmor": 0
+    },
+    {
+      "id": "mana_weaver",
+      "name": "마나 술사",
+      "regionId": "west",
+      "role": "딜·유틸",
+      "commandAura": 0,
+      "partyArmor": 0
+    },
+    {
+      "id": "spirit_ranger",
+      "name": "정령 순찰자",
+      "regionId": "west",
+      "role": "유틸",
+      "commandAura": 0,
+      "partyArmor": 0.03
+    },
+    {
+      "id": "desert_lancer",
+      "name": "사막 창기병",
+      "regionId": "central",
+      "role": "딜·탱",
+      "commandAura": 0,
+      "partyArmor": 0
+    },
+    {
+      "id": "glass_alchemist",
+      "name": "유리사 연금술사",
+      "regionId": "central",
+      "role": "딜·유틸",
+      "commandAura": 0,
+      "partyArmor": 0
+    },
+    {
+      "id": "caravan_guide",
+      "name": "대상단 길잡이",
+      "regionId": "central",
+      "role": "유틸",
+      "commandAura": 0.1,
+      "partyArmor": 0
+    }
+  ],
+  "regionSpeciesMixEntries": [
+    {
+      "regionId": "north",
+      "species": [
+        {
+          "species": "wolf",
+          "ratio": 0.375
+        },
+        {
+          "species": "goblin",
+          "ratio": 0.375
+        },
+        {
+          "species": "orc",
+          "ratio": 0.25
+        }
+      ]
+    },
+    {
+      "regionId": "south",
+      "species": [
+        {
+          "species": "goblin",
+          "ratio": 0.4444444444444444
+        },
+        {
+          "species": "wolf",
+          "ratio": 0.3333333333333333
+        },
+        {
+          "species": "orc",
+          "ratio": 0.2222222222222222
+        }
+      ]
+    },
+    {
+      "regionId": "east",
+      "species": [
+        {
+          "species": "goblin",
+          "ratio": 0.3333333333333333
+        },
+        {
+          "species": "wolf",
+          "ratio": 0.3333333333333333
+        },
+        {
+          "species": "orc",
+          "ratio": 0.3333333333333333
+        }
+      ]
+    },
+    {
+      "regionId": "west",
+      "species": [
+        {
+          "species": "wolf",
+          "ratio": 0.3333333333333333
+        },
+        {
+          "species": "goblin",
+          "ratio": 0.4444444444444444
+        },
+        {
+          "species": "orc",
+          "ratio": 0.2222222222222222
+        }
+      ]
+    },
+    {
+      "regionId": "central",
+      "species": [
+        {
+          "species": "wolf",
+          "ratio": 0.3333333333333333
+        },
+        {
+          "species": "goblin",
+          "ratio": 0.3333333333333333
+        },
+        {
+          "species": "orc",
+          "ratio": 0.3333333333333333
+        }
+      ]
+    }
+  ],
+  "worldRegions": [
+    {
+      "id": "north",
+      "villageName": "눈골 부락"
+    },
+    {
+      "id": "south",
+      "villageName": "강둑 부락"
+    },
+    {
+      "id": "east",
+      "villageName": "산성 아래 마을"
+    },
+    {
+      "id": "west",
+      "villageName": "변경 순례촌"
+    },
+    {
+      "id": "central",
+      "villageName": "오아시스 부락"
+    }
+  ],
+  "villageMilestoneRewards": [
+    {
+      "regionId": "north",
+      "threshold": 30,
+      "type": "companion",
+      "companionId": "deepMiner",
+      "recipeId": ""
+    },
+    {
+      "regionId": "north",
+      "threshold": 60,
+      "type": "blueprint",
+      "companionId": "",
+      "recipeId": "armor"
+    },
+    {
+      "regionId": "north",
+      "threshold": 90,
+      "type": "grimoire",
+      "companionId": "",
+      "recipeId": "knightAegis"
+    },
+    {
+      "regionId": "south",
+      "threshold": 30,
+      "type": "companion",
+      "companionId": "herbalistCompanion",
+      "recipeId": ""
+    },
+    {
+      "regionId": "south",
+      "threshold": 60,
+      "type": "blueprint",
+      "companionId": "",
+      "recipeId": "venom"
+    },
+    {
+      "regionId": "south",
+      "threshold": 90,
+      "type": "grimoire",
+      "companionId": "",
+      "recipeId": "sporeMask"
+    },
+    {
+      "regionId": "east",
+      "threshold": 30,
+      "type": "companion",
+      "companionId": "refinerCompanion",
+      "recipeId": ""
+    },
+    {
+      "regionId": "east",
+      "threshold": 60,
+      "type": "blueprint",
+      "companionId": "",
+      "recipeId": "ember"
+    },
+    {
+      "regionId": "east",
+      "threshold": 90,
+      "type": "grimoire",
+      "companionId": "",
+      "recipeId": "mechanicRig"
+    },
+    {
+      "regionId": "west",
+      "threshold": 30,
+      "type": "companion",
+      "companionId": "alchemist",
+      "recipeId": ""
+    },
+    {
+      "regionId": "west",
+      "threshold": 60,
+      "type": "blueprint",
+      "companionId": "",
+      "recipeId": "wardenLens"
+    },
+    {
+      "regionId": "west",
+      "threshold": 90,
+      "type": "grimoire",
+      "companionId": "",
+      "recipeId": "martialWraps"
+    },
+    {
+      "regionId": "central",
+      "threshold": 30,
+      "type": "companion",
+      "companionId": "masterSmith",
+      "recipeId": ""
+    },
+    {
+      "regionId": "central",
+      "threshold": 60,
+      "type": "blueprint",
+      "companionId": "",
+      "recipeId": "lantern"
+    },
+    {
+      "regionId": "central",
+      "threshold": 90,
+      "type": "grimoire",
+      "companionId": "",
+      "recipeId": "coil"
+    }
+  ],
+  "siteTroopTypes": [
+    {
+      "siteId": "mine",
+      "troopType": "infantry"
+    },
+    {
+      "siteId": "deepMine",
+      "troopType": "cavalry"
+    },
+    {
+      "siteId": "herb",
+      "troopType": "archer"
+    },
+    {
+      "siteId": "rareHerb",
+      "troopType": "archer"
+    },
+    {
+      "siteId": "lumber",
+      "troopType": "infantry"
+    },
+    {
+      "siteId": "manaWell",
+      "troopType": "archer"
+    },
+    {
+      "siteId": "runeCircle",
+      "troopType": "archer"
+    },
+    {
+      "siteId": "glassPit",
+      "troopType": "cavalry"
+    },
+    {
+      "siteId": "caravan",
+      "troopType": "cavalry"
+    },
+    {
+      "siteId": "ruin",
+      "troopType": "infantry"
+    }
+  ],
+  "herbIds": [
+    "herb",
+    "rhodiola",
+    "arnica",
+    "cinchonaBark",
+    "clove",
+    "cordyceps",
+    "ginseng",
+    "chamomile",
+    "lavender",
+    "willowBark",
+    "aloeVera",
+    "myrrh"
+  ],
+  "constants": {
+    "merchantRotationInterval": 5,
+    "merchantStockSize": 4,
+    "merchantPriceMin": 2,
+    "merchantPriceMax": 9,
+    "villageMilestoneThresholds": [
+      30,
+      60,
+      90
+    ],
+    "villageTradePrice": 2,
+    "villageFriendshipGain": 4,
+    "troopRecoveryCycles": 3,
+    "leaderRecoveryCycles": 2,
+    "saveVersion": 18
+  }
+}

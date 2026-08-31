@@ -1,0 +1,3503 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+import {
+  FIELD_STAGE_COUNT,
+  COMPANION_SKILL_DEFS,
+  COMPANION_SKILL_MAX_LEVEL,
+  companionSkillValue,
+  companionSkillXpNeeded,
+  companionHazardMitigation,
+  grantCompanionSkillXp,
+  REGION_TONIC_DEFS,
+  REGION_CORE_ABSORPTION,
+  absorbedResistThreshold,
+  DUNGEON_SIZE,
+  ENCOUNTER_DEFS,
+  FIELD_SIZE,
+  MONSTER_ECOLOGY_DEFS,
+  PARTY_LIMIT,
+  STATUS_EFFECT_DEFS,
+  STARTING_PARTY,
+  STARTING_ROSTER,
+  UNIT_DEFS,
+  WORLD_REGION_DEFS,
+  applyCombatStatus,
+  adventureZoneIsConnected,
+  completeBattle,
+  createAutoBattle,
+  createDungeon,
+  createField,
+  createRegionRun,
+  enterRunDungeon,
+  enterRunSettlement,
+  explorationPath,
+  BOSS_PATTERN_DEFS,
+  ENEMY_COMBATANTS,
+  PLAYER_DODGE_DEFS,
+  playerDodgeDefinition,
+  issuePlayerAction,
+  issueBattleCommand,
+  leaveRunSettlement,
+  moveBattlePlayer,
+  steerBattlePlayer,
+  moveRunPlayer,
+  dungeonClearRewards,
+  selectPlayerTarget,
+  tickAutoBattle,
+  ARENA_BOUNDS,
+  FIELD_AGGRO_RADIUS,
+  FIELD_BOUNDS,
+  consumeFieldTrigger,
+  resolveObstacles,
+  createFieldBattle,
+  SITE_FIELD_DEFS,
+  siteFieldDefinition,
+  REGION_ARMOR_SET
+, SPECIAL_UNIT_DEFS , MONSTER_ATLAS_SPECIES , MONSTER_SPECIES_PENDING_ART , spawnBossZone , MATERIAL_RARITY_ORDER, MATERIAL_RARITY_LABELS, materialRarity } from "../src/adventure.js";
+import { MATERIAL_DEFS, ORE_SMELTING_DEFS } from "../src/data.js";
+import { DISCOVERY_SITE_DEFS } from "../src/frontier.js";
+import { EQUIPMENT_GRADES, combatPowerBreakdown, combatPowerScore, masterySlots, MASTERY_TRAIT_SLOTS, ENHANCE_MAX, playerKitDefinition, MYTHIC_GEAR_DEFS } from "../src/classes.js";
+import { ARMOR_SET_DEFS, EQUIPMENT_DEFS, LEGENDARY_CLEAR_REQUIREMENT, LEGENDARY_DEFS, PLAYER_BASE_CLASS_DEFS, PLAYER_KIT_DEFS, createDefaultCommander, legendariesForRegion, legendaryCollection, playerCombatStats } from "../src/classes.js";
+import { GameEngine } from "../src/game.js";
+
+class MemoryStorage {
+  constructor() { this.values = new Map(); }
+  getItem(key) { return this.values.get(key) || null; }
+  setItem(key, value) { this.values.set(key, value); }
+}
+
+
+// 장비를 끼운 지휘관을 만든다. 장비가 인스턴스(uid)로 바뀌면서 픽스처가
+// 장황해져서, 정의 id만 넘기면 인스턴스를 만들어 장착까지 해주는 헬퍼를 둔다.
+function gearUp(commander, bySlot, grade = "common") {
+  let n = 0;
+  for (const [slot, defId] of Object.entries(bySlot)) {
+    if (!defId) continue;
+    n += 1;
+    const uid = "fixture" + n;
+    commander.equipmentOwned.push({ uid, defId, grade, options: [] });
+    commander.equipped[slot] = uid;
+  }
+  return commander;
+}
+
+// 지역 진입 요구치를 넘기기 위해 파티를 키운다. 진입 게이트 자체를 검증하는
+// 테스트가 아니라면 여기서 요구치를 충족시키고 본론으로 넘어간다.
+// 레벨이 없어졌으므로 요구치를 넘기는 방법은 장비뿐이다 —
+// 이 헬퍼가 장비로만 동작한다는 것 자체가 "성장 = 장비"의 증거다.
+function readyPartyFor(engine) {
+  const commander = engine.state.adventure.commander;
+  let n = 0;
+
+  const give = (defId, slot, unitId) => {
+    const uid = `ready${n++}`;
+    commander.equipmentOwned.push({ uid, defId, grade: "mythic", options: [], enhance: ENHANCE_MAX, broken: false });
+    if (unitId) (commander.companionEquipped[unitId] ||= {})[slot] = uid;
+    else commander.equipped[slot] = uid;
+  };
+
+  // 무기는 직업 잠금이 걸려 있다. 킷과 안 맞는 무기를 쥐여주면 보너스가 통째로
+  // 빠져서 요구치를 못 넘는다 — 지금 킷의 기본 직업에 맞는 무기를 찾아 준다.
+  const baseClassId = playerKitDefinition(commander.combatKitId).baseClassId;
+  const weaponId = Object.values(EQUIPMENT_DEFS)
+    .find((def) => def.slot === "weapon" && def.baseClassId === baseClassId).id;
+
+  give(weaponId, "weapon");
+  give("heavyHelm", "helmet");
+  give("heavyPlate", "chest");
+  give("heavyGauntlets", "gloves");
+  give("heavySabatons", "boots");
+  give("heavyMantle", "cloak");
+  give("guardianCharm", "necklace");
+  give("sagesBand", "ring1");
+  give("sagesBand", "ring2");
+
+  for (const unitId of engine.state.adventure.party) {
+    engine.state.adventure.unitProgress[unitId] = {
+      mastery: 4, xp: 0, branchId: "combat", traitIds: ["survival", "forging"]
+    };
+    // 방어구가 다섯 부위이므로 다 채운다. 몸통만 주던 잔재로 두면 개별 성능을
+    // 조정할 때마다 이 헬퍼가 먼저 무너진다.
+    give("heavyHelm", "helmet", unitId);
+    give("heavyPlate", "chest", unitId);
+    give("heavyGauntlets", "gloves", unitId);
+    give("heavySabatons", "boots", unitId);
+    give("heavyMantle", "cloak", unitId);
+    give("guardianCharm", "necklace", unitId);
+    give("sagesBand", "ring1", unitId);
+    give("sagesBand", "ring2", unitId);
+  }
+}
+
+test("다섯 지역 필드는 41×41이고 모든 조우와 던전 입구가 연결된다", () => {
+  for (const regionId of Object.keys(WORLD_REGION_DEFS)) {
+    for (let seed = 1; seed <= 12; seed += 1) {
+      const field = createField(seed * 1777, regionId);
+      assert.equal(field.width, FIELD_SIZE);
+      assert.equal(field.height, FIELD_SIZE);
+      assert.equal(adventureZoneIsConnected(field), true, `${regionId} seed ${seed}`);
+      assert.equal(Object.values(field.features).filter((feature) => feature.type === "settlement").length, 1);
+      const path = explorationPath(field.tiles, field.start, field.entrance);
+      assert.ok(path.length > 20, `${regionId} 필드의 던전이 충분히 멀리 있어야 한다`);
+    }
+  }
+});
+
+test("전투 조이스틱 입력은 플레이어를 연속 이동시키고 놓으면 멈춘다", () => {
+  const battle = createAutoBattle("duneRaiders", "joystick", "field", [], {}, { commander: createDefaultCommander() });
+  const player = battle.units.find((unit) => unit.controlled);
+  const startX = player.x;
+  assert.equal(steerBattlePlayer(battle, 2, 0), true);
+  assert.equal(battle.playerMoveInput.x, 1);
+  tickAutoBattle(battle, 120);
+  assert.ok(player.x > startX);
+  assert.equal(steerBattlePlayer(battle, 0, 0), true);
+  const stoppedX = player.x;
+  tickAutoBattle(battle, 120);
+  assert.equal(player.x, stoppedX);
+});
+
+test("원정 전장의 몬스터는 2~3마리로 제한해 영혼 수확 상한을 통제한다", () => {
+  for (const encounter of Object.values(ENCOUNTER_DEFS)) {
+    // 지역 보스는 단독 전투다. 기믹과 페이즈로 싸우는 보스라 잡몹을 섞으면
+    // 무엇을 보고 대응해야 하는지가 흐려진다(docs/BOSS_DESIGN.md §2).
+    // 이 규칙은 "적이 많을 때"의 영혼 수확 상한을 막는 게 목적이므로
+    // 단독 전투는 애초에 문제가 되지 않는다.
+    if (!encounter.regionBoss) assert.ok(encounter.enemies.length >= 2, `${encounter.name} 최소 2마리`);
+    assert.ok(encounter.enemies.length <= 3, `${encounter.name} 최대 3마리`);
+  }
+});
+
+test("비점령지 이동 중 던전 진입 전까지 불규칙 습격이 발생한다", () => {
+  const run = createRegionRun("central", 8181, STARTING_ROSTER, {}, {}, { purpose: "conquest", ambushInterval: [2, 2] });
+  assert.equal(moveRunPlayer(run, 4, 20).type, "move");
+  const ambush = moveRunPlayer(run, 5, 20);
+  assert.equal(ambush.type, "ambush");
+  assert.ok(run.battle);
+  assert.equal(run.battle.awaitingPlayerStart, true);
+  assert.equal(run.irregularAmbushes, 1);
+
+  run.battle.status = "victory";
+  completeBattle(run);
+  run.battle = null;
+  run.result = null;
+  run.dungeonEntered = true;
+  run.nextAmbushStep = run.fieldSteps + 1;
+  assert.equal(moveRunPlayer(run, 6, 20).type, "move");
+});
+
+test("필드의 부락 타일까지 이동해 안으로 들어갔다가 다시 나올 수 있다", () => {
+  const run = createRegionRun("north", 4422);
+  const [settlementKey, settlement] = Object.entries(run.field.features).find(([, feature]) => feature.type === "settlement");
+  const [targetX, targetY] = settlementKey.split(",").map(Number);
+  const path = explorationPath(run.field.tiles, run.player, { x: targetX, y: targetY });
+  let result = null;
+  for (const point of path.slice(1)) {
+    result = moveRunPlayer(run, point.x, point.y);
+    if (result.type === "encounter") {
+      run.battle.status = "victory";
+      completeBattle(run);
+      run.battle = null;
+      run.result = null;
+    }
+  }
+  assert.equal(result.type, "settlement");
+  assert.equal(enterRunSettlement(run).id, settlement.id);
+  assert.equal(settlement.visited, true);
+  assert.equal(run.settlementVisit.name, WORLD_REGION_DEFS.north.villageName);
+  assert.equal(leaveRunSettlement(run), true);
+  assert.equal(run.settlementVisit, null);
+});
+
+test("각 지역 위협 생태는 고블린·오크·늑대·곰 4종의 지역 변종으로 시작한다", () => {
+  for (const regionId of Object.keys(WORLD_REGION_DEFS)) {
+    assert.equal(MONSTER_ECOLOGY_DEFS[regionId].length, 4);
+    const roles = MONSTER_ECOLOGY_DEFS[regionId].map((entry) => entry.role).join(" ");
+    for (const species of ["고블린", "오크", "늑대", "곰"]) assert.match(roles, new RegExp(species));
+  }
+});
+
+test("던전은 15×15 밀집 구조이며 수문대와 우두머리까지 연결된다", () => {
+  for (const regionId of Object.keys(WORLD_REGION_DEFS)) {
+    const dungeon = createDungeon(9001, regionId);
+    assert.equal(dungeon.width, DUNGEON_SIZE);
+    assert.equal(dungeon.height, DUNGEON_SIZE);
+    assert.equal(adventureZoneIsConnected(dungeon), true);
+    assert.equal(Object.values(dungeon.features).filter((feature) => feature.type === "encounter").length, 3);
+  }
+});
+
+test("필드의 실제 입구 좌표에 도달한 뒤에만 던전에 들어간다", () => {
+  const run = createRegionRun("central", 321);
+  assert.equal(enterRunDungeon(run), false);
+  const path = explorationPath(run.field.tiles, run.player, run.field.entrance);
+  for (const point of path.slice(1)) {
+    const result = moveRunPlayer(run, point.x, point.y);
+    if (result.type === "encounter") {
+      run.battle.status = "victory";
+      completeBattle(run);
+      run.battle = null;
+      run.result = null;
+    }
+  }
+  assert.equal(run.pendingEntrance, true);
+  assert.equal(enterRunDungeon(run), true);
+  assert.equal(run.location, "dungeon");
+  assert.equal(run.player.x, run.dungeon.start.x);
+});
+
+test("플레이어 1명은 직접 조작하고 동료 2명은 진형 구분 없이 자동으로 싸운다", () => {
+  const battle = createAutoBattle("sandHunters", "encounter", "field");
+  assert.equal(battle.units.length, 3);
+  assert.equal(battle.units.filter((unit) => unit.controlled).length, 1);
+  assert.equal(battle.units.filter((unit) => !unit.controlled).length, 2);
+  assert.ok(battle.units.filter((unit) => !unit.controlled).every((unit) => unit.x === 14));
+  const player = battle.units.find((unit) => unit.controlled);
+  const startX = player.x;
+  assert.equal(moveBattlePlayer(battle, 62, 48), true);
+  tickAutoBattle(battle, 250);
+  assert.ok(player.x > startX);
+  assert.equal(selectPlayerTarget(battle, battle.enemies[0].id), true);
+  player.x = battle.enemies[0].x - 5;
+  player.y = battle.enemies[0].y;
+  assert.equal(issuePlayerAction(battle, "attack"), true);
+  assert.equal(issuePlayerAction(battle, "dodge"), true);
+  assert.equal(issuePlayerAction(battle, "skill1"), true);
+  let ticks = 0;
+  while (battle.status === "active" && ticks < 800) {
+    if (ticks === 45) issueBattleCommand(battle, "focus", battle.enemies[0].id);
+    const target = battle.enemies.find((enemy) => enemy.hp > 0);
+    if (target && player.hp > 0) {
+      player.x = target.x - 5;
+      player.y = target.y;
+      issuePlayerAction(battle, "attack");
+      issuePlayerAction(battle, "skill2");
+    }
+    tickAutoBattle(battle, 120);
+    ticks += 1;
+  }
+  assert.equal(battle.status, "victory");
+  assert.ok(battle.elapsed > 0);
+  assert.ok(battle.enemies.every((enemy) => enemy.hp === 0));
+});
+
+test("게임 저장에는 직접 조작 개척자와 기본 자동전투 동료가 유지된다", () => {
+  const storage = new MemoryStorage();
+  const engine = new GameEngine(storage);
+  assert.equal(engine.state.adventure.commander.name, "개척자");
+  // 레벨은 없다. 숙련도로 시작하고, 숙련도는 스탯이 아니라 칸을 연다.
+  assert.equal(engine.state.adventure.commander.mastery, 0);
+  assert.equal(engine.state.adventure.commander.level, undefined);
+  assert.deepEqual(engine.state.adventure.roster, STARTING_ROSTER);
+  assert.deepEqual(engine.state.adventure.party, STARTING_PARTY);
+  assert.equal(engine.startRegionAdventure("north", 7788), true);
+  // 지역 탐험은 이제 격자 필드가 아니라 광역 전투 아레나로 시작한다.
+  assert.equal(engine.state.adventure.run.field, null);
+  assert.ok(engine.state.adventure.run.battle?.fieldMode);
+  const restored = new GameEngine(storage);
+  assert.equal(restored.state.adventure.run.regionId, "north");
+  assert.equal(restored.state.adventure.commander.name, "개척자");
+  assert.equal(Object.keys(WORLD_REGION_DEFS).length, 5);
+});
+
+test("v15 진행 중 전투에도 새 피격·영혼 시간 규칙을 보강해 그대로 복구한다", () => {
+  const storage = new MemoryStorage();
+  const engine = new GameEngine(storage);
+  assert.equal(engine.selectCommanderKit("heavyNecromancer"), true);
+  readyPartyFor(engine);
+  assert.equal(engine.startRegionAdventure("central", 9911), true);
+  engine.state.adventure.run.battle = createAutoBattle(
+    "duneRaiders",
+    "migration-battle",
+    "field",
+    STARTING_PARTY,
+    {},
+    { commander: engine.state.adventure.commander }
+  );
+  engine.state.adventure.run.battle.playerBasePassive = {
+    id: "soulHarvest",
+    name: "영혼 수확",
+    effect: "soulHarvest",
+    maxStacks: 3,
+    summonDamagePerStack: 0.08
+  };
+  engine.state.adventure.run.battle.basePassiveState = { soulStacks: 1, harvestedEnemyIds: ["old-corpse"] };
+  engine.state.version = 15;
+  engine.save();
+
+  const restored = new GameEngine(storage);
+  assert.ok(restored.state.adventure.run?.battle);
+  assert.equal(restored.state.adventure.run.battle.playerBaseClassId, "necromancer");
+  assert.equal(restored.state.adventure.run.battle.playerBasePassive.id, "soulHarvest");
+  assert.equal(restored.state.adventure.run.battle.playerBasePassive.durationMs, 12000);
+  assert.deepEqual(restored.state.adventure.run.battle.basePassiveState, {
+    hitCount: 0,
+    soulStacks: 1,
+    soulExpiresAt: 12000,
+    harvestedEnemyIds: ["old-corpse"]
+  });
+});
+
+test("필드 조우부터 던전 우두머리와 영지 정산까지 한 원정으로 이어진다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  readyPartyFor(engine);
+  assert.equal(engine.startRegionAdventure("central", 4455), true);
+  const fightToEnd = () => {
+    const battle = engine.state.adventure.run.battle;
+    assert.equal(battle.awaitingPlayerStart, true);
+    assert.equal(engine.advanceRealtimeBattle(120), "waiting");
+    assert.equal(engine.confirmRealtimeBattleStart(), true);
+    engine.commandRealtimeBattle("charge");
+    engine.commandRealtimeBattle("guard");
+    let guard = 0;
+    while (battle.status === "active" && guard < 800) {
+      const player = battle.units.find((unit) => unit.controlled && unit.hp > 0);
+      const target = battle.enemies.find((enemy) => enemy.hp > 0);
+      if (player && target) {
+        // 보스 예고 장판 위에 있으면 먼저 빠져나온다. 붙어서 때리기만 하면 광역기를
+        // 전부 맞는 게 설계 의도라, 안 피하게 두면 이 통합 테스트가 전투 난이도에
+        // 따라 들쭉날쭉해진다(원정 흐름을 보는 테스트지 밸런스 테스트가 아니다).
+        const danger = (battle.zones || []).find((zone) => zone.kind !== "summon"
+          && battle.elapsed >= zone.bornAt
+          && Math.hypot(player.x - zone.x, player.y - zone.y) <= (zone.radius || zone.width || 12) + 2);
+        if (danger) {
+          const angle = Math.atan2(player.y - danger.y, player.x - danger.x) || 0;
+          player.x = danger.x + Math.cos(angle) * ((danger.radius || 12) + 10);
+          player.y = danger.y + Math.sin(angle) * ((danger.radius || 12) + 10);
+        } else {
+          player.x = target.x - 5;
+          player.y = target.y;
+        }
+        engine.playerRealtimeAction("attack");
+        engine.playerRealtimeAction("skill1");
+        engine.playerRealtimeAction("skill2");
+        engine.playerRealtimeAction("skill3");
+      }
+      engine.advanceRealtimeBattle(120);
+      guard += 1;
+    }
+    assert.equal(battle.status, "victory");
+    if (engine.state.adventure.run.result.type === "battleVictory") engine.continueAfterBattle();
+  };
+  const walkTo = (target) => {
+    let safety = 0;
+    while (safety < 80) {
+      const run = engine.state.adventure.run;
+      const zone = run.location === "dungeon" ? run.dungeon : run.field;
+      const path = explorationPath(zone.tiles, run.player, target);
+      assert.ok(path.length >= 1);
+      if (path.length === 1) return;
+      const result = engine.moveAdventureStep(path[1].x, path[1].y);
+      if (result.type === "encounter") fightToEnd();
+      safety += 1;
+    }
+    assert.fail("목적지 이동 횟수 초과");
+  };
+
+  let run = engine.state.adventure.run;
+
+  // 1단계: 광역 필드 — 화면 전환 없이 그 자리에서 무리를 정리한다.
+  const fieldBattle = run.battle;
+  assert.ok(fieldBattle?.fieldMode, "지역 탐험은 광역 전투로 시작한다");
+  let fieldGuard = 0;
+  // 필드 보스는 선택 콘텐츠라 건너뛴다 — 일반 무리만 정리하고 던전으로 향한다.
+  const normalMobs = () => fieldBattle.enemies.filter((enemy) => !enemy.fieldBoss);
+  while (normalMobs().some((enemy) => enemy.hp > 0) && fieldGuard < 6000) {
+    const player = fieldBattle.units.find((unit) => unit.controlled && unit.hp > 0);
+    const target = normalMobs().find((enemy) => enemy.hp > 0);
+    if (player && target) {
+      // 근처 필드 보스를 깨웠다면 그 예고 장판은 피한다. 안 피하면 이 통합
+      // 테스트가 전투 난이도에 좌우된다(원정 흐름을 보는 테스트다).
+      const danger = (fieldBattle.zones || []).find((zone) => zone.kind !== "summon"
+        && fieldBattle.elapsed >= zone.bornAt
+        && Math.hypot(player.x - zone.x, player.y - zone.y) <= (zone.radius || zone.width || 12) + 2);
+      if (danger) {
+        const angle = Math.atan2(player.y - danger.y, player.x - danger.x) || 0;
+        player.x = danger.x + Math.cos(angle) * ((danger.radius || 12) + 10);
+        player.y = danger.y + Math.sin(angle) * ((danger.radius || 12) + 10);
+      } else {
+        player.x = target.x - 5;
+        player.y = target.y;
+      }
+      target.dormant = false;
+      engine.playerRealtimeAction("attack");
+      engine.playerRealtimeAction("skill1");
+      engine.playerRealtimeAction("skill2");
+      engine.playerRealtimeAction("skill3");
+    }
+    // 이 테스트가 보는 건 "필드 보스가 살아 있어도 정리로 친다"는 규칙이다.
+    // 템포가 느려지며 정리에 더 오래 걸리게 됐고, 그 사이 광역기가 보스까지
+    // 죽여버려 규칙을 확인할 대상이 사라졌다. 보스는 살려 둔다.
+    for (const boss of fieldBattle.enemies) if (boss.fieldBoss) boss.hp = boss.maxHp;
+    engine.advanceRealtimeBattle(120);
+    fieldGuard += 1;
+  }
+  assert.ok(fieldBattle.fieldCleared, "일반 무리를 전부 정리하면 필드가 정리된다");
+  // 필드 보스를 잡지 않아도 정리로 친다 — 선택 콘텐츠이므로 지나칠 수 있어야 한다.
+  assert.ok(fieldBattle.enemies.some((enemy) => enemy.fieldBoss && enemy.hp > 0),
+    "필드 보스는 살아 있는데도 필드가 정리된다");
+  assert.equal(fieldBattle.status, "active", "필드를 비워도 전투 자체는 끝나지 않는다");
+
+  // 2단계: 필드 셋을 지나야 던전 입구가 나온다.
+  //  1·2필드 끝에는 다음 필드로 넘어가는 출구가 있고, 3필드 끝에 입구가 있다.
+  let stageGuard = 0;
+  while (engine.state.adventure.run.battle?.triggers[0]?.type === "fieldExit" && stageGuard < 5) {
+    const current = engine.state.adventure.run.battle;
+    const exit = current.triggers[0];
+    const walker = current.units.find((unit) => unit.controlled);
+    walker.x = exit.x;
+    walker.y = exit.y;
+    assert.equal(engine.advanceRealtimeBattle(120), "fieldAdvance");
+    stageGuard += 1;
+  }
+  assert.equal(engine.state.adventure.run.fieldStage, FIELD_STAGE_COUNT, "마지막 필드까지 왔다");
+
+  const fieldBattle2 = engine.state.adventure.run.battle;
+  const entrance = fieldBattle2.triggers[0];
+  const fieldPlayer = fieldBattle2.units.find((unit) => unit.controlled);
+  fieldPlayer.x = entrance.x;
+  fieldPlayer.y = entrance.y;
+  assert.equal(engine.advanceRealtimeBattle(120), "dungeonEntrance");
+  assert.equal(run.pendingEntrance, true);
+  assert.equal(engine.enterAdventureDungeon(), true);
+  for (const target of [{ x: 7, y: 7 }, { x: 11, y: 5 }, { x: 11, y: 11 }]) walkTo(target);
+  run = engine.state.adventure.run;
+  assert.equal(run.status, "completed");
+  assert.equal(run.bossDefeated, true);
+  const beforeGlassSand = engine.state.meta.materials.glassSand;
+  assert.equal(engine.returnAdventureToEstate("completed"), true);
+  assert.equal(engine.state.adventure.run, null);
+  assert.equal(engine.state.adventure.records.central.victories, 1);
+  assert.ok(engine.state.meta.materials.glassSand > beforeGlassSand);
+  assert.equal(engine.state.meta.essence, 1);
+  assert.equal(engine.state.adventure.commander.storedBoss.species, "bear");
+});
+
+test("보유 유닛은 최대 2명까지 편성하고, 특성은 숙련으로 연 칸에만 끼울 수 있다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  assert.equal(engine.togglePartyUnit("oath_knight"), true);
+  assert.equal(engine.state.adventure.party.length, 1);
+  assert.equal(engine.togglePartyUnit("desert_lancer"), true);
+  assert.equal(engine.state.adventure.party.length, PARTY_LIMIT);
+  assert.equal(engine.togglePartyUnit("venom_tracker"), false);
+
+  const progress = engine.state.adventure.unitProgress.snow_guard;
+  // 숙련 0에서는 칸이 없다 — 특성은 숙련의 보상이지 기본 제공이 아니다.
+  assert.equal(masterySlots(progress.mastery), 0);
+  assert.equal(engine.assignUnitTechnique("snow_guard", "oath"), false);
+
+  progress.mastery = 2;
+  assert.equal(masterySlots(progress.mastery), 1);
+  assert.equal(engine.assignUnitTechnique("snow_guard", "oath"), true);
+  assert.equal(progress.traitIds[0], "oath");
+  // 두 번째 칸은 아직 안 열렸다.
+  assert.equal(engine.assignUnitTechnique("snow_guard", "survival"), false);
+
+  progress.mastery = 4;
+  assert.equal(masterySlots(progress.mastery), MASTERY_TRAIT_SLOTS);
+  assert.equal(engine.assignUnitTechnique("snow_guard", "survival"), true);
+  assert.deepEqual(progress.traitIds, ["oath", "survival"]);
+  // 같은 특성을 두 칸에 겹쳐 끼우면 선택이 아니라 수치 두 배가 된다.
+  assert.equal(engine.assignUnitTechnique("snow_guard", "oath", 1), false);
+});
+
+test("특성은 두 칸이 실제 전투 스탯에 함께 반영된다", () => {
+  const build = (traitIds, mastery) => {
+    const commander = createDefaultCommander();
+    const progress = { snow_guard: { mastery, xp: 0, branchId: null, traitIds } };
+    const battle = createAutoBattle("duneRaiders", "t", "field", ["snow_guard"], progress, { commander });
+    return battle.units.find((unit) => !unit.controlled);
+  };
+
+  const none = build([null, null], 4);
+  const one = build(["survival", null], 4);        // 체력 +12%, 방어 +0.04
+  const two = build(["survival", "forging"], 4);   // + 공격 +10%, 방어 +0.03
+
+  assert.ok(one.maxHp > none.maxHp, `한 칸이 반영된다 (${none.maxHp} -> ${one.maxHp})`);
+  assert.ok(two.damage > one.damage, `두 번째 칸도 반영된다 (${one.damage} -> ${two.damage})`);
+  assert.ok(two.armor > one.armor, "두 특성의 방어가 합산된다");
+
+  // 숙련이 모자라면 두 번째 칸은 무시된다 — 마이그레이션이나 리셋으로
+  // 칸 수보다 많이 낀 상태가 되어도 조용히 초과 적용되지 않게.
+  const capped = build(["survival", "forging"], 2);
+  assert.equal(capped.damage, one.damage, "열리지 않은 칸의 특성은 발동하지 않는다");
+});
+
+test("직업은 패시브 1개·스킬 4개·궁 1개를 가지며 전승은 패시브 1개를 더하고 스킬 4개와 궁을 바꾼다", () => {
+  for (const baseClass of Object.values(PLAYER_BASE_CLASS_DEFS)) {
+    assert.ok(baseClass.passive?.id);
+    assert.equal(baseClass.skills.length, 4);
+    assert.ok(baseClass.ultimate?.id);
+  }
+  for (const kit of Object.values(PLAYER_KIT_DEFS)) {
+    assert.ok(PLAYER_BASE_CLASS_DEFS[kit.baseClassId]);
+    assert.equal(kit.skills.length, 4);
+    assert.ok(kit.ultimate?.id);
+    assert.ok(kit.passive?.id);
+    assert.equal(kit.defaultLoadout.length, 3);
+  }
+  const commander = createDefaultCommander();
+  commander.combatKitId = "heavyNecromancer";
+  const battle = createAutoBattle("duneRaiders", "class-test", "field", STARTING_PARTY, {}, { commander });
+  assert.equal(battle.playerSkillIds.length, 3);
+  assert.equal(battle.playerBasePassive.id, "soulHarvest");
+  assert.equal(battle.playerPassive.id, "armoredDead");
+  battle.enemies[0].hp = 0;
+  assert.equal(issuePlayerAction(battle, "skill2"), true); // spiritRaise (default loadout order 2)
+  assert.equal(battle.units.filter((unit) => unit.summonType === "raisedDead").length, 1);
+
+  const engine = new GameEngine(new MemoryStorage());
+  assert.equal(engine.selectCommanderKit("heavyNecromancer"), true);
+  assert.equal(engine.state.adventure.commander.combatKitId, "heavyNecromancer");
+  assert.equal(engine.toggleCommanderSkill("spiritRaise"), true); // already in default loadout -> toggles off
+  assert.equal(engine.state.adventure.commander.skillLoadouts.heavyNecromancer.length, 2);
+  assert.equal(engine.toggleCommanderSkill("spiritBolt"), true); // not in loadout -> toggles on
+  assert.ok(engine.state.adventure.commander.skillLoadouts.heavyNecromancer.includes("spiritBolt"));
+  assert.equal(engine.toggleCommanderSkill("storedApex"), false);
+});
+
+test("기본 직업 패시브는 전승 패시브와 별도로 실제 전투에 적용된다", () => {
+  // rollSeed를 고정한다: 기본 킷(spiritCrusader)의 패시브가 피격 시 확률로
+  // 화상/빙결을 걸어 적을 먼저 죽여버리면 피격 횟수가 4가 아니라 3에서 끊긴다.
+  // 시드가 없으면 전역 Math.random() 소비 순서에 따라 간헐적으로 실패했다.
+  const cycle = createAutoBattle("duneRaiders", "cycle", "field", [], {}, { commander: createDefaultCommander(), rollSeed: 1234 });
+  const noCycle = createAutoBattle("duneRaiders", "no-cycle", "field", [], {}, { commander: createDefaultCommander(), rollSeed: 1234 });
+  for (const battle of [cycle, noCycle]) {
+    const player = battle.units.find((unit) => unit.controlled);
+    player.hp = 30;
+    for (const enemy of battle.enemies.slice(1)) enemy.hp = 0;
+    const enemy = battle.enemies[0];
+    enemy.x = player.x;
+    enemy.y = player.y;
+    enemy.damage = 1;
+    enemy.attackMs = 16;
+    enemy.cooldown = 0;
+  }
+  const cyclePlayer = cycle.units.find((unit) => unit.controlled);
+  const noCyclePlayer = noCycle.units.find((unit) => unit.controlled);
+  noCycle.playerBasePassive = null;
+  noCyclePlayer.basePassive = null;
+  for (let hit = 0; hit < 4; hit += 1) {
+    tickAutoBattle(cycle, 20);
+    tickAutoBattle(noCycle, 20);
+  }
+  assert.equal(cycle.passiveState[cyclePlayer.id].hitCount, 4);
+  tickAutoBattle(cycle, 20);
+  tickAutoBattle(noCycle, 20);
+  assert.equal(cycle.passiveState[cyclePlayer.id].hitCount, 0);
+  assert.ok(cyclePlayer.hp > noCyclePlayer.hp);
+
+  const commander = createDefaultCommander();
+  commander.combatKitId = "heavyNecromancer";
+  const harvest = createAutoBattle("duneRaiders", "harvest", "field", STARTING_PARTY, {}, { commander });
+  const harvestPlayer = harvest.units.find((unit) => unit.controlled);
+  harvest.enemies[0].hp = 0;
+  tickAutoBattle(harvest, 20);
+  assert.equal(issuePlayerAction(harvest, "skill2"), true);
+  const summon = harvest.units.find((unit) => unit.summonType === "raisedDead");
+  assert.equal(harvest.passiveState[harvestPlayer.id].soulStacks, 1);
+  assert.equal(summon.passiveDamageMultiplier, 1.08);
+  harvest.elapsed = harvest.passiveState[harvestPlayer.id].soulExpiresAt;
+  tickAutoBattle(harvest, 20);
+  assert.equal(harvest.passiveState[harvestPlayer.id].soulStacks, 0);
+  assert.equal(summon.passiveDamageMultiplier, 1);
+});
+
+test("동료는 기본 직업의 패시브를 얻고, 스펙은 레벨이 아니라 장비를 따라간다", () => {
+  const definition = UNIT_DEFS.winter_berserker;
+  assert.equal(definition.baseClassId, "barbarian");
+
+  const build = (setup) => {
+    const commander = createDefaultCommander();
+    setup?.(commander);
+    const battle = createAutoBattle("duneRaiders", "b", "field", ["winter_berserker"], {}, { commander });
+    return battle.units.find((unit) => !unit.controlled);
+  };
+
+  const bare = build();
+  assert.equal(bare.baseClassId, "barbarian");
+  assert.equal(bare.basePassive.effect, "rageScaling");
+
+  // 레벨은 더 이상 존재하지 않는다. 예전 저장본이 남긴 level 값이 붙어 있어도
+  // 스펙에 아무 영향을 주지 않아야 한다 — 그게 "레벨 없음"의 실제 계약이다.
+  const stale = build((commander) => { commander.level = 10; });
+  assert.equal(stale.maxHp, bare.maxHp, "남아 있는 level 값이 체력을 올리지 않는다");
+  assert.equal(stale.damage, bare.damage, "남아 있는 level 값이 공격력을 올리지 않는다");
+
+  // 성장은 오직 장비로만 일어난다.
+  const geared = build((commander) => {
+    commander.equipmentOwned = [{ uid: "g0", defId: "heavyPlate", grade: "common", options: [] }];
+    commander.companionEquipped = { winter_berserker: { chest: "g0" } };
+  });
+  assert.ok(geared.maxHp > bare.maxHp, `장비가 체력을 올린다 (${bare.maxHp} -> ${geared.maxHp})`);
+  assert.ok(geared.armor > bare.armor, `장비가 방어를 올린다 (${bare.armor} -> ${geared.armor})`);
+
+  const wounded = build();
+  wounded.hp = Math.max(1, Math.round(wounded.maxHp * 0.2));
+  const battle = createAutoBattle("duneRaiders", "low", "field", ["winter_berserker"], {}, { commander: createDefaultCommander() });
+  const companion = battle.units.find((unit) => !unit.controlled);
+  companion.hp = Math.max(1, Math.round(companion.maxHp * 0.2));
+  tickAutoBattle(battle, 20);
+  assert.ok(companion.passiveDamageMultiplier > 1);
+});
+
+test("두 전승의 액티브 10개(스킬 4개+궁 1개 × 2)가 실제 전투 효과로 모두 실행된다", () => {
+  const spiritCommander = createDefaultCommander();
+  const spiritFront = createAutoBattle("duneRaiders", "spirit-front", "field", STARTING_PARTY, {}, { commander: spiritCommander });
+  const spiritPlayer = spiritFront.units.find((unit) => unit.controlled);
+  spiritPlayer.x = spiritFront.enemies[0].x - 5;
+  spiritPlayer.y = spiritFront.enemies[0].y;
+  selectPlayerTarget(spiritFront, spiritFront.enemies[0].id);
+  assert.equal(issuePlayerAction(spiritFront, "skill1"), true); // spiritMending
+  assert.equal(issuePlayerAction(spiritFront, "skill2"), true); // winterAegis
+  assert.equal(issuePlayerAction(spiritFront, "skill3"), true); // thunderLance
+  assert.equal(issuePlayerAction(spiritFront, "ultimate"), true); // spiritConflagration
+
+  spiritCommander.skillLoadouts.spiritCrusader = ["spiritBulwark"];
+  const spiritBack = createAutoBattle("duneRaiders", "spirit-back", "field", STARTING_PARTY, {}, { commander: spiritCommander });
+  const spiritBackPlayer = spiritBack.units.find((unit) => unit.controlled);
+  spiritBackPlayer.x = spiritBack.enemies[0].x - 8;
+  spiritBackPlayer.y = spiritBack.enemies[0].y;
+  selectPlayerTarget(spiritBack, spiritBack.enemies[0].id);
+  assert.equal(issuePlayerAction(spiritBack, "skill1"), true); // spiritBulwark
+
+  const heavyCommander = createDefaultCommander();
+  heavyCommander.combatKitId = "heavyNecromancer";
+  const heavyFront = createAutoBattle("duneRaiders", "heavy-front", "field", STARTING_PARTY, {}, { commander: heavyCommander });
+  const heavyPlayer = heavyFront.units.find((unit) => unit.controlled);
+  heavyPlayer.x = heavyFront.enemies[0].x - 5;
+  heavyPlayer.y = heavyFront.enemies[0].y;
+  selectPlayerTarget(heavyFront, heavyFront.enemies[0].id);
+  assert.equal(issuePlayerAction(heavyFront, "skill1"), true); // spiritDecay
+  heavyFront.enemies[0].hp = 0;
+  assert.equal(issuePlayerAction(heavyFront, "skill2"), true); // spiritRaise
+  assert.equal(issuePlayerAction(heavyFront, "skill3"), true); // spiritWard
+
+  heavyCommander.storedBoss = { defId: "testBear", name: "시험 큰곰", species: "bear", glyph: "B", color: "#999", maxHp: 80, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.12 };
+  heavyCommander.skillLoadouts.heavyNecromancer = ["spiritBolt"];
+  const heavyBack = createAutoBattle("duneRaiders", "heavy-back", "field", STARTING_PARTY, {}, { commander: heavyCommander });
+  heavyBack.enemies[0].hp = 0;
+  const heavyBackPlayer = heavyBack.units.find((unit) => unit.controlled);
+  heavyBackPlayer.x = heavyBack.enemies[1].x - 8;
+  heavyBackPlayer.y = heavyBack.enemies[1].y;
+  selectPlayerTarget(heavyBack, heavyBack.enemies[1].id);
+  assert.equal(issuePlayerAction(heavyBack, "skill1"), true); // spiritBolt (non-default, forced into loadout)
+  assert.equal(issuePlayerAction(heavyBack, "ultimate"), true); // storedApex
+  assert.equal(heavyBack.units.filter((unit) => unit.summonType === "storedBoss").length, 1);
+  assert.equal(issuePlayerAction(heavyBack, "skill3"), true); // spiritRaise (default-filled)
+  assert.equal(heavyBack.consumedCorpseIds.length, 1);
+});
+
+test("정령크루는 피격당하면 확률적으로 상대에게 화상이나 빙결을 되돌린다", () => {
+  const commander = createDefaultCommander();
+  const battle = createAutoBattle("duneRaiders", "spiritcru-proc", "field", [], {}, { commander });
+  const player = battle.units.find((unit) => unit.controlled);
+  const enemy = battle.enemies[0];
+  enemy.x = player.x;
+  enemy.y = player.y;
+  enemy.damage = 1;
+  enemy.attackMs = 16;
+  enemy.cooldown = 0;
+  const originalRandom = Math.random;
+  Math.random = () => 0; // always proc, always pick "burn"
+  try {
+    tickAutoBattle(battle, 20);
+  } finally {
+    Math.random = originalRandom;
+  }
+  assert.equal(Boolean(enemy.statuses?.burn), true);
+});
+
+test("크루세이더·네크로맨서 기본 직업 스킬 4개+궁 1개가 문서 스펙대로 실행된다", () => {
+  const crusaderCommander = createDefaultCommander();
+  crusaderCommander.combatKitId = "crusader";
+  const crusaderFront = createAutoBattle("duneRaiders", "crusader-front", "field", STARTING_PARTY, {}, { commander: crusaderCommander });
+  const crusaderPlayer = crusaderFront.units.find((unit) => unit.controlled);
+  crusaderPlayer.x = crusaderFront.enemies[0].x - 5;
+  crusaderPlayer.y = crusaderFront.enemies[0].y;
+  selectPlayerTarget(crusaderFront, crusaderFront.enemies[0].id);
+  assert.equal(issuePlayerAction(crusaderFront, "skill1"), true); // holyBlessing
+  assert.equal(issuePlayerAction(crusaderFront, "skill2"), true); // holyWard
+  assert.equal(issuePlayerAction(crusaderFront, "skill3"), true); // holyLance (stun)
+  assert.equal(issuePlayerAction(crusaderFront, "ultimate"), true); // holyJudgment
+
+  crusaderCommander.skillLoadouts.crusader = ["holyBulwark"];
+  const crusaderBack = createAutoBattle("duneRaiders", "crusader-back", "field", STARTING_PARTY, {}, { commander: crusaderCommander });
+  const crusaderBackPlayer = crusaderBack.units.find((unit) => unit.controlled);
+  crusaderBackPlayer.x = crusaderBack.enemies[0].x - 5;
+  crusaderBackPlayer.y = crusaderBack.enemies[0].y;
+  selectPlayerTarget(crusaderBack, crusaderBack.enemies[0].id);
+  assert.equal(issuePlayerAction(crusaderBack, "skill1"), true); // holyBulwark
+  assert.equal(crusaderBack.enemies.some((enemy) => enemy.forcedTargetId === crusaderBackPlayer.id), true);
+
+  const necromancerCommander = createDefaultCommander();
+  necromancerCommander.combatKitId = "necromancer";
+  necromancerCommander.storedBoss = { defId: "testBear", name: "시험 큰곰", species: "bear", glyph: "B", color: "#999", maxHp: 80, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.12 };
+  const necroFront = createAutoBattle("duneRaiders", "necro-front", "field", STARTING_PARTY, {}, { commander: necromancerCommander });
+  const necroPlayer = necroFront.units.find((unit) => unit.controlled);
+  necroPlayer.x = necroFront.enemies[0].x - 5;
+  necroPlayer.y = necroFront.enemies[0].y;
+  selectPlayerTarget(necroFront, necroFront.enemies[0].id);
+  assert.equal(issuePlayerAction(necroFront, "skill1"), true); // spiritDecay (AoE)
+  assert.equal(issuePlayerAction(necroFront, "ultimate"), true); // spiritApex (storedApex)
+  assert.equal(necroFront.units.some((unit) => unit.summonType === "storedBoss"), true);
+  necroFront.enemies[0].hp = 0;
+  assert.equal(issuePlayerAction(necroFront, "skill2"), true); // spiritRaise (up to 3, one-time)
+  assert.equal(necroFront.spiritRaiseUsed, true);
+  assert.equal(issuePlayerAction(necroFront, "skill3"), true); // spiritWard (self)
+
+  necromancerCommander.skillLoadouts.necromancer = ["spiritBolt"];
+  const necroBack = createAutoBattle("duneRaiders", "necro-back", "field", STARTING_PARTY, {}, { commander: necromancerCommander });
+  const necroBackPlayer = necroBack.units.find((unit) => unit.controlled);
+  necroBackPlayer.x = necroBack.enemies[0].x - 8;
+  necroBackPlayer.y = necroBack.enemies[0].y;
+  selectPlayerTarget(necroBack, necroBack.enemies[0].id);
+  assert.equal(issuePlayerAction(necroBack, "skill1"), true); // spiritBolt
+});
+
+test("바바리안 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "barbarian";
+  const front = createAutoBattle("duneRaiders", "barbarian-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // battleRoar
+  assert.equal(issuePlayerAction(front, "skill2"), true); // earthSlam
+  assert.equal(issuePlayerAction(front, "skill3"), true); // cleave
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // berserkerRage
+
+  commander.skillLoadouts.barbarian = ["recklessCharge"];
+  const back = createAutoBattle("duneRaiders", "barbarian-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  selectPlayerTarget(back, back.enemies[0].id);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // recklessCharge
+});
+
+test("추적자 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "tracker";
+  const front = createAutoBattle("duneRaiders", "tracker-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // aimedShot
+  assert.equal(issuePlayerAction(front, "skill2"), true); // scatterShot
+  assert.equal(issuePlayerAction(front, "skill3"), true); // shadowStrike
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // arrowStorm
+
+  commander.skillLoadouts.tracker = ["vanish"];
+  const back = createAutoBattle("duneRaiders", "tracker-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // vanish
+  assert.equal(Boolean(backPlayer.positiveEffects?.stealth), true);
+});
+
+test("매화 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "maehwa";
+  const front = createAutoBattle("duneRaiders", "maehwa-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // swiftStrike
+  assert.equal(issuePlayerAction(front, "skill2"), true); // whirlwindSlash
+  assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // plumBlossomDance(낙화)
+
+  commander.skillLoadouts.maehwa = ["fleetStep"];
+  const marksBack = createAutoBattle("duneRaiders", "maehwa-marks", "field", STARTING_PARTY, {}, { commander });
+  const marksPlayer = marksBack.units.find((unit) => unit.controlled);
+  marksPlayer.x = marksBack.enemies[0].x - 5;
+  marksPlayer.y = marksBack.enemies[0].y;
+  selectPlayerTarget(marksBack, marksBack.enemies[0].id);
+  assert.equal(issuePlayerAction(marksBack, "skill1"), true); // fleetStep(개화), 표식 부여 시작
+  assert.equal(issuePlayerAction(marksBack, "attack"), true);
+  assert.ok(marksBack.enemies[0].maehwaMarks > 0);
+  assert.equal(issuePlayerAction(marksBack, "ultimate"), true); // plumBlossomDance, 표식 소모
+  assert.equal(marksBack.enemies[0].maehwaMarks, 0);
+});
+
+test("바바리안의 정령 전사 전승은 스킬 4개+궁 1개가 모두 실행되고 출혈·늑대 변신 보너스가 적용된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "spiritBarbarian";
+  const front = createAutoBattle("duneRaiders", "spiritbarbarian-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // battleRoar
+  assert.equal(issuePlayerAction(front, "skill2"), true); // earthSlam (+ 출혈)
+  assert.equal(Boolean(front.enemies[0].statuses?.bleed), true);
+  assert.equal(issuePlayerAction(front, "skill3"), true); // recklessCharge (+ 돌격 강화)
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // berserkerRage (+ 늑대 변신)
+  assert.equal(Boolean(player.positiveEffects?.wolfForm), true);
+  assert.equal(player.positiveEffects?.berserk?.bonus, 0.5);
+
+  commander.skillLoadouts.spiritBarbarian = ["cleave"];
+  const back = createAutoBattle("duneRaiders", "spiritbarbarian-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  selectPlayerTarget(back, back.enemies[0].id);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // cleave (+ 공격력 대폭 증가)
+});
+
+test("아크메이지 스킬 4개+궁 1개가 실제 전투 효과로 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "archmage";
+  const front = createAutoBattle("duneRaiders", "archmage-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  front.enemies[1].x = front.enemies[0].x + 15;
+  front.enemies[1].y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  // 피해가 오르면서 뒤 기술 차례에 대상이 죽어 실패하던 것을 막는다.
+  const keepAlive = () => { for (const enemy of front.enemies) enemy.hp = enemy.maxHp; };
+  assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt
+  keepAlive();
+  assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova
+  const beforeX = front.enemies[1].x;
+  keepAlive();
+  assert.equal(issuePlayerAction(front, "skill3"), true); // gravityWell
+  assert.ok(front.enemies[1].x < beforeX); // 끌려와서 target 쪽으로 이동
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // manaBurst
+  assert.equal(Boolean(front.enemies[0].statuses?.stun), false); // 무속성 - 상태이상 없음
+
+  commander.skillLoadouts.archmage = ["lightningRicochet"];
+  const back = createAutoBattle("duneRaiders", "archmage-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  back.enemies[1].x = back.enemies[0].x;
+  back.enemies[1].y = back.enemies[0].y;
+  selectPlayerTarget(back, back.enemies[0].id);
+  const secondEnemyHpBefore = back.enemies[1].hp;
+  assert.equal(issuePlayerAction(back, "skill1"), true); // lightningRicochet
+  assert.ok(back.enemies[1].hp < secondEnemyHpBefore); // 연쇄로 두 번째 적까지 피해
+  assert.equal(Boolean(back.enemies[0].statuses?.stun), true); // 감전(기절) 부여
+  assert.equal(Boolean(back.enemies[1].statuses?.stun), true);
+});
+
+test("중갑크루 전승은 스킬 4개+궁 1개가 실행되고 복수치가 쌓이고 소모된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "heavyCrusader";
+  const front = createAutoBattle("duneRaiders", "heavycrusader-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  front.vengeanceStored = 40;
+  assert.equal(issuePlayerAction(front, "skill1"), true); // heavyBlessing
+  assert.ok(front.vengeanceStored < 40);
+  assert.equal(issuePlayerAction(front, "skill2"), true); // heavyWard
+  assert.equal(issuePlayerAction(front, "skill3"), true); // heavyLance
+  front.vengeanceStored = 40;
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // heavyJudgment
+  assert.equal(front.vengeanceStored, 0);
+
+  commander.skillLoadouts.heavyCrusader = ["heavyBulwark"];
+  const back = createAutoBattle("duneRaiders", "heavycrusader-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  assert.equal(issuePlayerAction(back, "skill1"), true); // heavyBulwark
+  assert.equal(back.enemies.some((enemy) => enemy.forcedTargetId === backPlayer.id), true);
+  assert.ok(back.vengeanceGainBoostUntil > back.elapsed);
+});
+
+test("궁사네크 전승은 스킬 4개+궁 1개가 모두 실행된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "archeryNecromancer";
+  commander.storedBoss = { defId: "testBear", name: "시험 큰곰", species: "bear", glyph: "B", color: "#999", maxHp: 80, damage: 9, range: 9, speed: 5, attackMs: 1500, armor: 0.12 };
+  const front = createAutoBattle("duneRaiders", "archerynecro-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // spiritDecay
+  assert.equal(issuePlayerAction(front, "skill2"), true); // spiritBolt
+  front.enemies[1].hp = 0;
+  assert.equal(issuePlayerAction(front, "skill3"), true); // spiritRaise
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // storedApex + berserk
+  assert.equal(Boolean(player.positiveEffects?.berserk), true);
+
+  commander.skillLoadouts.archeryNecromancer = ["spiritWard"];
+  const back = createAutoBattle("duneRaiders", "archerynecro-back", "field", STARTING_PARTY, {}, { commander });
+  assert.equal(issuePlayerAction(back, "skill1"), true); // spiritWard
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  assert.equal(Boolean(backPlayer.positiveEffects?.spiritSurge), true);
+});
+
+test("암살자(궁사매화) 전승은 스킬 4개+궁 1개가 모두 실행되고 은신 연계가 작동한다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "archeryMaehwa";
+  const front = createAutoBattle("duneRaiders", "archerymaehwa-front", "field", STARTING_PARTY, {}, { commander, rollSeed: 4801 });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  player.positiveEffects = { stealth: { endsAt: front.elapsed + 4000 } };
+  // 이 테스트가 보는 건 다섯 기술이 전부 실행되는가다. 타격 피해가 오르면서
+  // 궁극기 차례에 대상이 이미 죽어 실패하던 것을 막으려고 사이사이 채워 준다.
+  const keepAlive = () => { for (const enemy of front.enemies) enemy.hp = enemy.maxHp; };
+  assert.equal(issuePlayerAction(front, "skill1"), true); // swiftStrike(암살), 은신 중 치명타
+  assert.equal(Boolean(player.positiveEffects?.stealth), false);
+  keepAlive();
+  assert.equal(issuePlayerAction(front, "skill2"), true); // whirlwindSlash(연막탄), 후퇴 + 재은신
+  assert.equal(Boolean(player.positiveEffects?.stealth), true);
+  keepAlive();
+  assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut(일섬)
+  keepAlive();
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // plumBlossomDance(일격필살)
+
+  commander.skillLoadouts.archeryMaehwa = ["fleetStep"];
+  const back = createAutoBattle("duneRaiders", "archerymaehwa-back", "field", STARTING_PARTY, {}, { commander, rollSeed: 4802 });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep(은신 개화)
+  assert.equal(Boolean(backPlayer.positiveEffects?.stealth), true);
+});
+
+test("마검사(마법매화) 전승은 스킬 4개+궁 1개가 모두 실행되고 화염·냉기·원거리 검기가 적용된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "magicMaehwa";
+  const front = createAutoBattle("duneRaiders", "magicmaehwa-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 24;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill3"), true); // phantomCut(검기), 기본 매화라면 실패할 사거리(24)에서도 명중
+  assert.equal(issuePlayerAction(front, "skill1"), true); // swiftStrike(화염검 일섬) + 화상
+  assert.equal(Boolean(front.enemies[0].statuses?.burn), true);
+  assert.equal(issuePlayerAction(front, "skill2"), true); // whirlwindSlash(빙결검 선풍) + 빙결
+  assert.equal(Boolean(front.enemies[0].statuses?.frost), true);
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // plumBlossomDance(마력 낙화)
+
+  commander.skillLoadouts.magicMaehwa = ["fleetStep"];
+  const back = createAutoBattle("duneRaiders", "magicmaehwa-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  selectPlayerTarget(back, back.enemies[0].id);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // fleetStep(마력 개화)
+  assert.equal(issuePlayerAction(back, "attack"), true);
+  assert.equal(Boolean(back.enemies[0].statuses?.frost), true); // 냉기 둔화 부여
+});
+
+test("정령아크 전승은 스킬 4개+궁 1개가 모두 실행되고 상태이상 상한 2배·정령 피격불가·상태이상 폭주 피해가 적용된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "spiritArchmage";
+  const front = createAutoBattle("duneRaiders", "spiritarchmage-front", "field", STARTING_PARTY, {}, { commander, rollSeed: 4905 });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  front.enemies[1].x = front.enemies[0].x;
+  front.enemies[1].y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+
+  // 패시브(자연 친화): 플레이어가 거는 상태이상의 중첩 상한이 2배(독 기본 상한 5 → 10)로 늘어난다
+  for (let i = 0; i < 7; i += 1) applyCombatStatus(front, front.enemies[0], "poison", player, { stacks: 1 });
+  assert.equal(front.enemies[0].statuses.poison.stacks, 7);
+  assert.ok(front.enemies[0].statuses.poison.stacks > 5); // 기본 상한(5)을 넘어선다
+
+  // 다섯 기술이 전부 실행되는지가 요점이다. 피해가 오르면서 뒤 기술 차례에
+  // 대상이 이미 죽어 실패하던 것을 막으려고 사이사이 채워 준다.
+  const keepAlive = () => { for (const enemy of front.enemies) enemy.hp = enemy.maxHp; };
+  assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt(폭염창) + 주변 폭발
+  assert.equal(Boolean(front.enemies[1].statuses?.burn), true);
+
+  const wisp = front.units.find((unit) => unit.summonType === "spiritWisp");
+  assert.ok(wisp); // 패시브가 정령을 자동 소환한다(더 이상 액티브 스킬이 아니다)
+  assert.equal(wisp.invulnerable, true);
+
+  assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova(빙결 폭발)
+  assert.equal(Boolean(front.enemies[0].statuses?.frost), true);
+
+  assert.equal(issuePlayerAction(front, "skill3"), true); // gravityWell(원소 소용돌이)
+  assert.equal(Boolean(player.positiveEffects?.elementalSurge), true); // 상태이상 위력 폭증
+
+  keepAlive();
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // triElementJudgment(삼원소 심판)
+  assert.equal(Boolean(front.enemies[0].statuses?.frost), true);
+  assert.equal(Boolean(front.enemies[0].statuses?.stun), true);
+  assert.equal(Boolean(front.enemies[0].statuses?.burn), true); // 빙결·감전·화상이 한 번에 모두 적용된다
+
+  // 정령은 적에게 인접해도 체력이 줄지 않는다(피격불가) - 별도 전투로 격리 검증
+  const wispBattle = createAutoBattle("duneRaiders", "spiritarchmage-wisp", "field", STARTING_PARTY, {}, { commander, rollSeed: 4904 });
+  const wispPlayer = wispBattle.units.find((unit) => unit.controlled);
+  wispPlayer.x = wispBattle.enemies[0].x - 5;
+  wispPlayer.y = wispBattle.enemies[0].y;
+  selectPlayerTarget(wispBattle, wispBattle.enemies[0].id);
+  assert.equal(issuePlayerAction(wispBattle, "skill1"), true); // fireBolt - 패시브가 정령을 소환한다
+  const wisp2 = wispBattle.units.find((unit) => unit.summonType === "spiritWisp");
+  assert.ok(wisp2);
+  const attacker = wispBattle.enemies[0];
+  attacker.x = wisp2.x;
+  attacker.y = wisp2.y;
+  attacker.cooldown = 0;
+  for (let i = 0; i < 5; i += 1) tickAutoBattle(wispBattle, 200);
+  assert.equal(wisp2.hp, wisp2.maxHp);
+
+  // held-out 4번째 스킬(과부화/lightningRicochet): 상태이상 중첩만큼 추가 피해가 들어간다
+  commander.skillLoadouts.spiritArchmage = ["lightningRicochet"];
+  const back = createAutoBattle("duneRaiders", "spiritarchmage-back", "field", STARTING_PARTY, {}, { commander, rollSeed: 4904 });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  selectPlayerTarget(back, back.enemies[0].id);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // lightningRicochet(과부화)
+  assert.equal(Boolean(back.enemies[0].statuses?.stun), true);
+  const baselineDamage = back.enemies[0].maxHp - back.enemies[0].hp;
+
+  const back2 = createAutoBattle("duneRaiders", "spiritarchmage-back2", "field", STARTING_PARTY, {}, { commander });
+  const back2Player = back2.units.find((unit) => unit.controlled);
+  back2Player.x = back2.enemies[0].x - 5;
+  back2Player.y = back2.enemies[0].y;
+  selectPlayerTarget(back2, back2.enemies[0].id);
+  for (let i = 0; i < 4; i += 1) applyCombatStatus(back2, back2.enemies[0], "poison", back2Player, { stacks: 1 });
+  assert.equal(issuePlayerAction(back2, "skill1"), true); // lightningRicochet(과부화), 상태이상 4중첩 상태
+  const overloadDamage = back2.enemies[0].maxHp - back2.enemies[0].hp;
+  assert.ok(overloadDamage > baselineDamage); // 상태이상 중첩이 있을 때 추가 피해가 더 들어간다
+});
+
+test("신성아크 전승은 스킬 4개+궁 1개가 모두 실행되고 성역 속박·성광 연쇄 아군 회복이 적용된다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "holyArchmage";
+  const front = createAutoBattle("duneRaiders", "holyarchmage-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  for (const unit of front.units) unit.hp = Math.round(unit.maxHp * 0.5);
+
+  assert.equal(issuePlayerAction(front, "skill1"), true); // fireBolt(성스러운 화살) - 범위 신성 피해 + 자힐
+  assert.equal(issuePlayerAction(front, "skill2"), true); // frostNova(정화의 파동) - 빙결 대신 지속 피해
+  assert.equal(Boolean(front.enemies[0].statuses?.decay), true);
+  assert.equal(Boolean(front.enemies[0].statuses?.frost), false);
+
+  delete front.enemies[0].statuses.decay;
+  const hpBeforeGravityWell = front.enemies[0].hp;
+  assert.equal(issuePlayerAction(front, "skill3"), true); // gravityWell(성역) - 즉발 피해 대신 속박 + 지속 피해
+  assert.equal(front.enemies[0].hp, hpBeforeGravityWell); // 즉시 피해는 없다
+  assert.equal(front.enemies[0].rootedUntil > front.elapsed, true); // 속박
+  assert.equal(Boolean(front.enemies[0].statuses?.decay), true); // 지속 피해
+
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // heavenlyJudgment(천벌)
+  assert.equal(Boolean(player.positiveEffects?.shield), true);
+
+  // held-out 4번째 스킬(성광 연쇄/lightningRicochet): 적 대신 아군을 회복·보호한다
+  commander.skillLoadouts.holyArchmage = ["lightningRicochet"];
+  const back = createAutoBattle("duneRaiders", "holyarchmage-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  backPlayer.x = back.enemies[0].x - 5;
+  backPlayer.y = back.enemies[0].y;
+  selectPlayerTarget(back, back.enemies[0].id);
+  for (const unit of back.units) unit.hp = Math.round(unit.maxHp * 0.3);
+  const enemyHpBefore = back.enemies[0].hp;
+  assert.equal(issuePlayerAction(back, "skill1"), true); // lightningRicochet(성광 연쇄)
+  assert.equal(back.enemies[0].hp, enemyHpBefore); // 적에게는 피해가 가지 않는다
+  assert.equal(Boolean(backPlayer.positiveEffects?.shield), true); // 연쇄가 자신부터 아군을 회복·보호막
+});
+
+test("정령추적 전승은 스킬 4개+궁 1개가 모두 실행되고 속성 상태이상을 남긴다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "spiritTracker";
+  const front = createAutoBattle("duneRaiders", "spirittracker-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // aimedShot(짜릿한 헤드샷) + 기절
+  assert.equal(Boolean(front.enemies[0].statuses?.stun), true);
+  assert.equal(issuePlayerAction(front, "skill2"), true); // scatterShot(화끈한 폭발화살) + 화상
+  assert.equal(Boolean(front.enemies[0].statuses?.burn), true);
+  assert.equal(issuePlayerAction(front, "skill3"), true); // shadowStrike(차가운 후퇴) + 빙결
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // arrowStorm(정령 일제 사격) + 상태이상
+
+  commander.skillLoadouts.spiritTracker = ["vanish"];
+  const back = createAutoBattle("duneRaiders", "spirittracker-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // vanish(빠른 은신) + 이속 증가
+  assert.equal(Boolean(backPlayer.positiveEffects?.haste), true);
+});
+
+test("대궁병(중갑추적)은 관통·기절·넉백을 갖추고 저격 태세에서 화력이 강해진다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "heavyTracker";
+  const front = createAutoBattle("duneRaiders", "heavytracker-front", "field", STARTING_PARTY, {}, { commander });
+  const player = front.units.find((unit) => unit.controlled);
+  player.x = front.enemies[0].x - 5;
+  player.y = front.enemies[0].y;
+  selectPlayerTarget(front, front.enemies[0].id);
+  assert.equal(issuePlayerAction(front, "skill1"), true); // aimedShot(관통샷)
+  assert.equal(issuePlayerAction(front, "skill2"), true); // scatterShot(충격화살) + 기절
+  assert.equal(Boolean(front.enemies[0].statuses?.stun), true);
+  const enemy = front.enemies[0];
+  const beforeX = enemy.x;
+  const beforeY = enemy.y;
+  assert.equal(issuePlayerAction(front, "skill3"), true); // shadowStrike(방어사격) + 넉백(후퇴 대신)
+  assert.ok(enemy.x !== beforeX || enemy.y !== beforeY);
+  assert.equal(issuePlayerAction(front, "ultimate"), true); // piercingShot
+
+  commander.skillLoadouts.heavyTracker = ["vanish"];
+  const back = createAutoBattle("duneRaiders", "heavytracker-back", "field", STARTING_PARTY, {}, { commander });
+  const backPlayer = back.units.find((unit) => unit.controlled);
+  assert.equal(issuePlayerAction(back, "skill1"), true); // vanish(저격) -> 은신 대신 저격 태세
+  assert.equal(Boolean(backPlayer.positiveEffects?.siegeMode), true);
+  assert.ok(backPlayer.positiveEffects.haste.speedMultiplier < 1);
+  assert.ok(backPlayer.positiveEffects.haste.attackSpeedMultiplier < 1);
+});
+
+test("친화도·직업 전용 능력치와 출혈·화상·크루세이더 해제가 구분된다", () => {
+  const crusaderCommander = createDefaultCommander();
+  crusaderCommander.level = 5;
+  const crusaderStats = playerCombatStats(crusaderCommander, "spiritCrusader");
+  const necromancerCommander = createDefaultCommander();
+  necromancerCommander.combatKitId = "heavyNecromancer";
+  necromancerCommander.level = 5;
+  const necromancerStats = playerCombatStats(necromancerCommander, "heavyNecromancer");
+  assert.ok(crusaderStats.divineAffinity > crusaderStats.natureAffinity);
+  assert.ok(necromancerStats.natureAffinity > necromancerStats.divineAffinity);
+  assert.ok(crusaderStats.statusResistance > 0);
+  assert.equal(necromancerStats.statusResistance, 0);
+  // 치명타는 이제 민첩 파생이라 모든 직업이 값을 갖는다.
+  // (예전에는 어떤 직업도 base.criticalChance를 정의하지 않아 항상 null인 죽은 경로였다.)
+  assert.ok(crusaderStats.criticalChance > 0);
+  assert.ok(necromancerStats.criticalChance > 0);
+
+  const battle = createAutoBattle("duneRaiders", "status", "field", [], {}, { commander: crusaderCommander });
+  const player = battle.units.find((unit) => unit.controlled);
+  const enemy = battle.enemies[0];
+  player.hp = Math.round(player.maxHp * 0.5);
+  applyCombatStatus(battle, player, "poison", enemy, { stacks: 3 });
+  assert.equal(player.statuses.poison.stacks, 3);
+  assert.equal(issuePlayerAction(battle, "skill1"), true);
+  assert.equal(player.statuses.poison, undefined);
+
+  for (let index = 0; index < 6; index += 1) applyCombatStatus(battle, enemy, "bleed", player);
+  applyCombatStatus(battle, enemy, "burn", player);
+  applyCombatStatus(battle, enemy, "burn", player);
+  assert.equal(enemy.statuses.bleed.stacks, STATUS_EFFECT_DEFS.bleed.maxStacks);
+  assert.equal(enemy.statuses.burn.stacks, 1);
+  assert.ok(enemy.statuses.bleed.expiresAt > enemy.statuses.burn.expiresAt);
+  assert.ok(enemy.statuses.burn.tickDamage > enemy.statuses.bleed.tickDamage);
+});
+
+test("장착한 룬은 해당 스탯만 올리고 다른 룬 효과와는 섞이지 않는다", () => {
+  const bare = createDefaultCommander();
+  const bareStats = playerCombatStats(bare, bare.combatKitId);
+
+  const withGreen = createDefaultCommander();
+  withGreen.equippedRuneId = "greenRune";
+  const greenStats = playerCombatStats(withGreen, withGreen.combatKitId);
+  assert.ok(greenStats.damage > bareStats.damage);
+  assert.equal(greenStats.armor, bareStats.armor);
+  assert.equal(greenStats.maxHp, bareStats.maxHp);
+
+  const withYellow = createDefaultCommander();
+  withYellow.equippedRuneId = "yellowRune";
+  const yellowStats = playerCombatStats(withYellow, withYellow.combatKitId);
+  assert.ok(yellowStats.armor > bareStats.armor);
+  assert.equal(yellowStats.damage, bareStats.damage);
+
+  const withPurple = createDefaultCommander();
+  withPurple.equippedRuneId = "purpleRune";
+  const purpleStats = playerCombatStats(withPurple, withPurple.combatKitId);
+  assert.ok(purpleStats.attackMs < bareStats.attackMs);
+});
+
+test("직업과 일치하는 무기는 보너스를 주지만, 다른 직업 무기는 무시된다", () => {
+  const bare = createDefaultCommander(); // combatKitId 기본값 spiritCrusader -> baseClassId crusader
+  const bareStats = playerCombatStats(bare, bare.combatKitId);
+
+  const withOwnWeapon = createDefaultCommander();
+  gearUp(withOwnWeapon, { weapon: "crusaderBastardSword" });
+  const ownWeaponStats = playerCombatStats(withOwnWeapon, withOwnWeapon.combatKitId);
+  assert.ok(ownWeaponStats.damage > bareStats.damage, "크루세이더가 크루세이더 무기를 들면 공격력이 오른다");
+  assert.equal(ownWeaponStats.equippedWeaponId, "crusaderBastardSword");
+
+  const withWrongWeapon = createDefaultCommander();
+  gearUp(withWrongWeapon, { weapon: "barbarianGreataxe" }); // 바바리안 전용 무기
+  const wrongWeaponStats = playerCombatStats(withWrongWeapon, withWrongWeapon.combatKitId);
+  assert.equal(wrongWeaponStats.damage, bareStats.damage, "직업이 안 맞는 무기는 보너스가 적용되지 않는다");
+  assert.equal(wrongWeaponStats.equippedWeaponId, null);
+
+  const necroCommander = createDefaultCommander();
+  gearUp(necroCommander, { weapon: "necromancerArmorSword" });
+  const necroStats = playerCombatStats(necroCommander, "heavyNecromancer");
+  const necroBareStats = playerCombatStats(createDefaultCommander(), "heavyNecromancer");
+  assert.ok(necroStats.cooldownReduction > necroBareStats.cooldownReduction, "네크로맨서 무기는 스킬 재사용 대기시간을 줄인다");
+  assert.equal(necroStats.cooldownMultiplier, 1 - necroStats.cooldownReduction);
+});
+
+test("보스는 예고 장판을 깔고, 예고 시간이 지나야 터진다", () => {
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242 });
+  const boss = battle.enemies.find((enemy) => enemy.patterns?.length);
+  assert.ok(boss, "빙맥 큰곰은 패턴을 가진 보스다");
+
+  // 장판이 깔릴 때까지 진행
+  let guard = 0;
+  while (!battle.zones.length && guard++ < 200) tickAutoBattle(battle, 100);
+  assert.equal(battle.zones.length, 1, "예고 장판이 깔린다");
+
+  const zone = battle.zones[0];
+  const pattern = BOSS_PATTERN_DEFS[zone.patternId];
+  assert.equal(zone.fireAt - zone.bornAt, pattern.telegraphMs, "예고 시간만큼 떠 있는다");
+
+  // 예고 중에는 아직 피해가 없다.
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const hpBefore = player.hp;
+  tickAutoBattle(battle, 100);
+  assert.equal(player.hp, hpBefore, "예고만 떠 있는 동안에는 피해가 없다");
+
+  // 시전 중에는 보스가 움직이지 않는다 — 예고와 본체 행동이 겹치면 안 된다.
+  assert.ok(boss.castingUntil > battle.elapsed, "시전 중 상태가 유지된다");
+
+  // 예고가 끝나면 터지고 사라진다.
+  while (battle.zones.length && guard++ < 400) tickAutoBattle(battle, 100);
+  assert.equal(battle.zones.length, 0, "터진 장판은 사라진다");
+});
+
+test("예고를 보고 걸어 나가면 장판을 피할 수 있다", () => {
+  // 이 관계가 패턴 난이도의 기준이다: 예고 시간 × 이동속도 > 반경 이어야
+  // "보고 피하는" 게 성립한다.
+  const pattern = BOSS_PATTERN_DEFS.groundSlam;
+
+  const run = (evade) => {
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242 });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.hp = player.maxHp = 9999; // 장판 피해만 보려고 죽지 않게 한다
+    let hits = 0;
+    for (let t = 0; t < 400 && battle.status === "active"; t += 1) {
+      if (evade && battle.zones.length) steerBattlePlayer(battle, 1, 0);
+      tickAutoBattle(battle, 100);
+      hits += battle.log.filter((line) => /대지 강타: 개척자/.test(line.text || line)).length;
+      battle.log = battle.log.filter((line) => !/대지 강타: 개척자/.test(line.text || line));
+      player.hp = 9999;
+    }
+    return hits;
+  };
+
+  const reach = 17 * (pattern.telegraphMs / 1000);
+  assert.ok(reach > pattern.radius,
+    `예고 동안 이동 가능 거리(${reach.toFixed(1)})가 반경(${pattern.radius})보다 커야 피할 수 있다`);
+
+  const still = run(false);
+  const moving = run(true);
+  assert.ok(still > 0, "가만히 서 있으면 맞는다");
+  assert.ok(moving < still, `걸어 나가면 덜 맞아야 한다 (가만히 ${still} vs 이동 ${moving})`);
+});
+
+test("회피 버튼은 크루세이더만 방패 막기이고 나머지는 이동기다", () => {
+  assert.equal(playerDodgeDefinition("spiritCrusader").type, "block");
+  assert.equal(playerDodgeDefinition("heavyCrusader").type, "block");
+  assert.equal(playerDodgeDefinition("heavyTracker").type, "dash");
+  assert.equal(playerDodgeDefinition("archeryMaehwa").type, "dash");
+
+  // 막기는 이동하지 않는 대신 더 많이 줄여준다 — 역할이 겹치지 않게.
+  const block = PLAYER_DODGE_DEFS.block;
+  const dash = PLAYER_DODGE_DEFS.dash;
+  assert.ok(block.reduction > dash.reduction, "막기가 더 많이 줄여준다");
+  assert.ok(!block.distance, "막기는 이동하지 않는다");
+  assert.ok(dash.distance > 0, "이동기는 실제로 움직인다");
+
+  const gearUpKit = (kitId) => {
+    const commander = createDefaultCommander();
+    commander.combatKitId = kitId;
+    return createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 7, commander });
+  };
+
+  // 이동기는 실제로 위치를 바꾼다.
+  const dashBattle = gearUpKit("heavyTracker");
+  const dashPlayer = dashBattle.units.find((unit) => unit.id === dashBattle.playerId);
+  steerBattlePlayer(dashBattle, 1, 0);
+  const fromX = dashPlayer.x;
+  issuePlayerAction(dashBattle, "dodge");
+  assert.ok(dashPlayer.x > fromX, "회피 기동은 바라보는 방향으로 이동시킨다");
+
+  // 막기는 위치를 바꾸지 않는다.
+  const blockBattle = gearUpKit("spiritCrusader");
+  const blockPlayer = blockBattle.units.find((unit) => unit.id === blockBattle.playerId);
+  steerBattlePlayer(blockBattle, 1, 0);
+  const blockX = blockPlayer.x;
+  issuePlayerAction(blockBattle, "dodge");
+  assert.equal(blockPlayer.x, blockX, "방패 막기는 제자리에서 버틴다");
+});
+
+test("모든 보스 패턴은 '보고 피할 수 있어야' 한다는 기준식을 지킨다", () => {
+  // 예고 시간(초) × 플레이어 이동속도(17) > 벗어나야 하는 거리.
+  // 이 부등식이 깨지면 아무리 잘 피해도 못 빠져나오는 패턴이 된다.
+  const PLAYER_SPEED = 17;
+  for (const pattern of Object.values(BOSS_PATTERN_DEFS)) {
+    // 소환·정화는 바닥 판정이 없어 "피하는" 패턴이 아니다.
+    if (pattern.kind === "summon" || pattern.kind === "cleanse") continue;
+    const reach = PLAYER_SPEED * (pattern.telegraphMs / 1000);
+
+    // "벗어나려면 최소 얼마를 가야 하는가"는 도형마다 다르다.
+    let need;
+    if (pattern.kind === "line") {
+      // 직선은 폭의 절반만 옆으로 비키면 된다.
+      need = pattern.width / 2;
+    } else if (pattern.kind === "cone") {
+      // 부채꼴은 밖으로 나가는 길이 두 가지다(옆으로 돌기 / 사거리 밖으로).
+      // 최악의 위치는 두 경계에서 가장 먼 지점이고, 그 거리는 부채꼴에 내접하는
+      // 가장 큰 원의 반지름과 같다: R·sinθ / (1 + sinθ).
+      const half = (pattern.coneDegrees / 2) * Math.PI / 180;
+      need = pattern.radius * Math.sin(half) / (1 + Math.sin(half));
+    } else {
+      need = pattern.radius;
+    }
+
+    assert.ok(reach > need,
+      `${pattern.name}: 예고 동안 ${reach.toFixed(1)} 이동 가능한데 ${need.toFixed(1)}을 벗어나야 한다`);
+  }
+});
+
+test("직선 돌진은 뒤로 도망치는 것보다 옆으로 비켜야 피해진다", () => {
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242 });
+  const boss = battle.enemies.find((enemy) => enemy.patterns?.includes("chargeRush"));
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+
+  // 돌진만 나오게 다른 패턴을 잠가둔다.
+  boss.patterns = ["chargeRush"];
+  let guard = 0;
+  while (!battle.zones.length && guard++ < 300) tickAutoBattle(battle, 100);
+  const zone = battle.zones[0];
+  assert.equal(zone.kind, "line", "돌진은 직선 장판이다");
+  assert.ok(zone.x2 !== undefined && zone.y2 !== undefined, "끝점이 있다");
+
+  // 띠는 보스에서 시작해 플레이어 방향으로 뻗는다.
+  assert.ok(Math.abs(zone.x - boss.x) < 0.01 && Math.abs(zone.y - boss.y) < 0.01, "보스 위치에서 시작한다");
+  const length = Math.hypot(zone.x2 - zone.x, zone.y2 - zone.y);
+  assert.ok(Math.abs(length - BOSS_PATTERN_DEFS.chargeRush.length) < 0.5, "정의된 길이만큼 뻗는다");
+
+  // 띠 위(중간 지점)는 맞고, 옆으로 폭의 절반 넘게 비키면 안 맞는다.
+  const midX = (zone.x + zone.x2) / 2;
+  const midY = (zone.y + zone.y2) / 2;
+  const angle = Math.atan2(zone.y2 - zone.y, zone.x2 - zone.x);
+  const sideX = midX + Math.cos(angle + Math.PI / 2) * (zone.width / 2 + 3);
+  const sideY = midY + Math.sin(angle + Math.PI / 2) * (zone.width / 2 + 3);
+
+  player.x = midX; player.y = midY;
+  const hpOnLine = player.hp;
+  while (battle.zones.length && guard++ < 400) tickAutoBattle(battle, 100);
+  assert.ok(player.hp < hpOnLine, "띠 위에 서 있으면 맞는다");
+
+  // 다시 한 번, 이번엔 옆으로 비켜서.
+  boss.patternReadyAt.chargeRush = 0;
+  while (!battle.zones.length && guard++ < 400) tickAutoBattle(battle, 100);
+  const zone2 = battle.zones[0];
+  const angle2 = Math.atan2(zone2.y2 - zone2.y, zone2.x2 - zone2.x);
+  const mid2X = (zone2.x + zone2.x2) / 2;
+  const mid2Y = (zone2.y + zone2.y2) / 2;
+  player.x = mid2X + Math.cos(angle2 + Math.PI / 2) * (zone2.width / 2 + 6);
+  player.y = mid2Y + Math.sin(angle2 + Math.PI / 2) * (zone2.width / 2 + 6);
+  const hpAside = player.hp;
+  let fired = false;
+  while (battle.zones.length && guard++ < 500) {
+    tickAutoBattle(battle, 100);
+    fired = true;
+    // 보스가 다시 조준하지 못하게 위치를 고정
+    player.x = mid2X + Math.cos(angle2 + Math.PI / 2) * (zone2.width / 2 + 6);
+    player.y = mid2Y + Math.sin(angle2 + Math.PI / 2) * (zone2.width / 2 + 6);
+  }
+  assert.ok(fired, "두 번째 돌진도 터졌다");
+  assert.equal(player.hp, hpAside, "폭 밖으로 비키면 돌진에 맞지 않는다");
+});
+
+test("연속 장판은 시간차로 여러 개가 깔린다", () => {
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242 });
+  const boss = battle.enemies.find((enemy) => enemy.patterns?.length);
+  boss.patterns = ["frostVolley"];
+
+  let guard = 0;
+  while (!battle.zones.length && guard++ < 300) tickAutoBattle(battle, 100);
+  const pattern = BOSS_PATTERN_DEFS.frostVolley;
+  assert.equal(battle.zones.length, pattern.volleyCount, "한 번 시전에 여러 발이 예약된다");
+
+  // 각 발은 시간차를 두고 깔린다.
+  const bornTimes = battle.zones.map((zone) => zone.bornAt).sort((a, b) => a - b);
+  for (let i = 1; i < bornTimes.length; i += 1) {
+    assert.equal(bornTimes[i] - bornTimes[i - 1], pattern.volleyIntervalMs, "간격이 일정하다");
+  }
+  // 시전 시간은 마지막 발이 터질 때까지 이어진다.
+  assert.ok(boss.castingUntil >= battle.elapsed + (pattern.volleyCount - 1) * pattern.volleyIntervalMs);
+});
+
+test("필드 보스는 HP 50%에서 패턴이 추가되고, 지역 보스는 교체되며 형태가 바뀐다", () => {
+  const drive = (encounterId) => {
+    const battle = createAutoBattle(encounterId, null, null, ["shieldGuard", "archer"], {}, { rollSeed: 55 });
+    const boss = battle.enemies.find((enemy) => enemy.patterns?.length);
+    const first = [...boss.patterns];
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.hp = player.maxHp = 99999;
+    boss.hp = Math.floor(boss.maxHp * 0.4);
+    for (let i = 0; i < 60 && boss.phase === 1; i += 1) {
+      tickAutoBattle(battle, 100);
+      player.hp = 99999;
+      boss.hp = Math.floor(boss.maxHp * 0.4);
+    }
+    return { boss, first, battle };
+  };
+
+  const field = drive("frostColossusPack");
+  assert.equal(field.boss.phase, 2, "HP 50% 아래에서 2페이즈로 넘어간다");
+  assert.equal(field.boss.phaseMode, "extend");
+  for (const id of field.first) {
+    assert.ok(field.boss.patterns.includes(id), "필드 보스는 기존 패턴을 유지한다");
+  }
+  assert.ok(field.boss.patterns.length > field.first.length, "새 패턴이 추가된다");
+  assert.equal(field.boss.form, null, "필드 보스는 형태가 그대로다");
+
+  const region = drive("frostTitanLair");
+  assert.equal(region.boss.phase, 2);
+  assert.equal(region.boss.phaseMode, "replace");
+  for (const id of region.first) {
+    assert.ok(!region.boss.patterns.includes(id), "지역 보스는 기존 패턴이 사라진다");
+  }
+  assert.ok(region.boss.form, "지역 보스는 형태가 바뀐다");
+});
+
+test("필드 보스는 부산물을 확률이 아니라 확정으로 준다", () => {
+  // 완제품을 낮은 확률로 떨구는 대신 부산물을 확정 지급하고 고정 조합표로
+  // 가공하는 구조다(docs/EQUIPMENT_DESIGN.md §5).
+  const bear = ENEMY_COMBATANTS.northBear;
+  assert.ok(bear.byproducts, "설원 거대 곰은 부산물을 가진다");
+  assert.deepEqual(Object.keys(bear.byproducts).sort(), ["bearHide", "bearSinew"]);
+  for (const materialId of Object.keys(bear.byproducts)) {
+    assert.ok(MATERIAL_DEFS[materialId], `${materialId}가 재료로 정의돼 있어야 한다`);
+  }
+
+  // 지역 보스도 부산물을 준다.
+  assert.ok(ENEMY_COMBATANTS.northTitan.byproducts);
+});
+
+test("부채꼴은 정면만 맞고 뒤쪽은 맞지 않는다", () => {
+  // 이 방향 판정이 없으면 부채꼴이 전방향으로 맞아 원형 장판과 똑같아진다.
+  const setup = () => {
+    const battle = createAutoBattle("southSpawnLair", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 33 });
+    const boss = battle.enemies.find((enemy) => enemy.patterns?.includes("tentacleLash"));
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.hp = player.maxHp = 99999;
+    boss.patterns = ["tentacleLash"];
+    let guard = 0;
+    while (!battle.zones.length && guard++ < 300) tickAutoBattle(battle, 100);
+    return { battle, player, zone: battle.zones[0] };
+  };
+
+  const front = setup();
+  assert.equal(front.zone.kind, "cone");
+  front.player.x = front.zone.x + Math.cos(front.zone.angle) * 20;
+  front.player.y = front.zone.y + Math.sin(front.zone.angle) * 20;
+  const frontDistance = Math.hypot(front.player.x - front.zone.x, front.player.y - front.zone.y);
+  let guard = 0;
+  while (front.battle.zones.length && guard++ < 400) tickAutoBattle(front.battle, 100);
+  assert.ok(front.battle.log.some((line) => /촉수 후리기: 개척자/.test(line.text || line)), "정면은 맞는다");
+  // 끌어당김: 맞은 뒤 시전자 쪽으로 당겨진다.
+  const pulled = Math.hypot(front.player.x - front.zone.x, front.player.y - front.zone.y);
+  assert.ok(pulled < frontDistance - 5, `끌어당겨져야 한다 (${frontDistance.toFixed(1)} -> ${pulled.toFixed(1)})`);
+
+  const back = setup();
+  back.player.x = back.zone.x + Math.cos(back.zone.angle + Math.PI) * 20;
+  back.player.y = back.zone.y + Math.sin(back.zone.angle + Math.PI) * 20;
+  guard = 0;
+  while (back.battle.zones.length && guard++ < 400) tickAutoBattle(back.battle, 100);
+  assert.ok(!back.battle.log.some((line) => /촉수 후리기: 개척자/.test(line.text || line)), "뒤쪽은 맞지 않는다");
+});
+
+test("잔류 패턴은 터진 자리에 지속 피해 구역을 남긴다", () => {
+  const battle = createAutoBattle("southSpiderLair", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 33 });
+  const boss = battle.enemies.find((enemy) => enemy.patterns?.includes("webTrap"));
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.hp = player.maxHp = 99999;
+  boss.patterns = ["webTrap"];
+
+  let guard = 0;
+  while (!battle.zones.length && guard++ < 300) tickAutoBattle(battle, 100);
+  assert.ok(battle.zones[0].linger, "잔류 정보가 장판에 실려 있다");
+
+  const before = battle.groundEffects.length;
+  while (battle.zones.length && guard++ < 400) tickAutoBattle(battle, 100);
+  assert.ok(battle.groundEffects.length > before, "터진 자리에 장판이 남는다");
+
+  const effect = battle.groundEffects[battle.groundEffects.length - 1];
+  assert.equal(effect.team, "enemy", "적이 남긴 장판이라 아군이 밟으면 아프다");
+  assert.ok(effect.endsAt > battle.elapsed, "지속 시간이 남아 있다");
+
+  // 장판 위에 서 있으면 실제로 아프다.
+  player.x = effect.x;
+  player.y = effect.y;
+  player.hp = 500;
+  const hpBefore = player.hp;
+  for (let i = 0; i < 20 && battle.groundEffects.length; i += 1) tickAutoBattle(battle, 100);
+  assert.ok(player.hp < hpBefore, "잔류 장판 위에 있으면 피해를 받는다");
+
+  // 시간이 지나면 사라진다.
+  for (let i = 0; i < 120 && battle.groundEffects.length; i += 1) tickAutoBattle(battle, 100);
+  assert.equal(battle.groundEffects.length, 0, "지속 시간이 끝나면 사라진다");
+});
+
+test("필드 보스는 지역마다 정의돼 있고 부산물이 모두 실재하는 재료다", () => {
+  const bossEncounters = Object.entries(ENCOUNTER_DEFS).filter(([, encounter]) => encounter.boss);
+  assert.ok(bossEncounters.length >= 15, "보스 조우가 충분히 정의돼 있다");
+
+  for (const [, encounter] of bossEncounters) {
+    for (const enemyId of encounter.enemies) {
+      const definition = ENEMY_COMBATANTS[enemyId];
+      assert.ok(definition, `${enemyId} 정의가 있어야 한다`);
+      if (!definition.byproducts) continue;
+      for (const materialId of Object.keys(definition.byproducts)) {
+        assert.ok(MATERIAL_DEFS[materialId], `${enemyId}의 부산물 ${materialId}가 재료로 정의돼야 한다`);
+      }
+    }
+  }
+
+  // 모든 보스가 패턴을 가진다 — 패턴 없는 보스는 그냥 체력 높은 잡몹이다.
+  for (const [id, encounter] of bossEncounters) {
+    const hasPattern = encounter.enemies.some((enemyId) => ENEMY_COMBATANTS[enemyId]?.patterns?.length);
+    assert.ok(hasPattern, `${id}에 패턴을 가진 보스가 있어야 한다`);
+  }
+
+  // 필드 보스 풀이 참조하는 조우가 실재해야 한다.
+  for (const region of Object.values(WORLD_REGION_DEFS)) {
+    for (const encounterId of region.fieldBossPool || []) {
+      assert.ok(ENCOUNTER_DEFS[encounterId], `${encounterId} 조우가 정의돼야 한다`);
+    }
+  }
+});
+
+test("전설 조합표는 전부 실제 보스 부산물로 만들어진다", () => {
+  // 전설 방어구·장신구는 지역 드랍이 아니라 보스 부산물 조합이다(§5).
+  const byproducts = new Set();
+  for (const enemy of Object.values(ENEMY_COMBATANTS)) {
+    for (const materialId of Object.keys(enemy.byproducts || {})) byproducts.add(materialId);
+  }
+
+  const bossGear = Object.values(LEGENDARY_DEFS).filter((entry) => !entry.regionId);
+  assert.ok(bossGear.length >= 14, "방어구 6 + 반지 6 + 목걸이 2");
+
+  for (const entry of bossGear) {
+    assert.ok(Object.keys(entry.materials).length >= 2, `${entry.id}는 여러 재료를 조합한다`);
+    for (const materialId of Object.keys(entry.materials)) {
+      assert.ok(MATERIAL_DEFS[materialId], `${entry.id}의 재료 ${materialId}가 정의돼야 한다`);
+      assert.ok(byproducts.has(materialId),
+        `${entry.id}의 재료 ${materialId}는 어떤 보스에서든 나와야 한다(못 만드는 레시피 방지)`);
+    }
+  }
+
+  // 계열별 구성이 문서(§10)와 맞는다.
+  const armor = bossGear.filter((entry) => entry.armorClass);
+  const byClass = {};
+  for (const entry of armor) byClass[entry.armorClass] = (byClass[entry.armorClass] || 0) + 1;
+  assert.deepEqual(byClass, { heavy: 2, light: 2, cloth: 2 }, "중갑2·경갑2·천2");
+
+  const rings = bossGear.filter((entry) => entry.slot === "ring");
+  const necklaces = bossGear.filter((entry) => entry.slot === "necklace");
+  assert.ok(rings.length >= 6, "반지 6종");
+  assert.ok(necklaces.length >= 2, "목걸이 2종(3종째는 문서상 미정)");
+});
+
+test("전설 고유효과는 장착했을 때만 전투에 반영된다", () => {
+  const equip = (defId) => {
+    const commander = createDefaultCommander();
+    if (!defId) return commander;
+    commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+    const definition = EQUIPMENT_DEFS[defId];
+    const slot = { chest: "chest", ring: "ring1", necklace: "necklace" }[definition.slot];
+    commander.equipped[slot] = "g0";
+    return commander;
+  };
+
+  // 맨몸에는 고유효과가 없다.
+  const bare = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242, commander: equip(null) });
+  assert.deepEqual(Object.keys(bare.legendary), [], "장착 없으면 고유효과도 없다");
+
+  // 장착하면 전투 시작 시 풀려서 등록된다.
+  for (const [defId, type] of [
+    ["dragonRampart", "damageBand"],
+    ["arcaneVeil", "manaShieldGear"],
+    ["phantomLeather", "phantomDodge"],
+    ["oniBreakerRing", "armorPierceStack"],
+    ["dragonWardRing", "lastStand"]
+  ]) {
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242, commander: equip(defId) });
+    assert.ok(battle.legendary[type], `${defId} 장착 시 ${type}가 등록된다`);
+  }
+});
+
+test("환영 경갑은 피격 자체를 확률로 무효화한다", () => {
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "phantomLeather", grade: "common", options: [] }];
+  commander.equipped.chest = "g0";
+
+  const measure = (withGear) => {
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {},
+      { rollSeed: 4242, commander: withGear ? commander : createDefaultCommander() });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 9999;
+    let dodges = 0;
+    for (let t = 0; t < 500; t += 1) {
+      tickAutoBattle(battle, 100);
+      dodges += battle.log.filter((line) => /회피했다/.test(line.text || line)).length;
+      battle.log = [];
+      player.hp = 9999;
+    }
+    return dodges;
+  };
+
+  assert.equal(measure(false), 0, "맨몸은 회피가 없다");
+  assert.ok(measure(true) > 0, "환영 경갑을 입으면 실제로 회피가 발동한다");
+});
+
+test("마도사의 장막은 피해를 체력 대신 마나로 치른다", () => {
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "arcaneVeil", grade: "common", options: [] }];
+  commander.equipped.chest = "g0";
+
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242, commander });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = 200; player.hp = 200;
+  player.maxMana = 200; player.mana = 200;
+
+  let taken = 0;
+  for (let t = 0; t < 300 && battle.status === "active"; t += 1) {
+    const before = player.hp;
+    tickAutoBattle(battle, 100);
+    if (player.hp < before) taken += before - player.hp;
+    player.hp = 200;
+  }
+  assert.ok(taken > 0, "피해는 받는다");
+  assert.ok(player.mana < 200, "마나가 실제로 소모된다(피해를 마나로 대신 치렀다)");
+});
+
+test("북부는 환경으로, 동부는 몬스터 능력으로 직업을 카운터한다", () => {
+  // 몬스터 컨셉.txt의 지역별 카운터를 환경에도 일관되게 건다.
+  const north = WORLD_REGION_DEFS.north.hazard.counterEffect;
+  assert.equal(north.type, "manaDrain", "북부는 마나 고갈(아크메이지 카운터)");
+
+  // 동부는 지역 환경 디버프를 두지 않는다 - 매화 카운터는 몬스터 능력으로만 건다
+  // (REGION_PROGRESSION_HAZARDS.md). 구미호의 자가 정화가 그 대표 사례다.
+  assert.ok(!WORLD_REGION_DEFS.east.hazard.counterEffect, "동부는 환경 카운터 효과가 없다");
+  const fox = ENEMY_COMBATANTS.eastFox;
+  assert.ok(fox.patterns.includes("spiritCleanse"), "대신 구미호가 자가 정화를 가진다");
+
+  // 마나 고갈은 마나가 많은 직업일수록 크게 잃는다.
+  assert.ok(PLAYER_BASE_CLASS_DEFS.archmage.statProfile.base.maxMana
+    > PLAYER_BASE_CLASS_DEFS.maehwa.statProfile.base.maxMana * 3,
+    "아크메이지가 매화보다 마나 의존도가 훨씬 높다");
+});
+
+test("구미호는 걸어둔 상태이상을 스스로 씻어낸다", () => {
+  // 동부 카운터 컨셉의 핵심 - 상태이상 축적형(매화)의 주력을 무력화한다.
+  const battle = createAutoBattle("eastFoxLair", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 21 });
+  const fox = battle.enemies.find((enemy) => enemy.patterns?.includes("spiritCleanse"));
+  assert.ok(fox, "구미호는 정화 패턴을 가진다");
+
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+
+  let cleansed = 0;
+  for (let t = 0; t < 500; t += 1) {
+    // 계속 상태이상을 걸어준다.
+    fox.statuses = { ...fox.statuses, burn: { id: "burn", expiresAt: battle.elapsed + 9000, stacks: 1 } };
+    tickAutoBattle(battle, 100);
+    cleansed += battle.log.filter((line) => /정화: /.test(line.text || line)).length;
+    battle.log = [];
+    player.hp = 99999;
+  }
+  assert.ok(cleansed > 0, "정화가 실제로 발동한다");
+});
+
+test("대전사의 전투갑주는 공격속도와 이동속도를 올린다", () => {
+  const equip = (defId) => {
+    const commander = createDefaultCommander();
+    if (!defId) return commander;
+    commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+    commander.equipped.chest = "g0";
+    return commander;
+  };
+  const bare = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander: equip(null) });
+  const geared = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander: equip("warchiefPlate") });
+  const barePlayer = bare.units.find((unit) => unit.id === bare.playerId);
+  const gearedPlayer = geared.units.find((unit) => unit.id === geared.playerId);
+
+  assert.ok(gearedPlayer.attackMs < barePlayer.attackMs, "공격 주기가 짧아진다");
+  assert.ok(gearedPlayer.speed > barePlayer.speed, "이동속도가 오른다");
+});
+
+test("영혼의 장막은 일정 시간 안 맞으면 1회성 장막을 만든다", () => {
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "soulVeil", grade: "common", options: [] }];
+  commander.equipped.chest = "g0";
+
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  for (const enemy of battle.enemies) enemy.dormant = true; // 안 맞는 상황
+
+  assert.ok(!player.positiveEffects.shield, "처음엔 장막이 없다");
+  const quietMs = LEGENDARY_DEFS.soulVeil.uniqueEffect.quietMs;
+  for (let t = 0; t < quietMs / 100 + 5; t += 1) tickAutoBattle(battle, 100);
+
+  const shield = player.positiveEffects.shield;
+  assert.ok(shield, "조용히 버티면 장막이 생긴다");
+  // 흡수 상한은 최대 체력의 60%다.
+  const expected = Math.round(player.maxHp * LEGENDARY_DEFS.soulVeil.uniqueEffect.maxRatio);
+  assert.equal(shield.amount, expected);
+});
+
+test("구미호 영핵 목걸이는 해로운 상태이상을 빨리 털어낸다", () => {
+  const measure = (defId) => {
+    const commander = createDefaultCommander();
+    if (defId) {
+      commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+      commander.equipped.necklace = "g0";
+    }
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 9999;
+    for (const enemy of battle.enemies) enemy.dormant = true;
+    player.statuses = { poison: { id: "poison", expiresAt: battle.elapsed + 6000, stacks: 1 } };
+
+    let ticks = 0;
+    while (player.statuses.poison && ticks < 200) {
+      tickAutoBattle(battle, 100);
+      player.hp = 9999;
+      ticks += 1;
+    }
+    return ticks;
+  };
+  const bare = measure(null);
+  const geared = measure("foxCoreAmulet");
+  assert.ok(geared < bare, `목걸이를 차면 더 빨리 사라진다 (맨몸 ${bare} vs 착용 ${geared})`);
+});
+
+test("몰락한 성유물 목걸이는 위급할 때 한 번 스스로를 씻는다", () => {
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "fallenRelicAmulet", grade: "common", options: [] }];
+  commander.equipped.necklace = "g0";
+
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  for (const enemy of battle.enemies) enemy.dormant = true;
+
+  const effect = LEGENDARY_DEFS.fallenRelicAmulet.uniqueEffect;
+
+  // 체력이 충분하면 발동하지 않는다.
+  player.hp = player.maxHp;
+  player.statuses = { burn: { id: "burn", expiresAt: battle.elapsed + 9000, stacks: 1 } };
+  for (let t = 0; t < 10; t += 1) { tickAutoBattle(battle, 100); player.hp = player.maxHp; }
+  assert.ok(player.statuses.burn, "여유가 있을 때는 발동하지 않는다");
+
+  // 위급해지면 씻어낸다.
+  for (let t = 0; t < 20; t += 1) {
+    player.hp = Math.floor(player.maxHp * (effect.threshold - 0.1));
+    tickAutoBattle(battle, 100);
+  }
+  assert.ok(!player.statuses.burn, "위급하면 상태이상을 제거한다");
+});
+
+test("구미호의 외투는 총량은 같게 두고 한 방의 크기만 줄인다", () => {
+  const measure = (defId) => {
+    const commander = createDefaultCommander();
+    if (defId) {
+      commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+      commander.equipped.chest = "g0";
+    }
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 4242, commander });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = 200;
+    player.hp = 200;
+    // 환경 피해와 보스 장판은 분산 경로를 타지 않는다. 그대로 두면 첫 피해가
+    // 그쪽에서 나와 두 쪽이 똑같이 찍히고, 효과가 죽은 것처럼 보인다.
+    battle.hazard = null;
+    for (const enemy of battle.enemies) { enemy.patterns = []; enemy.phase2Patterns = []; }
+
+    // **첫 타격만** 잰다. 지연 피해가 한 번 시작되면 새 타격과 같은 틱에 겹쳐
+    // 들어와서 "한 방의 크기"를 잴 수 없다. 첫 대는 지연분이 아직 없어 깨끗하다.
+    let first = 0;
+    let total = 0;
+    for (let t = 0; t < 1500 && battle.status === "active"; t += 1) {
+      const before = player.hp;
+      tickAutoBattle(battle, 20);
+      const dealt = before - player.hp;
+      if (dealt > 0) {
+        total += dealt;
+        if (!first) first = dealt;
+      }
+      player.hp = 200;
+    }
+    return { first, total };
+  };
+
+  const bare = measure(null);
+  const geared = measure("foxMantle");
+  assert.ok(geared.first < bare.first, `첫 타격의 크기가 줄어든다 (${bare.first} -> ${geared.first})`);
+  // 총량은 비슷하게 유지된다 — 피해를 없애는 게 아니라 미루는 효과다.
+  assert.ok(Math.abs(geared.total - bare.total) < bare.total * 0.35, "총 피해량은 크게 달라지지 않는다");
+});
+
+test("필드 보스는 선택 콘텐츠라 지나칠 수 있고, 멀어지면 추격을 멈춘다", () => {
+  const battle = createFieldBattle("central", STARTING_PARTY, {}, { seed: 4455, fieldStage: FIELD_STAGE_COUNT });
+  const boss = battle.enemies.find((enemy) => enemy.fieldBoss);
+  assert.ok(boss, "중부 필드에도 보스가 배치된다");
+
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+
+  // 붙으면 깨어난다.
+  player.x = boss.x;
+  player.y = boss.y;
+  for (let t = 0; t < 10; t += 1) { tickAutoBattle(battle, 100); player.hp = 99999; }
+  assert.equal(boss.dormant, false, "가까이 가면 깨어난다");
+
+  boss.hp = Math.floor(boss.maxHp * 0.5);
+
+  // 멀어지면 제자리로 돌아가 다시 잠든다. 체력도 복구된다.
+  player.x = 20;
+  player.y = 20;
+  for (let t = 0; t < 60; t += 1) {
+    tickAutoBattle(battle, 100);
+    player.x = 20; player.y = 20; player.hp = 99999;
+  }
+  assert.equal(boss.dormant, true, "멀어지면 추격을 멈추고 다시 잠든다");
+  assert.equal(boss.hp, boss.maxHp, "체력이 복구된다(치고 빠지기로 깎을 수 없다)");
+  assert.equal(boss.phase, 1, "페이즈도 되돌아간다");
+});
+
+test("필드 보스가 살아 있어도 일반 무리만 정리하면 던전으로 갈 수 있다", () => {
+  const battle = createFieldBattle("central", STARTING_PARTY, {}, { seed: 4455, fieldStage: FIELD_STAGE_COUNT });
+  const boss = battle.enemies.find((enemy) => enemy.fieldBoss);
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+
+  // 일반 무리만 제거한다(보스는 그대로 둔다).
+  for (const enemy of battle.enemies) {
+    if (!enemy.fieldBoss) enemy.hp = 0;
+  }
+  tickAutoBattle(battle, 100);
+  assert.ok(battle.fieldCleared, "보스를 남겨둬도 필드는 정리로 친다");
+  assert.ok(boss.hp > 0, "보스는 여전히 살아 있다");
+
+  // 던전 입구도 열린다 — 보스를 깨워놨더라도 막지 않는다.
+  boss.dormant = false;
+  const entrance = battle.triggers[0];
+  player.x = entrance.x;
+  player.y = entrance.y;
+  tickAutoBattle(battle, 100);
+  assert.equal(battle.pendingTrigger?.type || battle.pendingTrigger, "dungeonEntrance",
+    "필드 보스가 깨어 있어도 던전 입구는 막히지 않는다");
+});
+
+test("모든 패턴·전설이 참조하는 상태이상은 실재해야 한다", () => {
+  // 존재하지 않는 상태이상 id를 쓰면 조용히 아무 일도 일어나지 않는다.
+  // (실제로 "freeze"라고 쓴 곳이 있었는데 실제 id는 "frost"였다.)
+  const valid = new Set(Object.keys(STATUS_EFFECT_DEFS));
+
+  for (const pattern of Object.values(BOSS_PATTERN_DEFS)) {
+    if (pattern.status?.id) {
+      assert.ok(valid.has(pattern.status.id), `${pattern.name}의 상태이상 ${pattern.status.id}`);
+    }
+    if (pattern.linger?.statusId) {
+      assert.ok(valid.has(pattern.linger.statusId), `${pattern.name}의 잔류 상태이상 ${pattern.linger.statusId}`);
+    }
+  }
+  for (const entry of Object.values(LEGENDARY_DEFS)) {
+    const statusId = entry.uniqueEffect?.statusId;
+    if (statusId) assert.ok(valid.has(statusId), `${entry.name}의 상태이상 ${statusId}`);
+  }
+  for (const enemy of Object.values(ENEMY_COMBATANTS)) {
+    if (enemy.statusOnHit?.id) {
+      assert.ok(valid.has(enemy.statusOnHit.id), `${enemy.name}의 상태이상 ${enemy.statusOnHit.id}`);
+    }
+  }
+});
+
+test("전설 반지 효과는 플레이어의 기본 공격에도 적용된다", () => {
+  // 플레이어 기본 공격은 AI 유닛과 다른 경로다. 한쪽에만 붙이면 동료 공격에만
+  // 적용되어 사실상 동작하지 않는다.
+  const equip = (defId) => {
+    const commander = createDefaultCommander();
+    if (!defId) return commander;
+    commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+    commander.equipped.ring1 = "g0";
+    return commander;
+  };
+
+  // 오니 파괴반지: 같은 대상을 계속 때리면 관통이 쌓인다.
+  const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 9, commander: equip("oniBreakerRing") });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 9999;
+  const foe = battle.enemies[0];
+  foe.dormant = false;
+  foe.maxHp = foe.hp = 99999;
+  // 템포가 느려져 같은 시간에 덜 때린다 — 창을 늘린다.
+  for (let t = 0; t < 90; t += 1) {
+    player.x = foe.x - 3;
+    player.y = foe.y;
+    issuePlayerAction(battle, "attack");
+    tickAutoBattle(battle, 100);
+    player.hp = 9999;
+  }
+  const stack = battle.legendaryState.pierce;
+  assert.ok(stack, "중첩 상태가 기록된다");
+  assert.equal(stack.targetId, foe.id);
+  assert.equal(stack.stacks, LEGENDARY_DEFS.oniBreakerRing.uniqueEffect.maxStacks, "상한까지 쌓인다");
+
+  // 거미독 반지: 독 걸린 적에게 추가 피해 + 회복 감소.
+  const hitOnce = (defId) => {
+    const b = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 9, commander: equip(defId) });
+    const p = b.units.find((unit) => unit.id === b.playerId);
+    p.maxHp = p.hp = 9999;
+    const t = b.enemies[0];
+    t.dormant = false;
+    t.maxHp = t.hp = 99999;
+    p.x = t.x - 3;
+    p.y = t.y;
+    t.statuses.poison = { id: "poison", expiresAt: b.elapsed + 99000, stacks: 1 };
+    const before = t.hp;
+    issuePlayerAction(b, "attack");
+    return { damage: before - t.hp, statuses: Object.keys(t.statuses) };
+  };
+  const bare = hitOnce(null);
+  const ringed = hitOnce("venomFangRing");
+  assert.ok(ringed.damage > bare.damage, `독 걸린 적에게 더 아프다 (${bare.damage} -> ${ringed.damage})`);
+  assert.ok(ringed.statuses.includes("decay"), "회복 감소를 함께 건다");
+  assert.ok(!bare.statuses.includes("decay"), "반지가 없으면 걸리지 않는다");
+});
+
+test("동토 수호반지는 빙결만 빨리 털어낸다", () => {
+  const measure = (defId) => {
+    const commander = createDefaultCommander();
+    if (defId) {
+      commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+      commander.equipped.ring1 = "g0";
+    }
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 1, commander });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 9999;
+    for (const enemy of battle.enemies) enemy.dormant = true;
+    player.statuses = { frost: { id: "frost", expiresAt: battle.elapsed + 8000, stacks: 1 } };
+
+    let ticks = 0;
+    while (player.statuses.frost && ticks < 200) {
+      tickAutoBattle(battle, 100);
+      player.hp = 9999;
+      delete player.statuses.stun;
+      ticks += 1;
+    }
+    return ticks;
+  };
+  const bare = measure(null);
+  const warded = measure("frostWardRing");
+  assert.ok(warded < bare, `빙결이 더 빨리 사라진다 (${bare} -> ${warded})`);
+});
+
+test("주술 공명반지는 스킬을 쓸 때 마나를 채워준다", () => {
+  // 문서는 "소모한 마나 환급"이지만 이 엔진의 플레이어 스킬은 마나를 쓰지 않는다.
+  // 마나는 마도사의 장막이 피해를 대신 치르는 자원이라, 스킬 사용 시 채워주는
+  // 쪽으로 옮겼다 - "스킬을 굴릴수록 버틸 여력이 생긴다"로 의도는 유지된다.
+  const measure = (defId) => {
+    const commander = createDefaultCommander();
+    if (defId) {
+      commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+      commander.equipped.ring1 = "g0";
+    }
+    const battle = createAutoBattle("frostColossusPack", null, null, ["shieldGuard", "archer"], {}, { rollSeed: 5, commander });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 9999;
+    let refunds = 0;
+    for (let t = 0; t < 300; t += 1) {
+      issuePlayerAction(battle, "skill1");
+      issuePlayerAction(battle, "skill2");
+      tickAutoBattle(battle, 100);
+      refunds += battle.log.filter((line) => /주술 공명/.test(line.text || line)).length;
+      battle.log = [];
+      player.hp = 9999;
+    }
+    return refunds;
+  };
+  assert.equal(measure(null), 0, "반지가 없으면 발동하지 않는다");
+  assert.ok(measure("resonanceRing") > 0, "반지를 끼면 마나를 채워준다");
+});
+
+test("서부 저주는 동료를 공포로 묶었다가 전장에서 이탈시킨다", () => {
+  // 적대화(적 진영 전환)는 채택하지 않았다 - 팀 판정이 battle.units/enemies 배열
+  // 소속이라 동료를 적으로 옮기면 "내 동료를 내가 죽여야 이기는" 구도가 된다.
+  const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
+    { rollSeed: 3, regionId: "west" });
+  assert.equal(battle.hazard.counterEffect.type, "curse", "서부 환경은 저주다");
+
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+  for (const enemy of battle.enemies) enemy.dormant = true;
+
+  const startCompanions = battle.units.length - 1;
+  assert.ok(startCompanions >= 2, "동료가 둘 이상 있다");
+
+  let fearAt = null;
+  let fleeAt = null;
+  for (let t = 0; t < 600; t += 1) {
+    tickAutoBattle(battle, 100);
+    player.hp = 99999;
+    if (fearAt === null && battle.log.some((line) => /몸이 굳었다/.test(line.text || line))) fearAt = battle.elapsed;
+    if (fleeAt === null && battle.log.some((line) => /전장을 벗어났다/.test(line.text || line))) fleeAt = battle.elapsed;
+    battle.log = [];
+  }
+
+  assert.ok(fearAt !== null, "먼저 공포가 온다");
+  assert.ok(fleeAt !== null, "그 다음 이탈한다");
+  assert.ok(fearAt < fleeAt, "공포가 이탈보다 먼저다(경고 -> 결과)");
+
+  assert.equal(battle.units.length - 1, 0, "동료가 전부 이탈했다");
+  assert.equal(battle.fledUnits.length, startCompanions);
+
+  // 플레이어는 남는다 - 무력화되면 조작할 게 없어진다.
+  assert.ok(battle.units.some((unit) => unit.id === battle.playerId), "플레이어는 이탈하지 않는다");
+});
+
+test("동료가 이탈해도 승패 판정이 정상 동작한다", () => {
+  // 이탈은 배열에서 빼기만 한다. 플레이어가 남아 있어 패배 판정이 유지되고
+  // 승리 조건은 적만 보므로 안전하다.
+  const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
+    { rollSeed: 3, regionId: "west" });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+  for (const enemy of battle.enemies) enemy.dormant = true;
+
+  for (let t = 0; t < 600 && battle.units.length > 1; t += 1) {
+    tickAutoBattle(battle, 100);
+    player.hp = 99999;
+  }
+  assert.equal(battle.units.length, 1, "플레이어만 남았다");
+  assert.equal(battle.status, "active", "동료가 다 빠져도 패배가 아니다");
+
+  // 적을 전멸시키면 승리한다.
+  for (const enemy of battle.enemies) enemy.hp = 0;
+  tickAutoBattle(battle, 100);
+  assert.equal(battle.status, "victory");
+});
+
+test("저주는 대응 수치가 충분하면 아예 걸리지 않는다", () => {
+  const measure = (mitigation) => {
+    const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
+      { rollSeed: 3, regionId: "west", hazardMitigation: mitigation });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 99999;
+    for (const enemy of battle.enemies) enemy.dormant = true;
+    for (let t = 0; t < 600; t += 1) { tickAutoBattle(battle, 100); player.hp = 99999; }
+    return (battle.fledUnits || []).length;
+  };
+  assert.ok(measure(0) > 0, "대응이 없으면 이탈한다");
+  assert.equal(measure(4), 0, "대응 수치를 갖추면 이탈하지 않는다");
+});
+
+test("동료 스킬 열여섯 개가 전부 실제로 수치를 바꾼다", () => {
+  // 이 프로젝트에서 여러 번 물린 함정: 정의만 등록하고 배선을 빠뜨리면
+  // 조용히 아무 일도 안 일어난다. 그래서 "필드에 값이 박혔나"가 아니라
+  // **읽는 쪽 수치가 실제로 움직였나**로 잰다.
+  //
+  // 실제로 이 테스트가 버그를 하나 잡았다 — 전투원 id가 "unit-snow_guard"라
+  // 정의 id로 조회하지 않으면 열여섯 개가 통째로 죽는다.
+  const build = (party, encounterId = "iceRaiders") => {
+    const battle = createAutoBattle(encounterId, null, null, party, {}, { rollSeed: 5 });
+    tickAutoBattle(battle, 16);
+    return battle;
+  };
+  const playerOf = (battle) => battle.units.find((unit) => unit.id === battle.playerId);
+  const solo = build(["duel_swordsman"]);
+
+  // ── 항상 켜져 있는 것 ──
+  assert.ok(playerOf(build(["duel_swordsman", "snow_guard"])).armor > playerOf(solo).armor,
+    "설벽: 아군 방어력이 올라야 한다");
+  assert.ok(build(["duel_swordsman", "vine_keeper"]).enemies[0].speed < solo.enemies[0].speed,
+    "덩굴 결박: 적 이동속도가 내려가야 한다");
+  assert.ok(build(["duel_swordsman", "winter_berserker"]).enemies[0].attackMs > solo.enemies[0].attackMs,
+    "한기 발산: 적 공격 주기가 늘어야 한다");
+  assert.ok(build(["duel_swordsman", "blade_dancer"]).enemies[0].armor < solo.enemies[0].armor,
+    "방비 허물기: 적 방어력이 깎여야 한다");
+  assert.ok(playerOf(build(["duel_swordsman", "sap_healer"])).hpRegen > playerOf(solo).hpRegen,
+    "수액 순환: 재생이 붙어야 한다");
+  assert.ok(playerOf(build(["duel_swordsman", "mana_weaver"])).manaRegen > playerOf(solo).manaRegen,
+    "마력 공급: 마나 회복이 빨라져야 한다");
+  assert.ok(playerOf(build(["duel_swordsman", "glass_alchemist"])).statusPotency > playerOf(solo).statusPotency,
+    "촉매: 상태이상 위력이 올라야 한다");
+  assert.ok(playerOf(build(["duel_swordsman", "spirit_ranger"])).statusResistance > playerOf(solo).statusResistance,
+    "정령 가호: 상태이상 저항이 올라야 한다");
+  assert.ok(playerOf(build(["duel_swordsman", "snow_shaman"])).heal >= playerOf(solo).heal,
+    "영혼 환류: 치유량이 줄지는 않아야 한다");
+
+  // ── 조건이 붙은 것: 조건을 만족할 때만 붙는지까지 본다 ──
+
+  // 진법 — 동료가 하나라도 쓰러지면 풀린다.
+  const formation = build(["formation_officer", "snow_guard"]);
+  const formed = playerOf(formation).armor;
+  formation.units.find((unit) => unit.defId === "snow_guard").hp = 0;
+  tickAutoBattle(formation, 16);
+  assert.ok(playerOf(formation).armor < formed, "진법: 동료가 쓰러지면 풀려야 한다");
+
+  // 서약 — 플레이어가 위험할 때만.
+  const oath = build(["oath_knight"]);
+  const oathPlayer = playerOf(oath);
+  const healthyArmor = oathPlayer.armor;
+  oathPlayer.hp = oathPlayer.maxHp * 0.2;
+  tickAutoBattle(oath, 16);
+  assert.ok(oathPlayer.armor > healthyArmor, "서약: 저체력에서만 방어를 나눠 준다");
+
+  // 기맥 순환 — 자기 체력이 낮을수록 크게.
+  const meridian = build(["meridian_fighter"]);
+  const meridianPlayer = playerOf(meridian);
+  const healthyDamage = meridianPlayer.damage;
+  meridian.units.find((unit) => unit.defId === "meridian_fighter").hp = 1;
+  tickAutoBattle(meridian, 16);
+  assert.ok(meridianPlayer.damage > healthyDamage, "기맥 순환: 빈사일수록 아군 공격이 올라야 한다");
+
+  // 호흡 맞추기 — 플레이어가 회피하는 동안만.
+  const tempo = build(["duel_swordsman"]);
+  const tempoPlayer = playerOf(tempo);
+  const restingAttackMs = tempoPlayer.attackMs;
+  tempo.playerDodgeUntil = tempo.elapsed + 2000;
+  tickAutoBattle(tempo, 16);
+  assert.ok(tempoPlayer.attackMs < restingAttackMs, "호흡 맞추기: 회피 중 공격이 빨라져야 한다");
+
+  // 급소 표식 — 플레이어가 노린 적에게만.
+  const mark = build(["venom_tracker"]);
+  mark.focusTargetId = mark.enemies[0].id;
+  tickAutoBattle(mark, 16);
+  assert.ok(mark.enemies[0].marked, "급소 표식: 플레이어가 노린 적에 표식이 붙는다");
+  assert.ok(!mark.enemies.slice(1).some((enemy) => enemy.marked), "다른 적에는 안 붙는다");
+  assert.ok(mark.companionSkillState.markedCrit > 0, "치명타 보정이 실제로 계산된다");
+});
+
+test("동료 스킬은 같은 필드를 쓰는 다른 시스템을 덮어쓰지 않는다", () => {
+  // 처음엔 기준값을 떠 두고 매 틱 거기서 다시 만들었다가 물렸다 —
+  // 적의 attackMs를 직접 바꾸던 기존 테스트가 깨졌다. 지금은 지난 틱에
+  // 얹은 만큼만 정확히 걷어내고 새로 얹으므로 남의 수정이 살아남는다.
+  const battle = createAutoBattle("iceRaiders", null, null, ["duel_swordsman", "winter_berserker"], {}, { rollSeed: 5 });
+  tickAutoBattle(battle, 16);
+  const enemy = battle.enemies[0];
+
+  enemy.attackMs = 16;
+  tickAutoBattle(battle, 16);
+  assert.equal(enemy.attackMs, 16, "밖에서 넣은 값이 유지돼야 한다");
+
+  // 동료가 쓰러지면 얹었던 몫이 정확히 걷힌다.
+  battle.units.find((unit) => unit.defId === "winter_berserker").hp = 0;
+  tickAutoBattle(battle, 16);
+  const chill = COMPANION_SKILL_DEFS.winter_berserker;
+  const applied = companionSkillValue(chill, 1);
+  assert.ok(Math.abs(enemy.attackMs - 16 / (1 + applied)) < 0.001,
+    `걷어낸 뒤 값이 어긋난다: ${enemy.attackMs}`);
+});
+
+test("스킬 레벨은 값을 올리고 상한 5에서 멈춘다", () => {
+  const definition = COMPANION_SKILL_DEFS.snow_guard;
+  const atOne = companionSkillValue(definition, 1);
+  const atMax = companionSkillValue(definition, COMPANION_SKILL_MAX_LEVEL);
+  assert.ok(atMax > atOne, "레벨이 오르면 값이 커진다");
+  assert.equal(companionSkillValue(definition, 99), atMax, "상한을 넘지 않는다");
+  assert.equal(companionSkillValue(definition, 0), atOne, "0은 1로 취급한다");
+
+  // 새 효과가 붙지는 않는다 — 그러면 상한 6짜리 숙련과 역할이 겹친다.
+  for (const entry of Object.values(COMPANION_SKILL_DEFS)) {
+    assert.equal(typeof entry.kind, "string", `${entry.name}에 kind가 없다`);
+    assert.equal(typeof entry.base, "number", `${entry.name}에 base가 없다`);
+  }
+});
+
+test("동료 스킬 경험치는 기억 던전에서 쌓여 레벨을 올린다", () => {
+  // 숙련은 상한 6에 스탯을 안 줘서 다 찍으면 갈 이유가 없었다.
+  // 스킬 경험치가 그 자리를 채운다.
+  let progress = { mastery: 6, xp: 0, skillLevel: 1, skillXp: 0 };
+  const needed = companionSkillXpNeeded(1);
+
+  let result = grantCompanionSkillXp(progress, needed - 1);
+  assert.equal(result.progress.skillLevel, 1, "모자라면 안 오른다");
+  assert.deepEqual(result.levels, []);
+
+  result = grantCompanionSkillXp(result.progress, 1);
+  assert.equal(result.progress.skillLevel, 2, "채우면 오른다");
+  assert.deepEqual(result.levels, [2]);
+
+  // 한 번에 여러 레벨도 오른다.
+  result = grantCompanionSkillXp(result.progress, 999);
+  assert.equal(result.progress.skillLevel, COMPANION_SKILL_MAX_LEVEL, "상한까지 오른다");
+  assert.equal(result.progress.skillXp, 0, "상한에서는 경험치를 쌓지 않는다");
+
+  // 숙련은 건드리지 않는다 — 별개의 성장선이다.
+  assert.equal(result.progress.mastery, 6);
+});
+
+test("대상단 길잡이는 편성했을 때만 지역 대응을 올린다", () => {
+  // 지역 패널티를 푸는 네 번째 갈래다(소모품·핵 흡수·지역 출신 동료에 이어).
+  const withGuide = createRegionRun("west", 7, ["caravan_guide"], {}, {}, {});
+  const without = createRegionRun("west", 7, ["duel_swordsman"], {}, {}, {});
+  assert.ok(withGuide.hazardMitigation > without.hazardMitigation,
+    "행로 파악이 대응 수치를 올려야 한다");
+  assert.equal(companionHazardMitigation(["caravan_guide"], {}), 1);
+  assert.equal(companionHazardMitigation(["snow_guard"], {}), 0, "다른 동료는 안 준다");
+});
+
+test("대륙 지도 구획이 빈틈 없이 맞물린다", () => {
+  // 그림을 다섯으로 갈라 어디를 눌러도 어느 한 지역으로 들어가게 한다.
+  // 남는 자리가 있으면 거기를 누른 사람만 아무 반응을 못 받는다.
+  const areas = Object.values(WORLD_REGION_DEFS).map((region) => {
+    assert.ok(region.mapArea, `${region.name}에 mapArea가 없다`);
+    return { id: region.id, ...region.mapArea };
+  });
+
+  for (const a of areas) {
+    assert.ok(a.x2 > a.x1 && a.y2 > a.y1, `${a.id} 구획이 뒤집혔다`);
+    assert.ok(a.x1 >= 0 && a.y1 >= 0 && a.x2 <= 100 && a.y2 <= 100, `${a.id}가 지도 밖으로 나갔다`);
+  }
+
+  // 격자로 훑어 빈 곳과 겹친 곳을 찾는다.
+  const holes = [];
+  const overlaps = [];
+  for (let x = 1; x < 100; x += 2) {
+    for (let y = 1; y < 100; y += 2) {
+      const hit = areas.filter((a) => x >= a.x1 && x < a.x2 && y >= a.y1 && y < a.y2);
+      if (!hit.length) holes.push(`${x},${y}`);
+      if (hit.length > 1) overlaps.push(`${x},${y}:${hit.map((h) => h.id).join("+")}`);
+    }
+  }
+  assert.equal(holes.length, 0, `빈 구획 ${holes.length}곳: ${holes.slice(0, 3).join(" ")}`);
+  assert.equal(overlaps.length, 0, `겹친 구획 ${overlaps.length}곳: ${overlaps.slice(0, 3).join(" ")}`);
+
+  // 각 지역의 노드 카드가 자기 구획 안에 있어야 그림과 라벨이 따로 놀지 않는다.
+  for (const region of Object.values(WORLD_REGION_DEFS)) {
+    const a = region.mapArea;
+    assert.ok(region.mapX >= a.x1 && region.mapX <= a.x2 && region.mapY >= a.y1 && region.mapY <= a.y2,
+      `${region.name} 카드(${region.mapX},${region.mapY})가 제 구획 밖에 있다`);
+  }
+});
+
+test("지역 대응 소모품이 실제로 대응 수치를 올린다", () => {
+  // 반지가 유일한 길이면 장신구 세 칸 중 하나가 늘 묶인다. 소모품은 칸을 안 먹는
+  // 대신 매번 다시 만들어야 하는 축이다.
+  const withTonic = createRegionRun("west", 7, STARTING_PARTY, {}, {}, { tonicApplied: true });
+  const without = createRegionRun("west", 7, STARTING_PARTY, {}, {}, {});
+  const gain = withTonic.hazardMitigation - without.hazardMitigation;
+  assert.equal(gain, REGION_TONIC_DEFS.west.mitigation,
+    `소모품이 대응 ${REGION_TONIC_DEFS.west.mitigation}를 줘야 하는데 ${gain}이다`);
+  assert.equal(gain, 2, "현재 설계값은 +2다");
+});
+
+test("소모품 다섯 종은 전부 그 지역 약재로만 만든다", () => {
+  // 재료 컨셉.txt의 지역별 약제가 그대로 그 지역 대응 소모품의 재료가 된다.
+  // 다른 지역 재료가 섞이면 "그 지역에서 구해 쓴다"는 고리가 끊긴다.
+  const regionHerbs = {
+    north: ["rhodiola", "arnica"],
+    south: ["cinchonaBark", "clove"],
+    east: ["cordyceps", "ginseng"],
+    west: ["chamomile", "lavender", "willowBark"],
+    central: ["aloeVera", "myrrh"]
+  };
+  for (const [regionId, allowed] of Object.entries(regionHerbs)) {
+    const definition = REGION_TONIC_DEFS[regionId];
+    assert.ok(definition, `${regionId} 소모품이 없다`);
+    for (const materialId of Object.keys(definition.materials)) {
+      assert.ok(allowed.includes(materialId),
+        `${definition.name}에 ${regionId} 약재가 아닌 ${materialId}가 들어갔다`);
+    }
+  }
+});
+
+test("핵 흡수는 면역이 아니라 완전 차단 문턱만 내린다", () => {
+  // 영구 면역으로 만들면 지역 압박이 "처음 한 번만 있는 관문"이 되어
+  // 지역마다 다른 압박을 준다는 설계가 통째로 죽는다.
+  const base = 4;
+  assert.equal(absorbedResistThreshold(base, false), 4, "흡수 전에는 그대로다");
+  const lowered = absorbedResistThreshold(base, true);
+  assert.ok(lowered < base, `흡수하면 문턱이 내려가야 하는데 ${lowered}다`);
+  assert.ok(lowered >= 1, "0이 되면 면역이 되어버린다");
+  assert.equal(lowered, 2, "4 * 0.6 = 2.4 -> 2");
+});
+
+test("흡수하면 소모품만으로도 저주를 완전히 막는다", () => {
+  // 이게 이번 작업의 목적이다 — 반지를 빼고도 갈 수 있어야 장신구 3셋이
+  // 실제 선택지가 된다. 필드에 박힌 값이 아니라 이탈자 수로 잰다.
+  const measure = (mitigation, absorbed) => {
+    const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
+      { rollSeed: 3, regionId: "west", hazardMitigation: mitigation, hazardAbsorbed: absorbed });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 99999;
+    for (const enemy of battle.enemies) enemy.dormant = true;
+    for (let t = 0; t < 600; t += 1) { tickAutoBattle(battle, 100); player.hp = 99999; }
+    return (battle.fledUnits || []).length;
+  };
+
+  const tonic = REGION_TONIC_DEFS.west.mitigation;
+  assert.ok(measure(tonic, false) > 0, "흡수 전에는 소모품만으로 부족하다");
+  assert.equal(measure(tonic, true), 0, "흡수하면 소모품(+2)만으로 막힌다");
+  assert.ok(measure(0, true) > 0, "흡수만으로는 못 막는다 — 면역이 아니다");
+});
+
+test("지역 핵 흡수 재료는 그 지역 보스의 신화 부산물이다", () => {
+  // 신화 장비 재료와 같은 것을 먹으므로 "장비로 만들 것인가, 흡수할 것인가"가
+  // 실제 선택이 된다. 겹치지 않으면 그냥 공짜 버프가 된다.
+  const used = new Set();
+  for (const [regionId, definition] of Object.entries(REGION_CORE_ABSORPTION)) {
+    assert.equal(definition.regionId, regionId, `${regionId} 항목의 regionId가 어긋난다`);
+    assert.ok(MATERIAL_DEFS[definition.material], `${definition.material}는 없는 재료다`);
+    assert.ok(!used.has(definition.material), `${definition.material}가 두 지역에 쓰였다`);
+    used.add(definition.material);
+    const inMythic = Object.values(MYTHIC_GEAR_DEFS)
+      .some((gear) => Object.keys(gear.materials || {}).includes(definition.material));
+    assert.ok(inMythic, `${definition.material}가 신화 장비 재료가 아니라 선택이 안 생긴다`);
+  }
+  assert.equal(used.size, 5, "다섯 지역 전부 서로 다른 핵을 쓴다");
+});
+
+test("지역별 필드 진행 순서가 문서와 일치한다", () => {
+  // REGION_PROGRESSION_HAZARDS.md §2 확정 표.
+  const expected = {
+    northLich: 1, northBear: 2, northWarchief: 3,
+    southSerpent: 1, southSpider: 2, southStarSpawn: 3,
+    eastFox: 1, eastOni: 2, eastCentipede: 3,
+    westDurahan: 1, westDragon: 2, westLich: 3,
+    centralSandworm: 1, centralManticore: 2, centralGolem: 3
+  };
+  for (const [id, tier] of Object.entries(expected)) {
+    assert.equal(ENEMY_COMBATANTS[id]?.fieldTier, tier, `${id}는 ${tier}필드`);
+  }
+
+  // 1필드 보스는 그 지역의 진행용 핵심 소재를 반드시 떨군다.
+  const keyMaterials = {
+    northLich: "frostCore", southSerpent: "venomSac", eastFox: "spiritCore",
+    westDurahan: "durahanSoul", centralSandworm: "wormCore"
+  };
+  for (const [id, materialId] of Object.entries(keyMaterials)) {
+    assert.ok(ENEMY_COMBATANTS[id].byproducts?.[materialId],
+      `${id}는 진행용 핵심 소재 ${materialId}를 떨궈야 한다`);
+  }
+});
+
+test("지역 진행용 반지는 자기 지역에서만 대응 수치를 준다", () => {
+  // 하나로 모든 지역을 우회하는 범용 해답을 만들지 않는다는 원칙
+  // (REGION_PROGRESSION_HAZARDS.md §1 — 개척자의 목걸이가 폐기된 이유).
+  const wear = (defId) => {
+    const commander = createDefaultCommander();
+    if (!defId) return commander;
+    commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+    commander.equipped.ring1 = "g0";
+    return commander;
+  };
+  const mitigation = (defId, regionId) =>
+    createRegionRun(regionId, 111, STARTING_PARTY, {}, wear(defId), {}).hazardMitigation;
+
+  const bare = mitigation(null, "west");
+  const own = mitigation("wardingSoulCharm", "west");
+  const other = mitigation("emberwardCharm", "west");
+
+  assert.ok(own > bare, "자기 지역에서는 대응 수치가 오른다");
+  assert.equal(other, bare, "다른 지역 목걸이는 아무 도움이 안 된다");
+
+  // 목걸이만으로는 부족하고 편성도 맞춰야 완전히 막힌다.
+  const ward = EQUIPMENT_DEFS.wardingSoulCharm.uniqueEffect;
+  assert.ok(ward.mitigation < 4, "반지 단독으로는 상한(4)에 못 미친다");
+});
+
+test("서부 반지를 차면 저주로 인한 동료 이탈이 막힌다", () => {
+  const run = (defId) => {
+    const commander = createDefaultCommander();
+    if (defId) {
+      commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+      commander.equipped.ring1 = "g0";
+    }
+    const regionRun = createRegionRun("west", 111, STARTING_PARTY, {}, commander, {});
+    const battle = createAutoBattle("westDurahanLair", null, null, STARTING_PARTY, {},
+      { rollSeed: 3, regionId: "west", commander, hazardMitigation: regionRun.hazardMitigation });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 99999;
+    for (const enemy of battle.enemies) enemy.dormant = true;
+    for (let t = 0; t < 600; t += 1) { tickAutoBattle(battle, 100); player.hp = 99999; }
+    return (battle.fledUnits || []).length;
+  };
+
+  assert.ok(run(null) > 0, "맨몸이면 동료가 이탈한다");
+  assert.ok(run("emberwardCharm") > 0, "엉뚱한 지역 반지는 소용없다");
+  assert.equal(run("wardingSoulCharm"), 0, "서부 반지를 차면 이탈하지 않는다");
+});
+
+test("지역 진행용 반지 5종은 문서의 조합 규칙을 따른다", () => {
+  // 규칙: 1필드 보스 핵심 소재 + 그 지역 광석/금속 + 그 지역 약재.
+  const expected = {
+    north: { ward: "frostwardCharm", key: "frostCore" },
+    south: { ward: "antivenomCharm", key: "venomSac" },
+    east: { ward: "spiritAnchorCharm", key: "spiritCore" },
+    west: { ward: "wardingSoulCharm", key: "durahanSoul" },
+    central: { ward: "emberwardCharm", key: "wormCore" }
+  };
+
+  for (const [regionId, { ward, key }] of Object.entries(expected)) {
+    const definition = EQUIPMENT_DEFS[ward];
+    assert.ok(definition, `${ward}가 정의돼야 한다`);
+    assert.equal(definition.slot, "ring", "지역 진행용은 반지다(두 칸이라 지역 대응과 전투용을 나눠 낀다)");
+    assert.equal(definition.uniqueEffect.regionId, regionId);
+
+    const materials = Object.keys(definition.materials);
+    assert.ok(materials.includes(key), `${ward}는 1필드 보스 핵심 소재 ${key}를 쓴다`);
+    assert.equal(materials.length, 3, "핵심 소재 + 광석 + 약재 세 가지");
+    for (const materialId of materials) {
+      assert.ok(MATERIAL_DEFS[materialId], `${materialId}가 재료로 정의돼야 한다`);
+    }
+  }
+
+  // 다섯 지역이 서로 다른 목걸이를 쓴다.
+  const wards = Object.values(EQUIPMENT_DEFS).filter((entry) => entry.uniqueEffect?.type === "regionWard");
+  assert.equal(wards.length, 5);
+  assert.equal(new Set(wards.map((entry) => entry.uniqueEffect.regionId)).size, 5);
+});
+
+test("거신의 맹세는 정해진 횟수마다 대상 주변을 터뜨린다", () => {
+  const wear = (defId) => {
+    const commander = createDefaultCommander();
+    if (!defId) return commander;
+    commander.equipmentOwned = [{ uid: "g0", defId, grade: "common", options: [] }];
+    commander.equipped.necklace = "g0";
+    return commander;
+  };
+
+  const swing = (defId, swings) => {
+    const battle = createAutoBattle("frostColossusPack", null, null, STARTING_PARTY, {},
+      { rollSeed: 9, commander: wear(defId) });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 99999;
+    for (const enemy of battle.enemies) { enemy.dormant = false; enemy.maxHp = enemy.hp = 99999; }
+    const target = battle.enemies[0];
+
+    let hits = 0;
+    let bursts = 0;
+    for (let i = 0; i < swings; i += 1) {
+      player.x = target.x - 3;
+      player.y = target.y;
+      if (issuePlayerAction(battle, "attack")) hits += 1;
+      tickAutoBattle(battle, 100);
+      player.hp = 99999;
+      bursts += battle.log.filter((line) => /거신의 맹세/.test(line.text || line)).length;
+      battle.log = [];
+    }
+    return { hits, bursts };
+  };
+
+  assert.equal(swing(null, 80).bursts, 0, "목걸이가 없으면 터지지 않는다");
+
+  const every = LEGENDARY_DEFS.titanOathAmulet.uniqueEffect.everyHits;
+  const armed = swing("titanOathAmulet", 130);
+  assert.ok(armed.hits >= every, "충분히 때렸다");
+  assert.equal(armed.bursts, Math.floor(armed.hits / every),
+    `${every}회마다 정확히 한 번 터진다 (때린 ${armed.hits}회 → ${armed.bursts}번)`);
+});
+
+test("거신의 맹세 폭발은 뭉친 적을 함께 때린다", () => {
+  // 단일 대상 공격이 주기적으로 광역이 되는 게 이 목걸이의 정체성이다.
+  const commander = createDefaultCommander();
+  commander.equipmentOwned = [{ uid: "g0", defId: "titanOathAmulet", grade: "common", options: [] }];
+  commander.equipped.necklace = "g0";
+
+  const battle = createAutoBattle("frostColossusPack", null, null, STARTING_PARTY, {},
+    { rollSeed: 9, commander });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  player.maxHp = player.hp = 99999;
+  const target = battle.enemies[0];
+  for (const enemy of battle.enemies) {
+    enemy.dormant = false;
+    enemy.maxHp = enemy.hp = 99999;
+    enemy.x = target.x + 2;
+    enemy.y = target.y + 2;
+  }
+
+  // 기본 공격에는 쿨다운이 있어 tick 수보다 실제 타격이 훨씬 적다.
+  // everyHits를 채우려면 넉넉히 돌려야 한다.
+  const every = LEGENDARY_DEFS.titanOathAmulet.uniqueEffect.everyHits;
+  for (let i = 0; i < every * 20; i += 1) {
+    player.x = target.x - 3;
+    player.y = target.y;
+    issuePlayerAction(battle, "attack");
+    tickAutoBattle(battle, 100);
+    player.hp = 99999;
+    for (const enemy of battle.enemies) { enemy.x = target.x + 2; enemy.y = target.y + 2; }
+  }
+
+  const burstLog = battle.log.map((line) => line.text || line).find((text) => /거신의 맹세: 벼른 힘이 터져/.test(text));
+  assert.ok(burstLog, "폭발이 발동했다");
+  const hitCount = Number((burstLog.match(/적 (\d+)명/) || [])[1] || 0);
+  assert.ok(hitCount > 1, `뭉친 적 여럿을 함께 때린다 (${hitCount}명)`);
+});
+
+test("장비 스탯 풀이 11종으로 확장되고 전부 전투 스탯에 반영된다", () => {
+  // 랜덤 옵션 풀을 넓히려면 소비처(실제로 값을 쓰는 스탯)가 먼저 있어야 한다.
+  const withBonus = (bonus) => {
+    const commander = createDefaultCommander();
+    EQUIPMENT_DEFS.__statTest = { id: "__statTest", slot: "ring", name: "검증용", materials: {}, bonus };
+    commander.equipmentOwned = [{ uid: "g0", defId: "__statTest", grade: "common", options: [] }];
+    commander.equipped.ring1 = "g0";
+    return playerCombatStats(commander, "crusader");
+  };
+  const bare = playerCombatStats(createDefaultCommander(), "crusader");
+
+  assert.ok(withBonus({ criticalChance: 0.2 }).criticalChance > bare.criticalChance, "치명타");
+  assert.ok(withBonus({ criticalDamage: 0.5 }).criticalDamage > bare.criticalDamage, "치명타 피해");
+  assert.ok(withBonus({ attackSpeedBonus: 0.3 }).attackMs < bare.attackMs, "공격속도(주기가 짧아진다)");
+  assert.ok(withBonus({ moveSpeedBonus: 0.25 }).speed > bare.speed, "이동속도");
+  assert.ok(withBonus({ statusResistBonus: 0.3 }).statusResistance > bare.statusResistance, "상태저항");
+  assert.ok(withBonus({ statusPowerBonus: 0.4 }).statusPotency > bare.statusPotency, "상태이상 위력");
+
+  delete EQUIPMENT_DEFS.__statTest;
+});
+
+test("치명타는 민첩에서 나오고 실제 피해에 반영된다", () => {
+  // 예전에는 어떤 직업도 base.criticalChance를 정의하지 않아 항상 null이었다.
+  const agile = playerCombatStats(createDefaultCommander(), "heavyTracker");
+  const sturdy = playerCombatStats(createDefaultCommander(), "spiritCrusader");
+  assert.ok(agile.criticalChance > sturdy.criticalChance, "민첩한 직업이 치명타가 높다");
+  assert.ok(sturdy.criticalChance > 0, "모든 직업이 값을 갖는다");
+
+  const fight = (critical) => {
+    const commander = createDefaultCommander();
+    if (critical) {
+      EQUIPMENT_DEFS.__critTest = {
+        id: "__critTest", slot: "ring", name: "검증용", materials: {},
+        bonus: { criticalChance: 0.9, criticalDamage: 1.0 }
+      };
+      commander.equipmentOwned = [{ uid: "g0", defId: "__critTest", grade: "common", options: [] }];
+      commander.equipped.ring1 = "g0";
+    }
+    const battle = createAutoBattle("frostColossusPack", null, null, STARTING_PARTY, {},
+      { rollSeed: 7, commander });
+    const player = battle.units.find((unit) => unit.id === battle.playerId);
+    player.maxHp = player.hp = 99999;
+    const target = battle.enemies[0];
+    target.dormant = false;
+    target.maxHp = target.hp = 999999;
+
+    let dealt = 0;
+    for (let i = 0; i < 60; i += 1) {
+      player.x = target.x - 3;
+      player.y = target.y;
+      const before = target.hp;
+      issuePlayerAction(battle, "attack");
+      dealt += before - target.hp;
+      tickAutoBattle(battle, 100);
+      player.hp = 99999;
+    }
+    return dealt;
+  };
+
+  const plain = fight(false);
+  const critty = fight(true);
+  delete EQUIPMENT_DEFS.__critTest;
+  assert.ok(critty > plain * 1.4, `치명타가 실제 피해를 올린다 (${plain} -> ${critty})`);
+});
+
+test("무기 공격력은 곱이 아니라 덧셈으로 붙고, 작은 차이도 사라지지 않는다", () => {
+  // 기본 공격력이 7 수준이라 퍼센트 보너스는 반올림에 통째로 먹혔다.
+  // (심연의 대부 +12%가 7 -> 7이 되던 버그.) 그래서 장비는 고정치를 더하고,
+  // 퍼센트는 룬·버프 같은 배율 층으로만 남긴다.
+  const bare = playerCombatStats(createDefaultCommander(), "barbarian");
+
+  const armed = (grade) => {
+    const commander = createDefaultCommander();
+    commander.combatKitId = "barbarian";
+    commander.equipmentOwned = [{ uid: "g0", defId: "barbarianGreataxe", grade, options: [] }];
+    commander.equipped.weapon = "g0";
+    return playerCombatStats(commander, "barbarian").damage;
+  };
+
+  const common = armed("common");
+  assert.equal(Math.round((common - bare.damage) * 1000) / 1000, 6,
+    `일반 등급은 정의된 고정치(6)를 그대로 더한다 (${bare.damage} -> ${common})`);
+
+  // 등급 배율(fine 1.08)은 고정치에 곱해지므로 소수점 차이로 나타난다.
+  // 반올림이 이걸 먹어버리면 등급이 무의미해진다.
+  const fine = armed("fine");
+  assert.ok(fine > common, `상위 등급이 더 세다 (${common} -> ${fine})`);
+  assert.ok(!Number.isInteger(fine), "등급 배율의 소수점이 살아 있다");
+});
+
+test("전투력 점수는 장비를 갖출수록 오른다", () => {
+  // 레벨이 없으므로 스탯 총량이 강함의 눈금이다.
+  const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), "crusader"));
+
+  const geared = (grade) => {
+    const commander = createDefaultCommander();
+    commander.equipmentOwned = [{ uid: "g0", defId: "heavyPlate", grade, options: [] }];
+    commander.equipped.chest = "g0";
+    return combatPowerScore(playerCombatStats(commander, "crusader"));
+  };
+
+  assert.ok(geared("common") > bare, "장비를 끼면 오른다");
+  // 등급이 오르면 같은 장비라도 점수가 오른다.
+  let previous = 0;
+  for (const grade of EQUIPMENT_GRADES) {
+    const score = geared(grade);
+    assert.ok(score >= previous, `${grade} 등급이 이전보다 낮으면 안 된다`);
+    previous = score;
+  }
+
+  // 무엇이 점수를 올렸는지 분해해서 볼 수 있다.
+  const rows = combatPowerBreakdown(playerCombatStats(createDefaultCommander(), "crusader"));
+  assert.ok(rows.length > 3, "기여 스탯이 여러 개 잡힌다");
+  assert.ok(rows[0].score >= rows[rows.length - 1].score, "기여도 순으로 정렬된다");
+});
+
+test("던전 보상은 확률이 아니라 클리어 회차에 따른 확정 지급이다", () => {
+  // 서부는 크루세이더·네크로맨서 두 직업의 출신지다.
+  const first = dungeonClearRewards("west", 1, []);
+  assert.deepEqual(first, ["crusaderBastardSword"], "1회차는 무기 설계도");
+
+  const second = dungeonClearRewards("west", 2, ["crusaderBastardSword"]);
+  const westSet = ARMOR_SET_DEFS[REGION_ARMOR_SET.west];
+  assert.deepEqual(second, westSet.pieces, "2회차는 방어구 세트 전체");
+  assert.equal(second.length, 5, "세트 설계도 하나로 다섯 부위가 함께 해금된다");
+
+  const third = dungeonClearRewards("west", 3, ["crusaderBastardSword", ...westSet.pieces]);
+  assert.deepEqual(third, ["necromancerArmorSword"], "3회차는 두 번째 직업 무기");
+
+  // 다 받은 뒤에는 더 나오지 않는다(무한 반복해도 중복이 안 쌓인다).
+  const exhausted = dungeonClearRewards("west", 4,
+    ["crusaderBastardSword", "necromancerArmorSword", ...westSet.pieces]);
+  assert.deepEqual(exhausted, [], "전부 습득 후에는 설계도 보상 없음");
+
+  // 지역마다 나오는 방어구 세트가 다르다.
+  const centralSecond = dungeonClearRewards("central", 2, []);
+  assert.notDeepEqual(centralSecond, westSet.pieces, "중부는 서부와 다른 세트를 준다");
+});
+
+test("전설 설계도는 일반 설계도를 다 받은 뒤 높은 회차에서만 나온다", () => {
+  const westSet = ARMOR_SET_DEFS[REGION_ARMOR_SET.west];
+  const allNormal = ["crusaderBastardSword", "necromancerArmorSword", ...westSet.pieces];
+
+  // 요구 회차 전에는 다 받았어도 전설이 나오지 않는다.
+  for (let clear = 1; clear < LEGENDARY_CLEAR_REQUIREMENT; clear++) {
+    const rewards = dungeonClearRewards("west", clear, allNormal);
+    assert.ok(
+      rewards.every((id) => !EQUIPMENT_DEFS[id]?.legendary),
+      `${clear}회차에는 전설이 나오면 안 된다`
+    );
+  }
+
+  const westLegendaries = legendariesForRegion("west").map((entry) => entry.id);
+  assert.equal(westLegendaries.length, 2, "서부는 두 직업 출신지라 전설도 둘이다");
+
+  // 한 번에 하나씩만 준다 — 둘 다 모으려면 더 돌아야 한다.
+  const fifth = dungeonClearRewards("west", LEGENDARY_CLEAR_REQUIREMENT, allNormal);
+  assert.equal(fifth.length, 1, "전설은 한 번에 하나만");
+  assert.ok(westLegendaries.includes(fifth[0]));
+
+  const sixth = dungeonClearRewards("west", LEGENDARY_CLEAR_REQUIREMENT + 1, [...allNormal, fifth[0]]);
+  assert.equal(sixth.length, 1);
+  assert.notEqual(sixth[0], fifth[0], "이미 받은 전설은 다시 나오지 않는다");
+
+  const done = dungeonClearRewards("west", 99, [...allNormal, ...westLegendaries]);
+  assert.deepEqual(done, [], "전설까지 다 모으면 설계도 보상이 끝난다");
+
+  // 다른 지역의 전설은 이 지역에서 나오지 않는다(지역색 유지).
+  assert.ok(!westLegendaries.includes("moya"), "동부 전설이 서부에서 나오면 안 된다");
+});
+
+test("전설 장비는 지역별로 흩어져 있고 컬렉션 진행도로 집계된다", () => {
+  // 전설은 두 갈래다:
+  // - 지역 전설(regionId 있음): 지역 던전을 반복 클리어해 설계도를 얻는다
+  // - 보스 전설(regionId 없음): 필드 보스 부산물을 고정 조합표로 만든다(§5·§10·§11)
+  const all = Object.values(LEGENDARY_DEFS);
+  const regional = all.filter((entry) => entry.regionId);
+  const bossCrafted = all.filter((entry) => !entry.regionId);
+  const regions = new Set(regional.map((entry) => entry.regionId));
+  assert.equal(regions.size, 5, "다섯 지역 전부에 지역 전설이 하나 이상 있다");
+  assert.ok(bossCrafted.length >= 10, "보스 부산물 전설도 충분히 있다");
+
+  // 보스 전설은 수치가 아니라 고유효과가 존재 이유다.
+  for (const entry of bossCrafted) {
+    assert.ok(entry.uniqueEffect || Object.keys(entry.bonus || {}).length >= 2,
+      `${entry.id}는 고유효과나 복합 보너스 중 하나는 있어야 한다`);
+  }
+
+  // 전부 EQUIPMENT_DEFS에 합쳐져 있어야 제작·장착이 일반 장비와 같은 경로로 돈다.
+  for (const entry of all) {
+    assert.equal(EQUIPMENT_DEFS[entry.id], entry, `${entry.id}가 장비 목록에 등록돼야 한다`);
+    assert.ok(entry.materials && Object.keys(entry.materials).length, "제작 재료가 있다");
+  }
+
+  // 컬렉션은 "제작해서 보유한" 것만 센다 — 설계도만 받은 건 아직 모은 게 아니다.
+  const blueprintOnly = { unlockedBlueprints: all.map((entry) => entry.id), equipmentOwned: [] };
+  assert.equal(legendaryCollection(blueprintOnly).collectedCount, 0, "설계도만으로는 0");
+
+  const partial = legendaryCollection({ equipmentOwned: ["moya","durandal","notLegendary"].map((defId, i) => ({ uid: "eq"+i, defId, grade: "common", options: [] })) });
+  assert.equal(partial.collectedCount, 2, "전설이 아닌 장비는 세지 않는다");
+  assert.equal(partial.total, all.length);
+  assert.equal(partial.complete, false);
+
+  const full = legendaryCollection({ equipmentOwned: all.map((entry, i) => ({ uid: "eq"+i, defId: entry.id, grade: "common", options: [] })) });
+  assert.equal(full.complete, true);
+});
+
+test("전설 장비는 수치가 아니라 보너스 '조합'으로 차별화된다", () => {
+  // 사용자 제약: 선택·수집으로 인한 성능 차이는 크게 나지 않게.
+  // 그래서 전설은 개별 수치를 크게 올리는 대신, 일반 장비가 주지 않는
+  // 두 종류 이상의 보너스를 함께 준다.
+  // 고유효과가 없는 전설(지역 무기)만 대상이다 — 보스 전설은 수치가 아니라
+  // 고유효과로 차별화되므로 보너스가 하나여도 된다.
+  for (const entry of Object.values(LEGENDARY_DEFS).filter((item) => !item.uniqueEffect)) {
+    const kinds = Object.keys(entry.bonus || {});
+    assert.ok(kinds.length >= 2, `${entry.id}는 두 가지 이상의 보너스를 함께 준다`);
+
+  }
+
+  // 개별 수치에 상한을 거는 대신 **실제 전투력 기여**를 잰다. 키마다 눈금이
+  // 다르기 때문에(비율 0.06과 점수 9는 비교 자체가 안 된다) 수치 상한은
+  // 제약을 제대로 지키는지 말해주지 못한다. 예전에 그 방식이 카두케우스 57 vs
+  // 요툰베인 367 — 직업만 골라도 6배 차이 나는 상태를 통과시켰다.
+  const weaponContribution = (defId, baseClassId) => {
+    const kitId = Object.values(PLAYER_KIT_DEFS)
+      .find((kit) => kit.baseClassId === baseClassId && !kit.inheritedFrom)?.id
+      ?? Object.values(PLAYER_KIT_DEFS).find((kit) => kit.baseClassId === baseClassId).id;
+    const bare = combatPowerScore(playerCombatStats(createDefaultCommander(), kitId));
+    const commander = createDefaultCommander();
+    commander.combatKitId = kitId;
+    commander.equipmentOwned = [{ uid: "w", defId, grade: "mythic", options: [], enhance: ENHANCE_MAX, broken: false }];
+    commander.equipped.weapon = "w";
+    return combatPowerScore(playerCombatStats(commander, kitId)) - bare;
+  };
+
+  const legendaryWeapons = Object.values(LEGENDARY_DEFS).filter((entry) => entry.slot === "weapon");
+  const contributions = legendaryWeapons.map((entry) => ({
+    id: entry.id, value: weaponContribution(entry.id, entry.baseClassId)
+  }));
+  const lowest = contributions.reduce((a, b) => (a.value <= b.value ? a : b));
+  const highest = contributions.reduce((a, b) => (a.value >= b.value ? a : b));
+  assert.ok(highest.value <= lowest.value * 1.1,
+    `직업별 전설 무기 성능 차가 10%를 넘는다: ${lowest.id} ${lowest.value} vs ${highest.id} ${highest.value}`);
+
+  // 제작 무기도 같은 규칙을 받는다 — 시작 직업 선택이 곧 성능 선택이 되면 안 된다.
+  // EQUIPMENT_DEFS에는 전설도 함께 들어 있어서 걸러낸다.
+  const craftedWeapons = Object.values(EQUIPMENT_DEFS)
+    .filter((def) => def.slot === "weapon" && def.baseClassId
+      && !LEGENDARY_DEFS[def.id] && !MYTHIC_GEAR_DEFS[def.id]);
+  const crafted = craftedWeapons.map((def) => ({ id: def.id, value: weaponContribution(def.id, def.baseClassId) }));
+  const craftLow = crafted.reduce((a, b) => (a.value <= b.value ? a : b));
+  const craftHigh = crafted.reduce((a, b) => (a.value >= b.value ? a : b));
+  assert.ok(craftHigh.value <= craftLow.value * 1.1,
+    `직업별 제작 무기 성능 차가 10%를 넘는다: ${craftLow.id} ${craftLow.value} vs ${craftHigh.id} ${craftHigh.value}`);
+
+  // 전설이 제작품의 두 배를 넘으면 수집이 선택이 아니라 강제가 된다.
+  assert.ok(highest.value < craftLow.value * 2,
+    `전설이 제작 무기의 두 배를 넘는다 (${craftLow.value} -> ${highest.value})`);
+
+  // 전설 무기도 직업 제한을 그대로 받는다(직업군 차별을 만들지 않기 위해,
+  // 여섯 직업 각각에 하나씩 있고 장신구 하나만 공용이다).
+  const weapons = Object.values(LEGENDARY_DEFS).filter((entry) => entry.slot === "weapon");
+  const classIds = weapons.map((entry) => entry.baseClassId);
+  assert.equal(new Set(classIds).size, weapons.length, "한 직업이 전설 무기를 둘 갖지 않는다");
+  for (const classId of classIds) {
+    assert.ok(PLAYER_BASE_CLASS_DEFS[classId], `${classId}는 실제 기본 직업이어야 한다`);
+  }
+  assert.equal(
+    new Set(Object.keys(PLAYER_BASE_CLASS_DEFS)).size, weapons.length,
+    "모든 기본 직업이 전설 무기를 하나씩 갖는다"
+  );
+});
+
+test("던전 상자는 보스를 쓰러뜨리기 전에는 잠겨 있다", () => {
+  const dungeon = createDungeon(4242, "west", null);
+  const chest = Object.values(dungeon.features).find((entry) => entry.type === "treasure");
+  assert.ok(chest, "던전에는 보물 상자가 하나 있다");
+  assert.equal(chest.opened, false);
+
+  const run = createRegionRun("west", 4242, STARTING_PARTY, {}, { unlockedBlueprints: [] });
+  run.dungeon = dungeon;
+  run.location = "dungeon";
+  run.player = { ...dungeon.start };
+
+  // 보스를 안 잡은 상태에서는 상자가 열리지 않는다.
+  const chestKey = Object.entries(dungeon.features).find(([, entry]) => entry.type === "treasure")[0];
+  const [chestX, chestY] = chestKey.split(",").map(Number);
+  run.player = { x: chestX, y: chestY - 1 };
+  const locked = moveRunPlayer(run, chestX, chestY);
+  assert.equal(locked.type, "treasureLocked");
+  assert.equal(chest.opened, false);
+
+  // 보스를 잡은 뒤에는 열린다.
+  Object.values(dungeon.features).find((entry) => entry.boss).cleared = true;
+  run.player = { x: chestX, y: chestY - 1 };
+  const opened = moveRunPlayer(run, chestX, chestY);
+  assert.equal(opened.type, "treasure");
+  assert.equal(chest.opened, true);
+});
+
+test("독은 출혈과 달리 중첩당 이동 속도를 늦춘다", () => {
+  const commander = createDefaultCommander();
+  const clean = createAutoBattle("duneRaiders", "clean", "field", [], {}, { commander });
+  const poisoned = createAutoBattle("duneRaiders", "poisoned", "field", [], {}, { commander });
+  const cleanPlayer = clean.units.find((unit) => unit.controlled);
+  const poisonedPlayer = poisoned.units.find((unit) => unit.controlled);
+  const enemy = poisoned.enemies[0];
+  applyCombatStatus(poisoned, poisonedPlayer, "poison", enemy, { stacks: 5 });
+  steerBattlePlayer(clean, 1, 0);
+  steerBattlePlayer(poisoned, 1, 0);
+  tickAutoBattle(clean, 200);
+  tickAutoBattle(poisoned, 200);
+  const cleanDistance = cleanPlayer.x - 27;
+  const poisonedDistance = poisonedPlayer.x - 27;
+  assert.ok(poisonedDistance > 0);
+  assert.ok(poisonedDistance < cleanDistance);
+});
+
+test("무장 부활은 현재 전투의 일반 시체를 최대 3기까지만 재사용한다", () => {
+  const commander = createDefaultCommander();
+  commander.combatKitId = "heavyNecromancer";
+  const battle = createAutoBattle("duneRaiders", "corpse-cap", "field", [], {}, { commander, enemyCopies: 2 });
+  for (const enemy of battle.enemies.slice(0, 4)) enemy.hp = 0;
+  assert.equal(issuePlayerAction(battle, "skill2"), true);
+  assert.equal(battle.units.filter((unit) => unit.summonType === "raisedDead").length, 3);
+  battle.playerReadyAt.skill2 = 0;
+  assert.equal(issuePlayerAction(battle, "skill2"), false);
+  assert.equal(battle.enemies.filter((enemy) => enemy.hp <= 0).length, 1);
+});
+
+test("네 성문을 순회 방어하고 잔당 소탕까지 마쳐야 수성전이 정산된다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.state.estateDefense.threat = 65;
+  engine.state.estateDefense.pending = { regionId: "central", encounterId: "duneRaiders", title: "시험 방어전", description: "대상단 습격" };
+  for (const unitId of ["glass_alchemist", "caravan_guide", "winter_berserker"]) {
+    engine.state.adventure.roster.push(unitId);
+    engine.state.adventure.unitProgress[unitId] = { level: 2, xp: 0, secondaryId: null };
+    assert.equal(engine.assignDefenseRemnantUnit(unitId), true);
+  }
+  assert.equal(engine.startEstateDefense(), true);
+  assert.equal(engine.state.estateDefense.campaign.phase, "gates");
+  for (const gateId of ["north", "east", "south", "west"]) {
+    assert.equal(engine.enterEstateDefenseGate(gateId), true);
+    for (const enemy of engine.state.estateDefense.battle.enemies) enemy.hp = 0;
+    engine.advanceEstateDefense(120);
+    assert.equal(engine.state.estateDefense.result.type, "gateHeld");
+    assert.equal(engine.resolveEstateDefense(), true);
+  }
+  assert.equal(engine.state.estateDefense.campaign.phase, "remnants");
+  assert.equal(engine.resolveEstateRemnants(), true);
+  assert.equal(engine.state.estateDefense.campaign.finalResult.success, true);
+  assert.equal(engine.finishEstateDefenseCampaign(), true);
+  assert.equal(engine.state.estateDefense.pending, null);
+  assert.ok(engine.state.estateDefense.threat < 65);
+});
+
+test("미지원 성문이 무너지면 내부전장으로 전환된다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.state.estateDefense.pending = { regionId: "central", encounterId: "duneRaiders", title: "동시 습격", description: "네 성문 공격" };
+  assert.equal(engine.startEstateDefense(), true);
+  assert.equal(engine.enterEstateDefenseGate("north"), true);
+  engine.advanceEstateGatePressure(30000);
+  assert.equal(engine.state.estateDefense.result.type, "gateBreach");
+  assert.ok(engine.state.estateDefense.campaign.breachedGateId);
+  assert.equal(engine.resolveEstateDefense(), true);
+  assert.equal(engine.state.estateDefense.campaign.phase, "inner");
+  assert.equal(engine.state.estateDefense.battle.sourceZone, "defense-inner");
+});
+
+test("고정 수비대는 성문 사이를 재배치하고 기동대가 돌아오면 이전 전투를 이어간다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  engine.state.estateDefense.pending = { regionId: "central", encounterId: "duneRaiders", title: "성문 전환 시험", description: "분산 공격" };
+  for (const unitId of ["glass_alchemist", "caravan_guide"]) {
+    engine.state.adventure.roster.push(unitId);
+    engine.state.adventure.unitProgress[unitId] = { level: 2, xp: 0, secondaryId: null };
+  }
+  assert.equal(engine.assignDefenseGateUnit("glass_alchemist", "north"), true);
+  assert.equal(engine.assignDefenseGateUnit("glass_alchemist", "east"), true);
+  assert.deepEqual(engine.state.estateDefense.deployments.gates.north, []);
+  assert.deepEqual(engine.state.estateDefense.deployments.gates.east, ["glass_alchemist"]);
+  assert.equal(engine.assignDefenseRemnantUnit("glass_alchemist"), true);
+
+  assert.equal(engine.startEstateDefense(), true);
+  assert.equal(engine.enterEstateDefenseGate("north"), true);
+  const northBattle = engine.state.estateDefense.battle;
+  northBattle.enemies[0].hp -= 7;
+  assert.equal(engine.enterEstateDefenseGate("east"), true);
+  engine.advanceEstateGatePressure(1000);
+  assert.ok(engine.state.estateDefense.campaign.gates.south.durability < 100);
+  assert.equal(engine.enterEstateDefenseGate("north"), true);
+  assert.equal(engine.state.estateDefense.battle, northBattle);
+  assert.equal(engine.state.estateDefense.battle.enemies[0].hp, northBattle.enemies[0].hp);
+});
+
+test("광역 필드 전투는 넓은 경계를 쓰고 몬스터를 여러 무리로 흩어 잠재운다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 4242, groupCount: 3 });
+  assert.ok(battle, "필드 전투가 생성된다");
+  assert.equal(battle.fieldMode, true);
+
+  // 기존 조우 아레나보다 실제로 훨씬 넓다.
+  assert.equal(battle.bounds.maxX, FIELD_BOUNDS.maxX);
+  assert.ok(battle.bounds.maxX > ARENA_BOUNDS.maxX * 3);
+
+  // 모든 적이 처음엔 잠들어 있고, 무리가 여럿으로 나뉜다.
+  assert.ok(battle.enemies.length >= 3);
+  assert.ok(battle.enemies.every((enemy) => enemy.dormant === true), "처음엔 전부 비활성");
+  const groups = new Set(battle.enemies.map((enemy) => enemy.groupIndex));
+  // 일반 무리 3개 + 필드 보스 무리 1개. 보스는 별도 무리라 지나칠 수 있다.
+  assert.equal(groups.size, 4, "일반 3개 무리 + 필드 보스 무리");
+
+  const fieldBosses = battle.enemies.filter((enemy) => enemy.fieldBoss);
+  assert.ok(fieldBosses.length, "필드 어딘가에 보스가 있다");
+  assert.equal(new Set(fieldBosses.map((enemy) => enemy.groupIndex)).size, 1, "보스는 한 무리로 묶인다");
+  assert.ok(fieldBosses.some((enemy) => enemy.patterns?.length), "필드 보스는 패턴을 가진다");
+
+  // 보스 없이 시작할 수도 있어야 한다.
+  const noBoss = createFieldBattle("north", STARTING_PARTY, {}, { seed: 4242, groupCount: 3, fieldBoss: false });
+  assert.equal(noBoss.enemies.filter((enemy) => enemy.fieldBoss).length, 0);
+
+  // 무리끼리 실제로 떨어져 있다(전부 한 곳에 뭉쳐 있지 않다).
+  const xs = battle.enemies.map((enemy) => enemy.x);
+  assert.ok(Math.max(...xs) - Math.min(...xs) > 100, "무리들이 가로로 흩어져 있다");
+});
+
+test("필드 몬스터는 가까이 가야 무리 단위로 깨어나고, 멀리 있는 무리는 계속 잠들어 있다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 77, groupCount: 3 });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+
+  tickAutoBattle(battle, 16);
+  assert.ok(battle.enemies.every((enemy) => enemy.dormant), "시작 지점에서는 아무도 안 깨어난다");
+
+  // 첫 무리 바로 옆으로 순간이동시킨다.
+  const targetGroup = 0;
+  const first = battle.enemies.find((enemy) => enemy.groupIndex === targetGroup);
+  player.x = first.x;
+  player.y = first.y;
+  tickAutoBattle(battle, 16);
+
+  const awakeGroups = new Set(battle.enemies.filter((enemy) => !enemy.dormant).map((enemy) => enemy.groupIndex));
+  assert.ok(awakeGroups.has(targetGroup), "다가간 무리는 깨어난다");
+  assert.equal(battle.enemies.filter((enemy) => enemy.groupIndex === targetGroup).every((enemy) => !enemy.dormant), true,
+    "같은 무리는 한 마리가 아니라 전체가 함께 깨어난다");
+
+  // 다른 무리 중 사거리 밖에 있는 적은 그대로 잠들어 있어야 한다.
+  // (같은 무리는 멀리 있어도 함께 깨어나는 게 의도된 동작이라 무리 기준으로 걸러낸다.)
+  const otherGroupFar = battle.enemies.filter((enemy) => enemy.groupIndex !== targetGroup
+    && Math.hypot(enemy.x - player.x, enemy.y - player.y) > FIELD_AGGRO_RADIUS);
+  assert.ok(otherGroupFar.length, "이 시드에서는 사거리 밖 다른 무리가 있어야 테스트가 의미 있다");
+  assert.ok(otherGroupFar.every((enemy) => enemy.dormant), "사거리 밖 다른 무리는 계속 잠들어 있다");
+});
+
+test("던전 입구 트리거는 적을 정리해야 열리고, 밟으면 한 번만 발동한다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 909, groupCount: 2, fieldStage: FIELD_STAGE_COUNT });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const trigger = battle.triggers[0];
+  assert.equal(trigger.type, "dungeonEntrance");
+
+  // 적을 하나 깨워둔 채 입구에 서면 막힌다.
+  battle.enemies[0].dormant = false;
+  player.x = trigger.x;
+  player.y = trigger.y;
+  tickAutoBattle(battle, 16);
+  assert.equal(battle.pendingTrigger, null, "교전 중에는 던전에 못 들어간다");
+  assert.equal(battle.blockedTrigger, trigger.id);
+
+  // 정리하면 열린다.
+  for (const enemy of battle.enemies) enemy.hp = 0;
+  battle.enemies[0].dormant = false;
+  player.x = trigger.x;
+  player.y = trigger.y;
+  tickAutoBattle(battle, 16);
+  const fired = consumeFieldTrigger(battle);
+  assert.ok(fired, "적을 정리하면 던전 입구가 발동한다");
+  assert.equal(fired.type, "dungeonEntrance");
+
+  // 소비 후에는 다시 안 뜬다.
+  assert.equal(consumeFieldTrigger(battle), null);
+});
+
+test("필드에는 장애물이 깔리고, 시작 지점과 던전 입구 주변은 비어 있다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 31337, groupCount: 3 });
+  assert.ok(battle.obstacles.length > 0, "장애물이 실제로 생성된다");
+
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const trigger = battle.triggers[0];
+  for (const obstacle of battle.obstacles) {
+    assert.ok(Math.hypot(obstacle.x - player.x, obstacle.y - player.y) > obstacle.radius,
+      "시작 지점이 바위 안에 박혀 있지 않다");
+    assert.ok(Math.hypot(obstacle.x - trigger.x, obstacle.y - trigger.y) > obstacle.radius,
+      "던전 입구가 바위로 막혀 있지 않다");
+  }
+
+  // 장애물끼리도 서로 겹치지 않는다.
+  for (let i = 0; i < battle.obstacles.length; i += 1) {
+    for (let j = i + 1; j < battle.obstacles.length; j += 1) {
+      const a = battle.obstacles[i];
+      const b = battle.obstacles[j];
+      assert.ok(Math.hypot(a.x - b.x, a.y - b.y) > a.radius + b.radius, "장애물끼리 겹치지 않는다");
+    }
+  }
+
+  // 스폰된 적도 바위 안에 갇혀 있지 않다.
+  for (const enemy of battle.enemies) {
+    for (const obstacle of battle.obstacles) {
+      assert.ok(Math.hypot(obstacle.x - enemy.x, obstacle.y - enemy.y) > obstacle.radius,
+        "적이 바위 안에서 스폰되지 않는다");
+    }
+  }
+});
+
+test("장애물은 통과할 수 없고, 표면을 따라 밀려난다", () => {
+  // 단독 함수 검증: 원 안으로 파고든 좌표는 가장자리로 밀려난다.
+  const obstacles = [{ x: 100, y: 100, radius: 10 }];
+  const pushed = resolveObstacles(obstacles, 100, 100 - 3, 0); // 중심 근처로 침투
+  assert.ok(Math.hypot(pushed.x - 100, pushed.y - 100) >= 10 - 1e-9, "장애물 밖으로 밀려난다");
+
+  // 장애물 밖의 좌표는 건드리지 않는다.
+  const untouched = resolveObstacles(obstacles, 200, 200, 0);
+  assert.deepEqual(untouched, { x: 200, y: 200 });
+
+  // 실제 전투에서 바위를 향해 계속 걸어가도 안으로 못 들어간다.
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 555, groupCount: 2 });
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const rock = battle.obstacles[0];
+  // 바위 왼쪽에 서서 바위 중심을 향해 이동 명령.
+  player.x = rock.x - rock.radius - 6;
+  player.y = rock.y;
+  moveBattlePlayer(battle, rock.x, rock.y);
+  for (let i = 0; i < 60; i += 1) tickAutoBattle(battle, 50);
+
+  const gap = Math.hypot(player.x - rock.x, player.y - rock.y);
+  assert.ok(gap >= rock.radius - 0.01, `바위를 통과하지 못한다 (거리 ${gap.toFixed(2)} >= 반지름 ${rock.radius.toFixed(2)})`);
+});
+
+test("광역 필드 런: 무리를 정리하고 던전 입구까지 걸어가면 화면 전환 없이 던전으로 이어진다", () => {
+  const engine = new GameEngine(new MemoryStorage());
+  const run = createRegionRun("north", 2024, STARTING_PARTY, {}, engine.state.adventure.commander, {
+    fieldBattle: true,
+    groupCount: 2,
+    fieldStage: FIELD_STAGE_COUNT
+  });
+  assert.ok(run, "필드 전투 런이 만들어진다");
+  assert.equal(run.fieldBattle, true);
+  assert.equal(run.field, null, "격자 필드는 만들지 않는다");
+  assert.ok(run.battle?.fieldMode, "런 시작부터 광역 전투가 활성 상태다");
+  engine.state.adventure.run = run;
+
+  const battle = run.battle;
+  battle.awaitingPlayerStart = false;
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const trigger = battle.triggers[0];
+
+  // 아직 적이 남아 있으면 입구에 서 있어도 진입이 막힌다.
+  player.x = trigger.x;
+  player.y = trigger.y;
+  battle.enemies[0].dormant = false;
+  assert.equal(engine.advanceRealtimeBattle(16), "active");
+  assert.equal(run.location, "field", "교전 중에는 던전으로 안 넘어간다");
+
+  // 필드를 정리하면 전투가 끝나는 게 아니라 "정리됨" 상태가 된다.
+  // (입구에서 떨어뜨려 놓고 확인 — 입구 위에 선 채로 틱을 돌리면 이 시점에
+  //  트리거가 발동해버려서 "정리 직후 상태"를 관찰할 수 없다.)
+  for (const enemy of battle.enemies) enemy.hp = 0;
+  player.x = battle.bounds.minX + 20;
+  player.y = trigger.y;
+  engine.advanceRealtimeBattle(16);
+  assert.equal(battle.fieldCleared, true, "필드 정리 표시");
+  assert.equal(battle.status, "active", "필드를 비워도 전투가 종료되지 않는다");
+  assert.equal(run.status, "active", "런도 계속 진행 중이다");
+
+  // 입구를 밟으면 던전으로 넘어간다.
+  player.x = trigger.x;
+  player.y = trigger.y;
+  const result = engine.advanceRealtimeBattle(16);
+  assert.equal(result, "dungeonEntrance");
+  assert.equal(run.pendingEntrance, true);
+  assert.equal(run.battle, null, "필드 전투는 정리된다");
+
+  // 실제 던전 진입까지 이어진다.
+  assert.equal(engine.enterAdventureDungeon(), true);
+  assert.equal(run.location, "dungeon");
+  assert.ok(run.dungeon, "던전이 생성된다");
+});
+
+test("특수 동료 5명은 지역마다 하나씩 있고, 패시브가 실제 전투에서 작동한다", () => {
+  const specials = Object.values(SPECIAL_UNIT_DEFS);
+  assert.equal(specials.length, 5);
+  assert.deepEqual(
+    [...new Set(specials.map((unit) => unit.regionId))].sort(),
+    Object.keys(WORLD_REGION_DEFS).sort(),
+    "지역마다 정확히 하나씩"
+  );
+  for (const unit of specials) {
+    // 넷은 동료 본인에게, 서부 성기사 하나만 플레이어에게 붙는다.
+    assert.ok(unit.specialPassive?.effect || unit.grantsPlayerPassive?.effect, `${unit.id}는 패시브를 갖는다`);
+    // 지역 모집 목록에 들어가면 "총 5명"이 UI로 새어나간다(설계 문서 §6).
+    assert.ok(!WORLD_REGION_DEFS[unit.regionId].recruits.includes(unit.id),
+      `${unit.id}는 모집 목록에 노출되지 않는다`);
+  }
+
+  const withSpecial = (unitId) => {
+    const battle = createAutoBattle("duneRaiders", "sp", "field", [unitId, "winter_berserker"], {}, {
+      commander: createDefaultCommander()
+    });
+    tickAutoBattle(battle, 20);
+    return battle;
+  };
+  const ally = (battle) => battle.units.find((unit) => unit.defId === "winter_berserker");
+
+  // 등록만 하고 배선을 빠뜨리면 조용히 아무 일도 안 일어난다 —
+  // 다섯 개 전부 실제 값이 바뀌는지 잰다.
+  const baseline = createAutoBattle("duneRaiders", "base", "field", ["snow_guard", "winter_berserker"], {}, {
+    commander: createDefaultCommander()
+  });
+  tickAutoBattle(baseline, 20);
+  const bare = ally(baseline);
+
+  // 쿨감은 "필드에 값이 박혔나"가 아니라 "공격 주기가 실제로 줄었나"로 잰다.
+  // 값만 세팅하고 아무도 안 읽는 배선 누락이 이 프로젝트에서 반복된 실패다.
+  const architectBattle = withSpecial("tower_architect");
+  const architectAlly = ally(architectBattle);
+  architectAlly.cooldown = 0;
+  tickAutoBattle(architectBattle, 4000);
+  assert.ok(architectAlly.passiveCooldownReduction > 0, "마력 회로: 아군 쿨감이 붙는다");
+  assert.ok(architectAlly.cooldown < architectAlly.attackMs,
+    `마력 회로: 공격 주기가 실제로 짧아진다 (${architectAlly.attackMs} -> ${architectAlly.cooldown})`);
+
+  assert.ok(ally(withSpecial("wandering_shaman")).statusPotency > bare.statusPotency, "주술 각인: 상태이상 위력이 오른다");
+  assert.ok(ally(withSpecial("hunted_smith")).armor > bare.armor, "야전 단조: 아군 방어가 오른다");
+  // 지휘 보정은 유닛이 아니라 전투 단위로 집계된다.
+  assert.ok(withSpecial("relic_scholar").commandAura > baseline.commandAura,
+    "유물 해독: 파티 지휘 보정이 오른다");
+
+});
+
+test("흑마법의 비밀은 성기사를 구조하면 플레이어에게 붙는다", () => {
+  // 이 하나만 동료가 아니라 플레이어를 되살린다. 그리고 편성과 무관하다 —
+  // 구조해서 명부에 있으면, 데려가지 않아도 효과가 남는다.
+  const build = (roster) => createAutoBattle("duneRaiders", "oath", "field", ["winter_berserker"], {}, {
+    commander: createDefaultCommander(), roster
+  });
+
+  const without = build([]);
+  assert.equal(without.grantedPassives.length, 0, "구조 전에는 아무것도 없다");
+  const player = without.units.find((unit) => unit.controlled);
+  player.hp = 0;
+  tickAutoBattle(without, 20);
+  assert.equal(player.hp, 0, "구조 전에는 부활하지 않는다");
+
+  // 성기사를 편성하지 않고 명부에만 두었는데도 붙는다.
+  const battle = build(["fallen_paladin"]);
+  assert.equal(battle.grantedPassives[0].id, "forbiddenOath");
+  assert.ok(!battle.units.some((unit) => unit.defId === "fallen_paladin"), "편성하지 않았다");
+
+  const hero = battle.units.find((unit) => unit.controlled);
+  hero.hp = 0;
+  tickAutoBattle(battle, 20);
+  assert.ok(hero.hp > 0, `플레이어가 다시 일어선다 (0 -> ${hero.hp})`);
+
+  hero.hp = 0;
+  tickAutoBattle(battle, 20);
+  assert.equal(hero.hp, 0, "전투당 한 번뿐이다");
+});
+
+test("특수 동료가 쓰러지면 매 틱 얹던 버프는 걷힌다", () => {
+  // 전투 시작 시 한 번 집계되는 것(방어·지휘)은 죽어도 남는다 — 기존 partyArmor와
+  // 같은 규칙이다. 매 틱 얹는 것(쿨감·상태이상 위력)만 걷힌다.
+  const battle = createAutoBattle("duneRaiders", "fade", "field", ["tower_architect", "winter_berserker"], {}, {
+    commander: createDefaultCommander()
+  });
+  tickAutoBattle(battle, 20);
+  const architect = battle.units.find((unit) => unit.defId === "tower_architect");
+  const ally = battle.units.find((unit) => unit.defId === "winter_berserker");
+  assert.ok(ally.passiveCooldownReduction > 0);
+
+  architect.hp = 0;
+  tickAutoBattle(battle, 20);
+  assert.equal(ally.passiveCooldownReduction, 0, "죽은 동료의 쿨감이 남지 않는다");
+});
+
+test("적 종은 그림이 있거나 미착수 목록에 있고, 아틀라스 계산이 어긋나지 않는다", () => {
+  // 아틀라스에 없는 종은 화면에 글리프 문자 하나로만 뜬다. 어느 쪽 목록에도 없으면
+  // "안 그린 것"이 아니라 "빠뜨린 것"이라 조용히 사라진다.
+  const species = [...new Set(Object.values(ENEMY_COMBATANTS).map((def) => def.species).filter(Boolean))];
+  const unaccounted = species.filter((name) =>
+    !MONSTER_ATLAS_SPECIES.includes(name) && !MONSTER_SPECIES_PENDING_ART.includes(name));
+  assert.deepEqual(unaccounted, [], "어느 목록에도 없는 종");
+
+  // 한 종이 양쪽에 있으면 그려진 건지 아닌지 알 수 없어진다.
+  const both = MONSTER_ATLAS_SPECIES.filter((name) => MONSTER_SPECIES_PENDING_ART.includes(name));
+  assert.deepEqual(both, [], "그려진 종이 미착수 목록에도 있다");
+  assert.equal(new Set(MONSTER_ATLAS_SPECIES).size, MONSTER_ATLAS_SPECIES.length, "종 이름이 겹치지 않는다");
+
+  // CSS가 아는 종 수와 그려진 종 수가 다르면 아틀라스를 자르는 위치가 전부 어긋난다.
+  // 목록만 늘리고 PNG를 안 바꾸면 여기서 잡힌다.
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const declared = css.match(/--monster-count:\s*(\d+)/);
+  assert.ok(declared, "styles.css에 --monster-count가 있어야 한다");
+  assert.equal(Number(declared[1]), MONSTER_ATLAS_SPECIES.length,
+    "CSS의 종 수는 실제로 그려진 종 수와 같아야 한다");
+
+  // 크기 규칙은 미착수 종까지 미리 있어도 된다 — 그림만 오면 바로 붙는다.
+  for (const name of [...MONSTER_ATLAS_SPECIES, ...MONSTER_SPECIES_PENDING_ART]) {
+    assert.ok(css.includes(`i.monster-${name} {`), `${name}의 크기 규칙이 CSS에 있어야 한다`);
+  }
+});
+
+test("연쇄 장판은 옆으로 빠지면 피하고 뒤로 물러나면 걸린다", () => {
+  // 이 패턴의 존재 이유가 여기 있다. 원형 장판은 아무 방향으로나 벗어나면
+  // 되지만, 연쇄는 **정답 방향이 하나**다. 뒤로 도망치는 게 통하면
+  // 그냥 느린 원형 장판이 되고 만드는 의미가 없다.
+  const SPEED = 17;
+  for (const id of ["stoneRow", "tentacleCascade", "cursedProcession"]) {
+    const pattern = BOSS_PATTERN_DEFS[id];
+    assert.equal(pattern.kind, "chain");
+
+    // 첫 칸은 원형과 같은 기준으로 피할 수 있어야 한다.
+    const reach = SPEED * (pattern.telegraphMs / 1000);
+    assert.ok(reach > pattern.radius,
+      `${id}: 예고 동안 이동거리(${reach.toFixed(1)})가 반경(${pattern.radius})보다 커야 한다`);
+
+    // 옆으로는 반경만큼만 가면 전부 벗어난다 — 칸이 일직선이기 때문이다.
+    assert.ok(reach > pattern.radius,
+      `${id}: 옆으로 빠질 시간이 있어야 한다`);
+
+    // 뒤로 물러나면 다음 칸에 걸려야 한다. 한 칸 터지는 사이에 이동할 수 있는
+    // 거리가 칸 간격보다 짧아야 이게 성립한다.
+    const backReach = SPEED * (pattern.chainIntervalMs / 1000);
+    assert.ok(backReach < pattern.chainSpacing,
+      `${id}: 뒤로 도망이 통하면 안 된다 (간격 ${pattern.chainSpacing} vs 이동 ${backReach.toFixed(1)})`);
+  }
+});
+
+test("연쇄 장판은 보스에서 대상 쪽으로 줄지어 깔리고 순서대로 터진다", () => {
+  const battle = createAutoBattle("frostTitanLair", null, null, STARTING_PARTY, {}, { rollSeed: 31 });
+  const boss = battle.enemies.find((enemy) => enemy.boss);
+  const player = battle.units.find((unit) => unit.id === battle.playerId);
+  const pattern = BOSS_PATTERN_DEFS.stoneRow;
+
+  battle.zones = [];
+  spawnBossZone(battle, boss, pattern, player);
+  const zones = battle.zones.filter((zone) => zone.patternId === "stoneRow");
+  assert.equal(zones.length, pattern.chainCount, "칸 수만큼 깔린다");
+
+  // 순서대로 터진다.
+  for (let i = 1; i < zones.length; i += 1) {
+    assert.ok(zones[i].fireAt > zones[i - 1].fireAt, "뒤 칸이 더 늦게 터진다");
+    assert.equal(zones[i].chainIndex, i, "몇 번째 칸인지 표시된다");
+  }
+
+  // 보스에서 멀어지는 방향으로 일직선이다 — 이게 "옆으로 빠지면 다 피한다"의 근거다.
+  const distances = zones.map((zone) => Math.hypot(zone.x - boss.x, zone.y - boss.y));
+  for (let i = 1; i < distances.length; i += 1) {
+    assert.ok(distances[i] > distances[i - 1], "뒤 칸일수록 보스에서 멀다");
+  }
+
+  // 세 점이 한 직선 위에 있는지 — 외적이 0에 가까워야 한다.
+  const cross = (a, b, c) =>
+    Math.abs((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+  for (let i = 2; i < zones.length; i += 1) {
+    assert.ok(cross(zones[0], zones[1], zones[i]) < 0.01, "칸이 일직선으로 놓인다");
+  }
+});
+
+test("재료는 획득 경로에 따라 5단계로 갈린다", () => {
+  // 등급은 이름이나 카테고리가 아니라 **어떻게 손에 넣는가**로 정한다.
+  // MATERIAL_DEFS의 category는 special 하나에 약초와 보스 부산물이 섞여 있어
+  // 아무것도 구분해주지 못한다.
+  assert.deepEqual(MATERIAL_RARITY_ORDER, ["normal", "fine", "rare", "legendary", "mythic"]);
+
+  // 노멀 — 필드에서 줍거나 캔다.
+  for (const id of ["wood", "ore", "herb", "bauxite", "rhodiola"]) {
+    assert.equal(materialRarity(id), "normal", `${id}는 채집물이다`);
+  }
+
+  // 고급 — 한 번 가공한 것. 그리고 환상종은 채집 단계부터 고급이다.
+  for (const id of ["ingot", "copper", "titanium"]) {
+    assert.equal(materialRarity(id), "fine", `${id}는 제련 산출물이다`);
+  }
+  for (const id of ["orichalcum", "mithril", "adamantite", "moonpetal", "emberroot"]) {
+    assert.equal(materialRarity(id), "fine", `${id}는 환상종 원재료다`);
+  }
+
+  // 희귀 — 두 번 가공한 것.
+  for (const id of ["orichalcumIngot", "mithrilIngot", "adamantiteIngot",
+    "moonpetalEssence", "emberrootExtract", "blackSteel", "manaStone"]) {
+    assert.equal(materialRarity(id), "rare", `${id}는 2차 가공품이다`);
+  }
+
+  // 환상종은 가공하면 한 단계 오른다 — 일반 제련품과 벌어져야 채굴할 이유가 생긴다.
+  const order = MATERIAL_RARITY_ORDER;
+  for (const [raw, refined] of [["orichalcum", "orichalcumIngot"], ["mithril", "mithrilIngot"],
+    ["adamantite", "adamantiteIngot"], ["moonpetal", "moonpetalEssence"], ["emberroot", "emberrootExtract"]]) {
+    assert.ok(order.indexOf(materialRarity(refined)) > order.indexOf(materialRarity(raw)),
+      `${raw} → ${refined} 가공하면 등급이 올라야 한다`);
+    assert.ok(ORE_SMELTING_DEFS[raw] || raw.startsWith("moon") || raw.startsWith("ember"),
+      `${raw}는 가공 경로가 있어야 한다`);
+  }
+
+  // 전설·신화 — 보스가 떨군다. 신화가 전설을 이긴다.
+  const fieldDrops = new Set();
+  const regionDrops = new Set();
+  for (const enemy of Object.values(ENEMY_COMBATANTS)) {
+    if (!enemy.byproducts) continue;
+    const target = enemy.fieldTier ? fieldDrops : regionDrops;
+    for (const id of Object.keys(enemy.byproducts)) target.add(id);
+  }
+  for (const id of regionDrops) {
+    assert.equal(materialRarity(id), "mythic", `${id}는 지역 보스가 떨구므로 신화다`);
+  }
+  for (const id of fieldDrops) {
+    if (regionDrops.has(id)) continue;
+    assert.equal(materialRarity(id), "legendary", `${id}는 필드 보스만 떨구므로 전설이다`);
+  }
+
+  // 다섯 단계가 전부 채워져 있어야 단계로서 의미가 있다.
+  const counts = {};
+  for (const id of Object.keys(MATERIAL_DEFS)) {
+    counts[materialRarity(id)] = (counts[materialRarity(id)] || 0) + 1;
+  }
+  for (const rarity of MATERIAL_RARITY_ORDER) {
+    assert.ok(counts[rarity] > 0, `${rarity} 등급이 비어 있다`);
+    assert.ok(MATERIAL_RARITY_LABELS[rarity], `${rarity} 이름표가 없다`);
+  }
+});
+
+test("곰 우두머리 다섯은 모두 필드 보스다", () => {
+  // 북부 곰만 fieldTier가 있고 넷은 빠져 있었다. 체력 88~98로 명백히 같은
+  // 급인데 지역 보스(285~340)로 취급돼서, 곰 가죽이 신화 재료가 되고 있었다.
+  const bears = Object.entries(ENEMY_COMBATANTS).filter(([id]) => id.endsWith("Bear"));
+  assert.equal(bears.length, 5);
+  for (const [id, def] of bears) {
+    assert.ok(def.fieldTier > 0, `${id}에 fieldTier가 있어야 한다`);
+    assert.ok(def.maxHp < 150, `${id}는 지역 보스보다 훨씬 약하다 (${def.maxHp})`);
+  }
+
+  // 지역 보스는 정확히 다섯이고 전부 훨씬 단단하다.
+  const regionBosses = Object.entries(ENEMY_COMBATANTS)
+    .filter(([, def]) => def.boss && !def.fieldTier && def.byproducts);
+  assert.equal(regionBosses.length, 5, "지역 보스는 지역당 하나씩 다섯이다");
+  for (const [id, def] of regionBosses) {
+    assert.ok(def.maxHp >= 200, `${id}는 지역 보스답게 단단해야 한다 (${def.maxHp})`);
+  }
+});
+
+test("지역 보스는 자기만의 부산물을 떨구고, 필드 보스와 겹치지 않는다", () => {
+  // 전에는 설산의 타이탄이 곰 가죽을 떨궜다. 신화 등급이 이름만 신화고
+  // 실은 곰을 잡아도 나오는 재료였다는 뜻이다.
+  const fieldDrops = new Set();
+  const regionDrops = new Set();
+  for (const enemy of Object.values(ENEMY_COMBATANTS)) {
+    if (!enemy.byproducts) continue;
+    const target = enemy.fieldTier ? fieldDrops : regionDrops;
+    for (const id of Object.keys(enemy.byproducts)) target.add(id);
+  }
+
+  const overlap = [...regionDrops].filter((id) => fieldDrops.has(id));
+  assert.deepEqual(overlap, [], `지역 보스와 필드 보스가 재료를 공유한다: ${overlap.join(", ")}`);
+
+  // 다섯 보스가 각자 둘씩, 서로도 겹치지 않아야 "이 보스를 잡을 이유"가 생긴다.
+  const regionBosses = Object.entries(ENEMY_COMBATANTS)
+    .filter(([, def]) => def.boss && !def.fieldTier && def.byproducts);
+  assert.equal(regionBosses.length, 5);
+  const seen = new Map();
+  for (const [id, def] of regionBosses) {
+    const ids = Object.keys(def.byproducts);
+    assert.equal(ids.length, 2, `${id}는 부산물이 둘이어야 한다`);
+    for (const material of ids) {
+      assert.ok(!seen.has(material), `${material}을 ${seen.get(material)}와 ${id}가 함께 떨군다`);
+      seen.set(material, id);
+      assert.equal(materialRarity(material), "mythic", `${material}은 신화여야 한다`);
+      assert.ok(MATERIAL_DEFS[material], `${material} 정의가 없다`);
+    }
+  }
+  assert.equal(seen.size, 10, "신화 재료는 정확히 10종이다");
+});
+
+test("특수 발견지 산출물은 최소 고급이다", () => {
+  // 같은 심층광산(위험 18)에서 나오는데 산철은 전설, 설철은 노멀이던 상태를 막는다.
+  // 위험을 무릅쓰고 지은 시설의 산출물이 목재와 같은 등급일 수는 없다.
+  const order = MATERIAL_RARITY_ORDER;
+  for (const site of Object.values(DISCOVERY_SITE_DEFS)) {
+    if ((site.risk || 0) < 12) continue;
+    for (const id of [site.materialId, ...Object.values(site.materialByRegion || {})]) {
+      if (!MATERIAL_DEFS[id]) continue;
+      assert.ok(order.indexOf(materialRarity(id)) >= order.indexOf("fine"),
+        `${site.id}의 ${id}가 노멀이다 (위험 ${site.risk})`);
+    }
+  }
+});
+
+test("하위 지도는 세 필드로 빈틈 없이 갈라지고 각 지물은 제 구간 안에 있다", () => {
+  assert.equal(SITE_FIELD_DEFS.length, FIELD_STAGE_COUNT);
+
+  // 위에서 아래로 정렬한 뒤 맞물림을 본다. 남는 띠가 있으면 지도에서 그 부분을
+  // 누른 사람만 아무 구간도 못 잡는다.
+  const bands = [...SITE_FIELD_DEFS].sort((a, b) => a.mapArea.y1 - b.mapArea.y1);
+  assert.equal(bands[0].mapArea.y1, 0, "맨 위 띠는 지도 꼭대기부터 시작한다");
+  assert.equal(bands[bands.length - 1].mapArea.y2, 100, "맨 아래 띠는 지도 바닥까지 닿는다");
+  for (let i = 1; i < bands.length; i += 1) {
+    assert.equal(bands[i].mapArea.y1, bands[i - 1].mapArea.y2,
+      `${bands[i].name}과 ${bands[i - 1].name} 사이에 빈틈이 있다`);
+  }
+
+  // 단계 번호는 아래(야영지)에서 위(능선)로 올라간다 — 그림의 아이소메트릭 깊이와 같다.
+  const byStage = [...SITE_FIELD_DEFS].sort((a, b) => a.stage - b.stage);
+  for (let i = 1; i < byStage.length; i += 1) {
+    assert.ok(byStage[i].mapArea.y1 < byStage[i - 1].mapArea.y1,
+      `${byStage[i].stage}필드가 앞 필드보다 안쪽(위쪽)이어야 한다`);
+  }
+
+  for (const field of SITE_FIELD_DEFS) {
+    assert.ok(field.landmarks.length, `${field.name}에 지물이 없다`);
+    for (const landmark of field.landmarks) {
+      assert.ok(landmark.y >= field.mapArea.y1 && landmark.y <= field.mapArea.y2,
+        `${landmark.name}(y ${landmark.y})이 ${field.name} 띠(${field.mapArea.y1}~${field.mapArea.y2}) 밖이다`);
+      assert.ok(landmark.x >= 0 && landmark.x <= 100, `${landmark.name}의 x가 지도 밖이다`);
+    }
+  }
+});
+
+test("필드 전투에는 그림의 지물이 실려오고, 막는 것만 장애물이 된다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 7, fieldStage: 3, groupCount: 2 });
+  const field = siteFieldDefinition(3);
+  assert.equal(battle.landmarks.length, field.landmarks.length);
+
+  // 지물이 아레나 안에 들어와야 화면에 보인다.
+  for (const landmark of battle.landmarks) {
+    assert.ok(landmark.x >= FIELD_BOUNDS.minX && landmark.x <= FIELD_BOUNDS.maxX, `${landmark.name} x 범위 밖`);
+    assert.ok(landmark.y >= FIELD_BOUNDS.minY && landmark.y <= FIELD_BOUNDS.maxY, `${landmark.name} y 범위 밖`);
+  }
+
+  // 광산·동굴은 몸으로 막고, 유적 문은 들어가는 곳이라 안 막는다.
+  const solidIds = battle.obstacles.filter((obstacle) => obstacle.landmarkId).map((obstacle) => obstacle.landmarkId);
+  assert.ok(solidIds.includes("mine") && solidIds.includes("cave"), "광산·동굴은 장애물이어야 한다");
+  assert.ok(!solidIds.includes("ruinGate"), "유적 문을 막으면 던전에 못 들어간다");
+
+  // 지도의 왼쪽 지물은 아레나에서도 왼쪽이어야 지도와 맞춰볼 수 있다.
+  const mine = battle.landmarks.find((entry) => entry.landmarkId === "mine");
+  const cave = battle.landmarks.find((entry) => entry.landmarkId === "cave");
+  assert.ok(mine.x < cave.x, "그림에서 광산이 동굴보다 왼쪽이었다");
+
+  // 시작 지점이 지물에 막혀 있으면 스폰하자마자 낀다.
+  const spawned = battle.units.every((unit) =>
+    battle.obstacles.every((obstacle) => Math.hypot(unit.x - obstacle.x, unit.y - obstacle.y) >= obstacle.radius));
+  assert.ok(spawned, "지물 안에 낀 채로 시작하는 유닛이 있다");
+});
+
+test("던전 입구는 그림의 유적 문 자리에 선다", () => {
+  const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 21, fieldStage: FIELD_STAGE_COUNT, groupCount: 2 });
+  const trigger = battle.triggers.find((entry) => entry.type === "dungeonEntrance");
+  const gate = battle.landmarks.find((entry) => entry.landmarkId === "ruinGate");
+  assert.ok(trigger && gate);
+  assert.ok(Math.hypot(trigger.x - gate.x, trigger.y - gate.y) < 1,
+    `입구(${Math.round(trigger.x)},${Math.round(trigger.y)})가 유적 문(${Math.round(gate.x)},${Math.round(gate.y)})과 다른 자리다`);
+
+  // 앞 구간에는 유적 문이 없으므로 던전 입구도 없고, 대신 다음 필드로 나가는 출구가 선다.
+  const early = createFieldBattle("north", STARTING_PARTY, {}, { seed: 21, fieldStage: 1, groupCount: 2 });
+  assert.equal(early.triggers[0].type, "fieldExit");
+  assert.ok(!early.landmarks.some((entry) => entry.kind === "dungeon"));
+});
+
+test("필드 전투는 몇 번째 구간인지 스스로 들고 있다", () => {
+  // 전투 화면 머리말이 "2/3 갈림길 채석장"을 띄우려면 run이 아니라 battle이
+  // 이 값을 들고 있어야 한다 — 전투 화면은 run을 안 보고 battle만 본다.
+  for (const stage of [1, 2, 3]) {
+    const battle = createFieldBattle("north", STARTING_PARTY, {}, { seed: 3, fieldStage: stage, groupCount: 2 });
+    assert.equal(battle.fieldStage, stage);
+    assert.equal(siteFieldDefinition(battle.fieldStage).stage, stage);
+  }
+});

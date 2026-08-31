@@ -12,3 +12,10 @@ android/local.properties
 dist/
 .pnpm-store/
 .agents/
+tools/downloads/
+tools/runtime/
+tools/blender-user/
+artifacts/
+*.blend1
+__pycache__/
+artifacts_tmp.js
